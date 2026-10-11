@@ -1867,11 +1867,6 @@ kbd {
     pointer-events: none;
 }
 
-@media (max-width: 760px), (hover: none) {
-    .kbd-hint {
-        display: none;
-    }
-}
 
 /* Keyboard shortcuts list */
 
@@ -1972,4 +1967,23 @@ dl.shortcuts {
 
 .keys-off .kbd-hint {
     display: none;
+}
+
+.ui-item__end {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ui-menu__label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ui-menu__keys {
+    display: inline-flex;
+    gap: 3px;
+    text-transform: none;
+    letter-spacing: 0;
 }

@@ -545,7 +545,18 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                         items={actions.map((a) => ({ label: a.label, onSelect: a.run, tour: a.tour }))}
                         open={menuOpen || tourMenu === 'phone'}
                         onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
-                        choice={{ label: 'Connection', value: connection, options: connectionOptions, onChange: switchConnection }}
+                        choice={{
+                            label: 'Connection',
+                            value: connection,
+                            options: connectionOptions,
+                            onChange: switchConnection,
+                            hint: (
+                                <span className="ui-menu__keys">
+                                    <kbd className="kbd-hint">[</kbd>
+                                    <kbd className="kbd-hint">]</kbd>
+                                </span>
+                            ),
+                        }}
                         toggles={{
                             label: 'Show',
                             items: LAYER_TOGGLES.map((t) => ({
@@ -553,6 +564,7 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                                 checked: layers[t.key],
                                 onChange: () => toggle(t.key),
                                 icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
+                                hotkey: t.hotkey,
                             })),
                         }}
                     />

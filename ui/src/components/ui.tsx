@@ -96,9 +96,9 @@ export function Tooltip({ content, children, side = 'top' }: { content: ReactNod
 
 export type MenuItem = { label: string; shortcut?: string; onSelect: () => void; tour?: string };
 
-export type MenuChoice = { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void };
+export type MenuChoice = { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void; hint?: ReactNode };
 
-export type MenuToggle = { label: string; checked: boolean; onChange: () => void; icon?: ReactNode };
+export type MenuToggle = { label: string; checked: boolean; onChange: () => void; icon?: ReactNode; hotkey?: string };
 
 export function Menu({
     label,
@@ -129,7 +129,10 @@ export function Menu({
                 <MenuPrimitive.Content className="ui-popover ui-menu" align="end" sideOffset={6} collisionPadding={12}>
                     {choice && (
                         <MenuPrimitive.Group data-tour="menu-connection">
-                            <MenuPrimitive.Label className="ui-menu__label">{choice.label}</MenuPrimitive.Label>
+                            <MenuPrimitive.Label className="ui-menu__label">
+                                {choice.label}
+                                {choice.hint}
+                            </MenuPrimitive.Label>
                             <MenuPrimitive.RadioGroup value={choice.value} onValueChange={choice.onChange}>
                                 {choice.options.map((o) => (
                                     <MenuPrimitive.RadioItem key={o.value} value={o.value} className="ui-item ui-item--choice">
@@ -167,7 +170,10 @@ export function Menu({
                                     </span>
                                     <span className="ui-item__body ui-item__body--row">
                                         {t.label}
-                                        {t.icon}
+                                        <span className="ui-item__end">
+                                            {t.icon}
+                                            {t.hotkey && <kbd className="kbd-hint">{t.hotkey}</kbd>}
+                                        </span>
                                     </span>
                                 </MenuPrimitive.CheckboxItem>
                             ))}
