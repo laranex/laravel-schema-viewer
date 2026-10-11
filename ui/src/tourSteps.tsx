@@ -118,7 +118,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Download',
         body: (
             <p>
-                Download this connection's database schema (tables, columns, keys, indexes and foreign keys) as a <b>Mermaid</b> diagram for a README, <b>DBML</b> for dbdiagram.io, or <b>Markdown</b> to read.
+                Download this connection's database schema (tables, columns, keys, indexes and foreign keys) as a <b>Mermaid</b> diagram for a README, <b>DBML</b> for dbdiagram.io, <b>Markdown</b> to read, or <b>JSON</b> for scripts.
             </p>
         ),
     },

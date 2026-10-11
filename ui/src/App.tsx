@@ -725,13 +725,14 @@ function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boo
 }
 
 
-type ExportFormat = 'mermaid' | 'dbml' | 'markdown';
+type ExportFormat = 'mermaid' | 'dbml' | 'markdown' | 'json';
 
 // The database schema of the current connection (tables, columns, keys, indexes, foreign keys), without the Laravel side.
 const EXPORTS: { format: ExportFormat; label: string; hint: string }[] = [
     { format: 'mermaid', label: 'Mermaid', hint: 'An ER diagram for READMEs and pull requests' },
     { format: 'dbml', label: 'DBML', hint: 'For dbdiagram.io and other DBML tools' },
     { format: 'markdown', label: 'Markdown', hint: 'A readable reference of every table' },
+    { format: 'json', label: 'JSON', hint: 'The tables as data, for scripts and tools' },
 ];
 
 const LAYER_TOGGLES: { key: keyof Layers; label: string; swatch?: EdgeKind; hotkey: string }[] = [

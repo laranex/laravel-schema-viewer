@@ -64,7 +64,7 @@ it('can live on another path', function (): void {
     $this->get('/schema-viewer')->assertNotFound();
 });
 
-it('downloads the database schema as Mermaid, DBML or Markdown', function (): void {
+it('downloads the database schema as Mermaid, DBML, Markdown or JSON', function (): void {
     expect($this->get('/schema-viewer/api/export?format=mermaid&connection=testing')
         ->assertOk()
         ->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.mmd"')
@@ -72,6 +72,11 @@ it('downloads the database schema as Mermaid, DBML or Markdown', function (): vo
 
     $this->get('/schema-viewer/api/export?format=dbml')->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.dbml"');
     $this->get('/schema-viewer/api/export?format=markdown')->assertOk()->assertHeader('Content-Type', 'text/markdown; charset=utf-8');
-    $this->get('/schema-viewer/api/export?format=json')->assertStatus(422);
+    $this->get('/schema-viewer/api/export?format=json')
+        ->assertOk()
+        ->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.json"')
+        ->assertJsonPath('name', 'testing')
+        ->assertJsonMissingPath('models');
+    $this->get('/schema-viewer/api/export?format=png')->assertStatus(422);
     $this->get('/schema-viewer/api/export?format=dbml&connection=nope')->assertNotFound();
 });

@@ -14,7 +14,7 @@ use Laranex\LaravelSchemaViewer\Export\MermaidExporter;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 
 /**
- * One connection's database schema as a file to download: Mermaid, DBML or Markdown.
+ * One connection's database schema as a file to download: Mermaid, DBML, Markdown or JSON.
  */
 final class ExportController
 {
@@ -22,6 +22,7 @@ final class ExportController
         'mermaid' => ['mmd', 'text/plain'],
         'dbml' => ['dbml', 'text/plain'],
         'markdown' => ['md', 'text/markdown'],
+        'json' => ['json', 'application/json'],
     ];
 
     public function __invoke(Request $request, SchemaViewer $viewer, ConnectionResolverInterface $connections): Response|JsonResponse
@@ -30,7 +31,7 @@ final class ExportController
         $format = is_string($format) ? $format : '';
 
         if (! isset(self::FORMATS[$format])) {
-            return new JsonResponse(['message' => 'Use format mermaid, dbml or markdown.'], 422);
+            return new JsonResponse(['message' => 'Use format mermaid, dbml, markdown or json.'], 422);
         }
 
         $document = $viewer->document();
@@ -45,6 +46,7 @@ final class ExportController
         $content = match ($format) {
             'mermaid' => (new MermaidExporter)->export($connection),
             'dbml' => (new DbmlExporter)->export($connection),
+            'json' => (string) json_encode($connection, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n",
             default => (new MarkdownExporter)->export($connection),
         };
 
