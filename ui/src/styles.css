@@ -1696,7 +1696,7 @@ kbd {
 }
 
 .react-flow__minimap {
-    margin-bottom: 76px !important;
+    margin-bottom: 64px !important;
 }
 
 .tour-fab {
@@ -1706,13 +1706,13 @@ kbd {
     z-index: 8;
     display: grid;
     place-items: center;
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     border: 0;
     border-radius: 50%;
     background: var(--accent);
     color: #062b24;
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 600;
     box-shadow: var(--shadow), 0 6px 16px rgb(0 0 0 / 22%);
     cursor: pointer;
@@ -1725,7 +1725,7 @@ kbd {
 .tour-fab.is-new::after {
     content: '';
     position: absolute;
-    inset: -6px;
+    inset: -5px;
     border: 2px solid var(--accent);
     border-radius: 50%;
     animation: pulse 1.8s ease-out infinite;
@@ -1744,6 +1744,8 @@ kbd {
 
 @media (max-width: 760px) {
     .tour-fab {
+        width: 40px;
+        height: 40px;
         bottom: calc(76px + env(safe-area-inset-bottom, 0px));
     }
 }
@@ -1766,7 +1768,6 @@ kbd {
     border-radius: 12px;
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
     pointer-events: none;
-    transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease;
 }
 
 .tour__card {
@@ -1780,7 +1781,6 @@ kbd {
     background: var(--surface);
     color: var(--fg);
     box-shadow: var(--shadow), 0 12px 32px rgb(0 0 0 / 28%);
-    transition: left 0.2s ease, top 0.2s ease;
 }
 
 .tour__head {

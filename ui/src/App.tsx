@@ -14,7 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EdgeMarkers, LinkEdgeView, type EdgeKind, type LinkEdgeData, type LinkEdgeType } from './components/LinkEdge';
 import { SearchBox } from './components/SearchBox';
-import { Tour } from './components/Tour';
+import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
 import { Dialog, Menu, Select, Tooltip, TooltipProvider } from './components/ui';
 import { SidePanel } from './components/SidePanel';
@@ -78,6 +78,10 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
     const searchRef = useRef<HTMLInputElement>(null);
     const [helpOpen, setHelpOpen] = useState(false);
     const [tourOpen, setTourOpen] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
+    // While a tour step explains part of the phone menu, the tour keeps the menu open.
+    const [tourMenu, setTourMenu] = useState(false);
+    const onTourStep = useCallback((step: TourStep | null) => setTourMenu(!!step?.menu), []);
     const [toured, setToured] = useState(() => {
         try {
             return localStorage.getItem('schema-viewer.toured') === '1';
@@ -573,7 +577,9 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
                                 <circle cx="19" cy="12" r="1.8" />
                             </svg>
                         }
-                        items={actions.map((a) => ({ label: a.label, onSelect: a.run }))}
+                        items={actions.map((a) => ({ label: a.label, onSelect: a.run, tour: a.label === 'Keyboard shortcuts' ? 'menu-shortcuts' : undefined }))}
+                        open={menuOpen || (narrow && tourMenu)}
+                        onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
                         choice={{ label: 'Connection', value: connection, options: connectionOptions, onChange: switchConnection }}
                         toggles={{
                             label: 'Show',
@@ -672,7 +678,7 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
             </main>
 
             <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
-            <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} />
+            <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
 
             {toast && (
                 <div className="toast" role="status">

@@ -32,6 +32,11 @@ class SchemaViewerServiceProvider extends ServiceProvider
             return;
         }
 
+        $this->commands([
+            Console\ExportCommand::class,
+            Console\CheckCommand::class,
+        ]);
+
         $this->publishes([
             __DIR__.'/../config/schema-viewer.php' => $this->app->configPath('schema-viewer.php'),
         ], ['laravel-schema-viewer', 'laravel-schema-viewer-config']);

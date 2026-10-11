@@ -58,7 +58,23 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: '[data-tour="layers"]',
+        target: '[data-tour="search"]',
+        title: 'Search',
+        body: <p>Find a table by its name, a column, its model or a relation. Pick a result to jump to the table.</p>,
+    },
+    {
+        target: ['.ui-tabs', '.sheet-bar__main'],
+        title: 'Details',
+        body: <p>The selected table's columns, relations, the relations that point at it, indexes and model settings: casts, fillable, hidden, scopes and observers.</p>,
+    },
+    {
+        target: ['.ui-tabs .ui-tab:nth-child(2)', '.sheet-bar__hints'],
+        title: 'Hints',
+        body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
+    },
+    {
+        target: ['[data-tour="layers"]', '[data-tour="menu-show"]'],
+        menu: true,
         title: 'What the lines mean',
         body: (
             <ul>
@@ -78,32 +94,14 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: '[aria-label="More actions"]',
-        title: 'The menu',
-        body: <p>Switch connections, choose which lines and tables to show, arrange the tables and copy the schema from here.</p>,
-    },
-    {
-        target: '[data-tour="search"]',
-        title: 'Search',
-        body: <p>Find a table by its name, a column, its model or a relation. Pick a result to jump to the table.</p>,
-    },
-    {
-        target: '#connection',
+        target: ['#connection', '[data-tour="menu-connection"]'],
+        menu: true,
         title: 'Connections',
         body: <p>Each database connection your app and its models use has its own diagram. A relation to a table on another connection shows as a dashed card you can click.</p>,
     },
     {
-        target: '.ui-tabs',
-        title: 'Details',
-        body: <p>The selected table's columns, relations, the relations that point at it, indexes and model settings: casts, fillable, hidden, scopes and observers.</p>,
-    },
-    {
-        target: '.ui-tabs .ui-tab:nth-child(2)',
-        title: 'Hints',
-        body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
-    },
-    {
-        target: '[data-tour="actions"]',
+        target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
+        menu: true,
         title: 'Layout and export',
         body: (
             <p>
@@ -112,7 +110,8 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: '[data-tour="shortcuts"]',
+        target: ['[data-tour="shortcuts"]', '[data-tour="menu-shortcuts"]'],
+        menu: true,
         title: 'Keyboard shortcuts',
         body: (
             <p>

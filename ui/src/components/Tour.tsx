@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 export type TourStep = {
-    // A CSS selector or a function returning the element to spotlight. None: a centered card.
-    target?: string | (() => Element | null);
+    // A CSS selector, a function returning the element to spotlight, or a list of them where the first one on screen wins.
+    // None: a centered card.
+    target?: Target | Target[];
     title: string;
     body: ReactNode;
+    // The step explains something inside the phone menu: the tour opens the menu for it.
+    menu?: boolean;
 };
+
+type Target = string | (() => Element | null);
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -13,17 +18,33 @@ const PAD = 8;
 const CARD_WIDTH = 340;
 const GAP = 14;
 
-const find = (target: TourStep['target']): Element | null => {
-    if (!target) {
-        return null;
+// On screen: rendered, and at least partly inside the window (a phone's closed sheet sits below it).
+const onScreen = (el: Element | null): el is Element => {
+    if (!el || el.getClientRects().length === 0) {
+        return false;
     }
-    const el = typeof target === 'string' ? document.querySelector(target) : target();
-    return el && el.getClientRects().length > 0 ? el : null;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
 };
 
+const find = (target: TourStep['target']): Element | null => {
+    for (const t of target === undefined ? [] : Array.isArray(target) ? target : [target]) {
+        const el = typeof t === 'string' ? document.querySelector(t) : t();
+        if (onScreen(el)) {
+            return el;
+        }
+    }
+    return null;
+};
+
+// The element's box plus some room, clipped to the window so a large area never draws past its edges.
 const rectOf = (el: Element): Rect => {
     const r = el.getBoundingClientRect();
-    return { x: r.left - PAD, y: r.top - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 };
+    const left = Math.max(4, r.left - PAD);
+    const top = Math.max(4, r.top - PAD);
+    const right = Math.min(window.innerWidth - 4, r.right + PAD);
+    const bottom = Math.min(window.innerHeight - 4, r.bottom + PAD);
+    return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 };
 
 // Where the card goes: below, above, right or left of the spotlight, whichever fits first; clamped to the window.
@@ -59,8 +80,13 @@ function placeCard(rect: Rect | null, card: { width: number; height: number }) {
 }
 
 // A guided tour: dims the page, spotlights one section at a time and explains it.
-export function Tour({ steps, open, onClose }: { steps: TourStep[]; open: boolean; onClose: () => void }) {
-    const available = useMemo(() => (open ? steps.filter((s) => !s.target || find(s.target)) : []), [open, steps]);
+export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourStep[]; open: boolean; onClose: () => void; onStep?: (step: TourStep | null) => void; menuSteps: boolean }) {
+    // Menu steps count when the menu exists (phones): their targets only appear once the tour opens it.
+    // Steps that pick their element when shown (a table, a label) always count, so the total never depends on timing.
+    const available = useMemo(
+        () => (open ? steps.filter((s) => !s.target || typeof s.target === 'function' || find(s.target) || (s.menu && menuSteps)) : []),
+        [open, steps, menuSteps],
+    );
     const [index, setIndex] = useState(0);
     const [rect, setRect] = useState<Rect | null>(null);
     const [card, setCard] = useState({ width: CARD_WIDTH, height: 180 });
@@ -86,8 +112,7 @@ export function Tour({ steps, open, onClose }: { steps: TourStep[]; open: boolea
             setRect((prev) => (prev && next && Math.abs(prev.x - next.x) + Math.abs(prev.y - next.y) + Math.abs(prev.width - next.width) + Math.abs(prev.height - next.height) < 1 ? prev : next));
             frame = window.requestAnimationFrame(update);
         };
-        const el = find(step.target);
-        el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        // No scrollIntoView: it would scroll the diagram's hidden-overflow container and shift the drawing.
         update();
         return () => window.cancelAnimationFrame(frame);
     }, [open, step]);
@@ -102,6 +127,10 @@ export function Tour({ steps, open, onClose }: { steps: TourStep[]; open: boolea
     useEffect(() => {
         nextRef.current?.focus();
     }, [index, open]);
+
+    useEffect(() => {
+        onStep?.(open ? (step ?? null) : null);
+    }, [open, step, onStep]);
 
     const next = useCallback(() => (index >= available.length - 1 ? onClose() : setIndex(index + 1)), [index, available.length, onClose]);
     const back = useCallback(() => setIndex(Math.max(0, index - 1)), [index]);

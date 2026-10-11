@@ -77,15 +77,32 @@ export function Tooltip({ content, children, side = 'top' }: { content: ReactNod
     );
 }
 
-export type MenuItem = { label: string; shortcut?: string; onSelect: () => void };
+export type MenuItem = { label: string; shortcut?: string; onSelect: () => void; tour?: string };
 
 export type MenuChoice = { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void };
 
 export type MenuToggle = { label: string; checked: boolean; onChange: () => void; icon?: ReactNode };
 
-export function Menu({ label, trigger, items, choice, toggles }: { label: string; trigger: ReactNode; items: MenuItem[]; choice?: MenuChoice; toggles?: { label: string; items: MenuToggle[] } }) {
+export function Menu({
+    label,
+    trigger,
+    items,
+    choice,
+    toggles,
+    open,
+    onOpenChange,
+}: {
+    label: string;
+    trigger: ReactNode;
+    items: MenuItem[];
+    choice?: MenuChoice;
+    toggles?: { label: string; items: MenuToggle[] };
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+}) {
     return (
-        <MenuPrimitive.Root>
+        // Not modal: the guided tour opens this menu and its own card must stay clickable beside it.
+        <MenuPrimitive.Root open={open} onOpenChange={onOpenChange} modal={false}>
             <MenuPrimitive.Trigger asChild>
                 <button type="button" className="button button--icon" aria-label={label}>
                     {trigger}
@@ -94,7 +111,7 @@ export function Menu({ label, trigger, items, choice, toggles }: { label: string
             <MenuPrimitive.Portal>
                 <MenuPrimitive.Content className="ui-popover ui-menu" align="end" sideOffset={6} collisionPadding={12}>
                     {choice && (
-                        <>
+                        <MenuPrimitive.Group data-tour="menu-connection">
                             <MenuPrimitive.Label className="ui-menu__label">{choice.label}</MenuPrimitive.Label>
                             <MenuPrimitive.RadioGroup value={choice.value} onValueChange={choice.onChange}>
                                 {choice.options.map((o) => (
@@ -112,10 +129,10 @@ export function Menu({ label, trigger, items, choice, toggles }: { label: string
                                 ))}
                             </MenuPrimitive.RadioGroup>
                             <MenuPrimitive.Separator className="ui-menu__separator" />
-                        </>
+                        </MenuPrimitive.Group>
                     )}
                     {toggles && (
-                        <>
+                        <MenuPrimitive.Group data-tour="menu-show">
                             <MenuPrimitive.Label className="ui-menu__label">{toggles.label}</MenuPrimitive.Label>
                             {toggles.items.map((t) => (
                                 <MenuPrimitive.CheckboxItem
@@ -138,14 +155,16 @@ export function Menu({ label, trigger, items, choice, toggles }: { label: string
                                 </MenuPrimitive.CheckboxItem>
                             ))}
                             <MenuPrimitive.Separator className="ui-menu__separator" />
-                        </>
+                        </MenuPrimitive.Group>
                     )}
-                    {items.map((item) => (
-                        <MenuPrimitive.Item key={item.label} className="ui-item" onSelect={item.onSelect}>
-                            <span className="ui-item__body">{item.label}</span>
-                            {item.shortcut && <kbd className="ui-item__kbd">{item.shortcut}</kbd>}
-                        </MenuPrimitive.Item>
-                    ))}
+                    <MenuPrimitive.Group data-tour="menu-actions">
+                        {items.map((item) => (
+                            <MenuPrimitive.Item key={item.label} className="ui-item" onSelect={item.onSelect} data-tour={item.tour}>
+                                <span className="ui-item__body">{item.label}</span>
+                                {item.shortcut && <kbd className="ui-item__kbd">{item.shortcut}</kbd>}
+                            </MenuPrimitive.Item>
+                        ))}
+                    </MenuPrimitive.Group>
                 </MenuPrimitive.Content>
             </MenuPrimitive.Portal>
         </MenuPrimitive.Root>
