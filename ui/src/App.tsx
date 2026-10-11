@@ -76,6 +76,23 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const narrow = useNarrow();
     const [hovered, setHovered] = useState<string | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
+    const [helpOpen, setHelpOpen] = useState(false);
+    // Whether each control shows its shortcut key beside it. Off by default; remembered per browser.
+    const [keysOn, setKeysOn] = useState(() => {
+        try {
+            return localStorage.getItem('schema-viewer.shortcut-hints') === 'on';
+        } catch {
+            return false;
+        }
+    });
+    const switchKeys = (on: boolean) => {
+        setKeysOn(on);
+        try {
+            localStorage.setItem('schema-viewer.shortcut-hints', on ? 'on' : 'off');
+        } catch {
+            // Storage blocked: the choice lasts until reload.
+        }
+    };
     const [tourOpen, setTourOpen] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     // While a tour step explains part of the phone menu, the tour keeps the menu open.
@@ -433,6 +450,7 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const actions = [
         { label: 'Copy Mermaid', shortcut: undefined, tour: undefined, run: () => copy('Mermaid diagram', toMermaid(schema, connection)) },
         { label: 'Copy JSON', shortcut: undefined, tour: undefined, run: () => copy('Schema JSON', toJson(schema)) },
+        { label: 'Keyboard shortcuts', shortcut: undefined, tour: 'menu-shortcuts', run: () => setHelpOpen(true) },
     ];
 
     const toggle = (key: keyof Layers) => setLayers((l) => ({ ...l, [key]: !l[key] }));
@@ -461,8 +479,10 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
         const actionsByKey: Record<string, () => void> = {
             '/': () => searchRef.current?.focus(),
             '?': () => setTourOpen(true),
+            s: () => setHelpOpen((o) => !o),
             Escape: () => {
-                if (sheetOpen) setSheetOpen(false);
+                if (helpOpen) setHelpOpen(false);
+                else if (sheetOpen) setSheetOpen(false);
                 else setSelected(null);
             },
             f: () => flow.fitView({ padding: 0.08, duration: 250 }),
@@ -499,7 +519,7 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const hintCount = schema.hints(connection).length;
 
     return (
-        <div className="app">
+        <div className={`app${keysOn ? '' : ' keys-off'}`}>
             <EdgeMarkers />
             <header className="toolbar">
                 <div className="toolbar__brand">
@@ -558,6 +578,15 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                                 </button>
                             ))}
                         </div>
+                        <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
+                            <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
+                                <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
+                                    <rect x="1.5" y="2" width="17" height="12" rx="2" />
+                                    <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
+                                </svg>
+                                Keyboard shortcuts
+                            </button>
+                        </Tooltip>
                     </div>
                 )}
             </header>
@@ -660,6 +689,7 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                 />
             </main>
 
+            <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} keysOn={keysOn} onKeysOn={switchKeys} />
             <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
 
             {toast && (
@@ -706,3 +736,48 @@ function LayerToggle({ on, onClick, label, swatch, hotkey, divider }: { on: bool
     );
 }
 
+const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘' : 'Ctrl';
+
+const SHORTCUTS: [string[], string][] = [
+    [['/', `${MOD} K`], 'Search'],
+    [['Esc'], 'Clear the search or selection, close a panel'],
+    [['F'], 'Fit the diagram to the screen'],
+    [['+', '−'], 'Zoom in or out'],
+    [['L'], 'Show relation names on every edge, or only on the selected table'],
+    [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
+    [['G'], 'Show or hide framework tables'],
+    [['T', 'H'], 'Open the Table or Hints tab'],
+    [['[', ']'], 'Previous or next connection'],
+    [['Shift A'], 'Arrange tables automatically'],
+    [['S'], 'Show this list'],
+    [['?'], 'Take the tour'],
+];
+
+function ShortcutsHelp({ open, onOpenChange, keysOn, onKeysOn }: { open: boolean; onOpenChange: (open: boolean) => void; keysOn: boolean; onKeysOn: (on: boolean) => void }) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts">
+            <div className="shortcuts__switch">
+                <span id="keys-label">
+                    <b>Show keys next to controls</b>
+                    <span className="muted">{keysOn ? 'Each button, chip and tab shows its key.' : 'The keys below work either way.'}</span>
+                </span>
+                <button type="button" role="switch" aria-checked={keysOn} aria-labelledby="keys-label" className="switch" onClick={() => onKeysOn(!keysOn)}>
+                    <span className="switch__thumb" />
+                    <span className="switch__text">{keysOn ? 'On' : 'Off'}</span>
+                </button>
+            </div>
+            <dl className="shortcuts">
+                {SHORTCUTS.map(([keys, label]) => (
+                    <div key={label} className="shortcuts__row">
+                        <dt>
+                            {keys.map((k) => (
+                                <kbd key={k}>{k}</kbd>
+                            ))}
+                        </dt>
+                        <dd>{label}</dd>
+                    </div>
+                ))}
+            </dl>
+        </Dialog>
+    );
+}

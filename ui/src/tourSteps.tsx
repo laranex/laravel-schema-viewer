@@ -24,8 +24,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Welcome to Schema Viewer',
         body: (
             <p>
-                Every table in your database, joined with the relationships your Eloquent models declare. This tour shows each part in about a minute. A key shown next to a control, such as <kbd>/</kbd> beside search, is its
-                keyboard shortcut.
+                Every table in your database, joined with the relationships your Eloquent models declare. This tour shows each part in about a minute. Most controls have a keyboard shortcut: see them all, or show them next to each control, with <kbd>S</kbd>.
             </p>
         ),
     },
@@ -126,6 +125,16 @@ export const TOUR_STEPS: TourStep[] = [
                     <b>Copy JSON</b>: everything the viewer knows, every connection, for scripts and AI agents.
                 </li>
             </ul>
+        ),
+    },
+    {
+        target: ['[data-tour="shortcuts"]', '[data-tour="menu-shortcuts"]'],
+        menu: 'phone',
+        title: 'Keyboard shortcuts',
+        body: (
+            <p>
+                Everything here has a key. Open this list any time with <kbd>S</kbd>.
+            </p>
         ),
     },
     {
