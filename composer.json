@@ -7,11 +7,14 @@
         "laranex",
         "laravel-schema-viewer",
         "schema",
-        "erd",
         "database",
+        "erd",
+        "er diagram",
         "eloquent",
         "relationships",
-        "diagram"
+        "diagram",
+        "mermaid",
+        "dbml"
     ],
     "homepage": "https://laranex.vercel.app/laravel-schema-viewer",
     "license": "MIT",
