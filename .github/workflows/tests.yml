@@ -147,6 +147,14 @@ jobs:
           tools: composer:v2
           coverage: none
 
+      - name: Install the SQL Server ODBC driver
+        if: matrix.db == 'sqlsrv'
+        run: |
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
+          curl -sSL "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y -q msodbcsql18
+
       - name: Install dependencies
         run: |
           composer require "laravel/framework:13.*" "orchestra/testbench:11.*" --no-interaction --no-update

@@ -34,7 +34,8 @@ final class DbmlExporter
                     $column->autoIncrement ? 'increment' : '',
                     $column->nullable ? '' : 'not null',
                     $this->isUniqueColumn($table, $column->name) ? 'unique' : '',
-                    $column->default !== null ? 'default: `'.str_replace('`', "'", $column->default).'`' : '',
+                    // An auto-increment column's default (PostgreSQL's nextval(...)) is the increment itself.
+                    $column->default !== null && ! $column->autoIncrement ? 'default: `'.str_replace('`', "'", $column->default).'`' : '',
                     $column->comment !== null ? "note: '".$this->escape($column->comment)."'" : '',
                 ]);
                 $lines[] = '  '.$this->name($column->name).' '.$this->type($column->type).($settings !== [] ? ' ['.implode(', ', $settings).']' : '');

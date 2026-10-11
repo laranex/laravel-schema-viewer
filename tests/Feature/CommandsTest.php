@@ -37,7 +37,8 @@ it('exports DBML with refs, delete rules and composite keys', function (): void 
     expect($dbml)->toContain('Table posts {')
         ->and($dbml)->toMatch('/\n  id .+ \[pk, increment, not null\]\n/')
         ->and($dbml)->toContain('    (user_id, role_id) [pk]')
-        ->and($dbml)->toContain('Ref posts_user_id_foreign: posts.user_id > users.id [delete: cascade]')
+        // MariaDB reports the default update rule as restrict, which InnoDB treats the same as no action.
+        ->and($dbml)->toMatch('/Ref posts_user_id_foreign: posts\.user_id > users\.id \[delete: cascade(, update: restrict)?\]/')
         ->and($dbml)->not->toContain('category_id > categories')
         ->and($dbml)->not->toContain('::');
 });
@@ -48,7 +49,7 @@ it('exports Markdown that describes the database only', function (): void {
     expect($markdown)->toContain('# Database schema: testing ('.testDriver().')')
         ->and($markdown)->toContain('## posts')
         ->and($markdown)->toMatch('/\| `user_id` \| .+ \|  \|  \| FK → users.id \|  \|/')
-        ->and($markdown)->toContain('- `posts_user_id_foreign`: (user_id) → users (id), on update no action, on delete cascade')
+        ->and($markdown)->toMatch('/- `posts_user_id_foreign`: \(user_id\) → users \(id\), on update (no action|restrict), on delete cascade/')
         ->and($markdown)->toContain('- `posts_category_id_index` (category_id)')
         ->and($markdown)->not->toContain('Model')
         ->and($markdown)->not->toContain('Hints');
