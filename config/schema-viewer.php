@@ -59,7 +59,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Excluded tables are never shown. Framework tables are shown and tagged,
-    | so the viewer can hide them with one toggle. Both accept wildcards.
+    | so the viewer can hide them with one toggle, and get no hints since you
+    | do not own their schema. Both accept wildcards.
     |
     */
 
@@ -68,6 +69,7 @@ return [
     'framework_tables' => [
         'migrations', 'jobs', 'job_batches', 'failed_jobs', 'cache', 'cache_locks',
         'sessions', 'password_reset_tokens', 'personal_access_tokens', 'notifications',
+        'telescope_*', 'pulse_*',
     ],
 
     /*

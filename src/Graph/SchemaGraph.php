@@ -221,7 +221,7 @@ final class SchemaGraph
 
             foreach ($connection->tables as $table) {
                 foreach ($table->foreignKeys as $fk) {
-                    if (! $table->isIndexed($fk->columns)) {
+                    if (! $table->framework && ! $table->isIndexed($fk->columns)) {
                         $hints[] = new Hint(HintKind::ForeignKeyWithoutIndex, $connection->name, $table->name, sprintf(
                             '%s.%s has a foreign key but no index that starts with it, so deleting or updating a %s row scans the whole table.',
                             $table->name, implode(', ', $fk->columns), Str::singular($fk->foreignTable),
@@ -243,7 +243,7 @@ final class SchemaGraph
                 ));
             }
 
-            if ($link->state() === LinkState::ForeignKeyOnly) {
+            if ($link->state() === LinkState::ForeignKeyOnly && ! ($inspected[$link->from->connection] ?? null)?->table($link->from->table)?->framework) {
                 $hints[] = new Hint(HintKind::ForeignKeyWithoutRelation, $link->from->connection, $link->from->table, sprintf(
                     '%s links %s to %s, but no model declares a relation for it.',
                     $link->foreignKey, $link->from->table, $link->to->table,

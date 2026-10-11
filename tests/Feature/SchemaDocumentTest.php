@@ -124,3 +124,12 @@ it('serializes the whole document for the viewer', function (): void {
         ->and($json['links'][0])->toHaveKeys(['id', 'from', 'to', 'foreignKey', 'relations', 'state', 'morph'])
         ->and($json['hints'][0])->toHaveKeys(['kind', 'severity', 'connection', 'table', 'message']);
 });
+
+it('raises no hints on framework tables', function (): void {
+    config()->set('schema-viewer.framework_tables', ['comments', 'role_user']);
+
+    $document = schemaDocument();
+
+    expect(hintsOf($document, HintKind::ForeignKeyWithoutRelation))->toBe([])
+        ->and(hintsOf($document, HintKind::ForeignKeyWithoutIndex))->not->toContain('role_user');
+});
