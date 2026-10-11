@@ -109,8 +109,13 @@ export function Menu({
     open,
     onOpenChange,
     triggerClass = 'button button--icon',
+    itemsLabel,
+    extraItems = [],
 }: {
     triggerClass?: string;
+    // A section heading above the items, and items after them below a divider.
+    itemsLabel?: ReactNode;
+    extraItems?: MenuItem[];
     label: string;
     trigger: ReactNode;
     items: MenuItem[];
@@ -183,6 +188,7 @@ export function Menu({
                         </MenuPrimitive.Group>
                     )}
                     <MenuPrimitive.Group data-tour="menu-actions">
+                        {itemsLabel && <MenuPrimitive.Label className="ui-menu__label">{itemsLabel}</MenuPrimitive.Label>}
                         {items.map((item) => (
                             <MenuPrimitive.Item key={item.label} className="ui-item" onSelect={item.onSelect} data-tour={item.tour}>
                                 <span className="ui-item__body">
@@ -193,6 +199,16 @@ export function Menu({
                             </MenuPrimitive.Item>
                         ))}
                     </MenuPrimitive.Group>
+                    {extraItems.length > 0 && (
+                        <>
+                            <MenuPrimitive.Separator className="ui-menu__separator" />
+                            {extraItems.map((item) => (
+                                <MenuPrimitive.Item key={item.label} className="ui-item" onSelect={item.onSelect} data-tour={item.tour}>
+                                    <span className="ui-item__body">{item.label}</span>
+                                </MenuPrimitive.Item>
+                            ))}
+                        </>
+                    )}
                 </MenuPrimitive.Content>
             </MenuPrimitive.Portal>
         </MenuPrimitive.Root>

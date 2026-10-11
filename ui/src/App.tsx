@@ -450,9 +450,14 @@ function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boo
 
     const connectionOptions = doc.connections.map((c) => ({ value: c.name, label: c.name, hint: `${c.driver} · ${c.tables.length} tables` }));
 
+    const downloadHeading = (
+        <span className="ui-menu__heading">
+            Download <code>{connection}</code> connection
+        </span>
+    );
+
     const actions = [
-        ...EXPORTS.map((e) => ({ label: `Download ${e.label}`, shortcut: undefined, tour: undefined, run: () => download(e.format) })),
-        { label: 'Keyboard shortcuts', shortcut: undefined, tour: 'menu-shortcuts', run: () => setHelpOpen(true) },
+        ...EXPORTS.map((e) => ({ label: e.label, hint: e.hint, tour: undefined, run: () => download(e.format) })),
     ];
 
     const toggle = (key: keyof Layers) => setLayers((l) => ({ ...l, [key]: !l[key] }));
@@ -544,7 +549,9 @@ function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boo
                                 <circle cx="19" cy="12" r="1.8" />
                             </svg>
                         }
-                        items={actions.map((a) => ({ label: a.label, onSelect: a.run, tour: a.tour }))}
+                        itemsLabel={downloadHeading}
+                        items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
+                        extraItems={[{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }]}
                         open={menuOpen || tourMenu === 'phone'}
                         onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
                         choice={{
@@ -597,6 +604,7 @@ function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boo
                                         Download
                                     </>
                                 }
+                                itemsLabel={downloadHeading}
                                 items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
                             />
                         </div>

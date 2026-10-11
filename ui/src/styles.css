@@ -1987,3 +1987,13 @@ dl.shortcuts {
     text-transform: none;
     letter-spacing: 0;
 }
+
+.ui-menu__heading code {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--fg);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 11px;
+}
