@@ -6,12 +6,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 
 beforeEach(function (): void {
-    $this->layoutPath = sys_get_temp_dir().'/schema-viewer-test-'.uniqid().'.json';
-    $this->rebootWith('local', ['layout_path' => $this->layoutPath]);
-});
-
-afterEach(function (): void {
-    @unlink($this->layoutPath);
+    $this->rebootWith('local');
 });
 
 it('is open in the local environment', function (): void {
@@ -49,36 +44,6 @@ it('serves the schema document', function (): void {
         ->assertJsonPath('version', 1)
         ->assertJsonPath('connections.0.name', 'testing')
         ->assertJsonStructure(['connections', 'models', 'relations', 'links', 'derivedLinks', 'hints']);
-});
-
-it('saves and reads the shared layout file', function (): void {
-    $this->getJson('/schema-viewer/api/layout')->assertOk()->assertJsonPath('version', 1);
-
-    $this->withSession(['_token' => 'csrf'])->putJson('/schema-viewer/api/layout', [
-        'connection' => 'testing',
-        'positions' => ['users' => ['x' => 10.4, 'y' => 20], 'posts' => ['x' => 300, 'y' => 'nope']],
-    ], ['X-CSRF-TOKEN' => 'csrf'])->assertOk()->assertJsonPath('saved', 1);
-
-    expect(json_decode((string) file_get_contents($this->layoutPath), true))
-        ->toBe(['version' => 1, 'connections' => ['testing' => ['users' => ['x' => 10, 'y' => 20]]]]);
-
-    $this->getJson('/schema-viewer/api/layout')->assertJsonPath('connections.testing.users.x', 10);
-
-    $this->withSession(['_token' => 'csrf'])->putJson('/schema-viewer/api/layout', ['positions' => []], ['X-CSRF-TOKEN' => 'csrf'])->assertStatus(422);
-});
-
-it('saves the layout only in the local environment', function (): void {
-    $this->rebootWith('staging', ['enabled' => true, 'layout_path' => $this->layoutPath]);
-    Gate::define('viewSchema', fn (?User $user): bool => true);
-
-    $this->get('/schema-viewer')->assertOk()->assertSee('"canSaveLayout":false', false);
-    $this->withSession(['_token' => 'csrf'])->putJson('/schema-viewer/api/layout', ['connection' => 'testing', 'positions' => []], ['X-CSRF-TOKEN' => 'csrf'])->assertForbidden();
-
-    expect($this->layoutPath)->not->toBeFile();
-});
-
-it('refuses a layout save without the CSRF token', function (): void {
-    $this->putJson('/schema-viewer/api/layout', ['connection' => 'testing', 'positions' => []])->assertStatus(419);
 });
 
 it('serves the built assets and nothing else', function (): void {

@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Http\Controllers;
 
-use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Routing\UrlGenerator;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
@@ -14,16 +12,13 @@ use Illuminate\Http\Response;
  */
 final class ViewerController
 {
-    public function __invoke(Request $request, UrlGenerator $url, Application $app): Response
+    public function __invoke(UrlGenerator $url): Response
     {
         $version = substr(hash('sha256', (string) @filemtime(__DIR__.'/../../../dist/app.js')), 0, 12);
         $asset = fn (string $file): string => $url->route('schema-viewer.asset', ['file' => $file]).'?v='.$version;
 
         $config = json_encode([
             'schemaUrl' => $url->route('schema-viewer.schema'),
-            'layoutUrl' => $url->route('schema-viewer.layout.show'),
-            'csrfToken' => $request->hasSession() ? $request->session()->token() : null,
-            'canSaveLayout' => $app->environment('local'),
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
 
         $css = htmlspecialchars($asset('app.css'), ENT_QUOTES);

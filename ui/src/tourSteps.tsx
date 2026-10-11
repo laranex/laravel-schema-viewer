@@ -58,6 +58,15 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
+        target: '.react-flow__controls',
+        title: 'Zoom and arrange',
+        body: (
+            <p>
+                Zoom in and out, fit the whole diagram on screen, and arrange the tables automatically with the last button (<kbd>Shift A</kbd>).
+            </p>
+        ),
+    },
+    {
         target: '[data-tour="search"]',
         title: 'Search',
         body: <p>Find a table by its name, a column, its model or a relation. Pick a result to jump to the table.</p>,
@@ -102,11 +111,16 @@ export const TOUR_STEPS: TourStep[] = [
     {
         target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
         menu: true,
-        title: 'Layout and export',
+        title: 'Export',
         body: (
-            <p>
-                Auto layout arranges the tables. Save layout writes the arrangement to <code>schema-viewer.json</code> for you to commit. Copy the diagram as Mermaid for a README, or the full schema as JSON.
-            </p>
+            <ul>
+                <li>
+                    <b>Copy Mermaid</b>: this connection as a Mermaid diagram, for a README or a pull request.
+                </li>
+                <li>
+                    <b>Copy JSON</b>: everything the viewer knows, every connection, for scripts and AI agents.
+                </li>
+            </ul>
         ),
     },
     {

@@ -7,7 +7,7 @@ import '@xyflow/react/dist/style.css';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import { browserLayoutStore, serverLayoutStore, type ServerConfig } from './layout';
+import type { ServerConfig } from './layout';
 import './styles.css';
 import type { SchemaDocument } from './types';
 
@@ -64,7 +64,7 @@ function Root() {
         );
     }
 
-    return <App doc={doc} layoutStore={server ? serverLayoutStore(server) : browserLayoutStore} example={!server} />;
+    return <App doc={doc} example={!server} />;
 }
 
 createRoot(document.getElementById('root')!).render(

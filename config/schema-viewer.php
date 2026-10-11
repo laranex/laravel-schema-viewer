@@ -91,16 +91,4 @@ return [
         'fail_on' => ['foreign_key_without_index', 'unresolved_relation', 'model_without_table'],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Layout
-    |--------------------------------------------------------------------------
-    |
-    | The arranged diagram, saved from the viewer and committed with your app.
-    | Null saves it as schema-viewer.json in the project root.
-    |
-    */
-
-    'layout_path' => null,
-
 ];

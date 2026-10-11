@@ -64,13 +64,6 @@ class SchemaViewer
         return is_array($paths) ? array_values(array_map('strval', $paths)) : [$this->app->path('Models')];
     }
 
-    public function layoutPath(): string
-    {
-        $path = $this->config->get('schema-viewer.layout_path');
-
-        return is_string($path) && $path !== '' ? $path : $this->app->basePath('schema-viewer.json');
-    }
-
     /**
      * The configured connections, or the default connection plus every connection a model uses.
      *

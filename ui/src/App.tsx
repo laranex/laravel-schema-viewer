@@ -1,6 +1,7 @@
 import {
     Background,
     BackgroundVariant,
+    ControlButton,
     Controls,
     MiniMap,
     ReactFlow,
@@ -21,8 +22,8 @@ import { SidePanel } from './components/SidePanel';
 import { ExternalNodeView, TableNodeView, type ExternalNodeType, type TableNodeType } from './components/TableNode';
 import { toJson, toMermaid } from './export';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass } from './graph';
-import { boxWidth, GAP, route, type Box } from './routing';
-import { autoLayout, type LayoutStore, type Positions } from './layout';
+import { boxWidth, route, type Box } from './routing';
+import { autoLayout } from './layout';
 import type { SchemaDocument } from './types';
 
 type AppNode = TableNodeType | ExternalNodeType;
@@ -46,17 +47,17 @@ function useNarrow() {
     return narrow;
 }
 
-export default function App({ doc, layoutStore, example = false }: { doc: SchemaDocument; layoutStore: LayoutStore; example?: boolean }) {
+export default function App({ doc, example = false }: { doc: SchemaDocument; example?: boolean }) {
     return (
         <ReactFlowProvider>
             <TooltipProvider>
-                <Viewer doc={doc} layoutStore={layoutStore} example={example} />
+                <Viewer doc={doc} example={example} />
             </TooltipProvider>
         </ReactFlowProvider>
     );
 }
 
-function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStore: LayoutStore; example: boolean }) {
+function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
 
@@ -70,7 +71,6 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
     const [toast, setToast] = useState<string | null>(null);
     const [copyText, setCopyText] = useState<{ title: string; text: string } | null>(null);
     const [layoutVersion, setLayoutVersion] = useState(0);
-    const ignoreSaved = useRef(false);
     const [needsFit, setNeedsFit] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     const narrow = useNarrow();
@@ -167,28 +167,7 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
         externals.forEach((_, id) => (sizes[id] = EXTERNAL_HEIGHT));
 
         const place = async () => {
-            const saved = ignoreSaved.current ? null : await layoutStore.load(connection);
-            ignoreSaved.current = false;
-            // Saved keys are table names for this connection and full ids for tables on other connections.
-            const savedKey = (id: string) => (id.startsWith(`${connection}.`) ? id.slice(connection.length + 1) : id);
-            const placed: Positions = {};
-            [...ids].forEach((id) => {
-                const position = saved?.[savedKey(id)];
-                if (position) {
-                    placed[id] = position;
-                }
-            });
-            const missing = new Set([...ids].filter((id) => !placed[id]));
-            let positions: Positions = placed;
-            if (missing.size === ids.size) {
-                positions = await autoLayout(schema, connection, ids, sizes);
-            } else if (missing.size > 0) {
-                // Tables added since the layout was saved: arranged among themselves, below the saved ones.
-                const fresh = await autoLayout(schema, connection, missing, sizes);
-                const bottom = Math.max(...Object.entries(placed).map(([id, p]) => p.y + (sizes[id] ?? 120)));
-                const left = Math.min(...Object.values(placed).map((p) => p.x));
-                Object.entries(fresh).forEach(([id, p]) => (positions[id] = { x: left + p.x, y: bottom + GAP / 2 + p.y }));
-            }
+            const positions = await autoLayout(schema, connection, ids, sizes);
             if (cancelled) {
                 return;
             }
@@ -220,7 +199,7 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [schema, connection, visibleTables, externals, layoutVersion, layoutStore]);
+    }, [schema, connection, visibleTables, externals, layoutVersion]);
 
     const neighbors = useMemo(() => (selected ? schema.neighbors(connection, selected, 1) : null), [schema, connection, selected]);
     const pivots = useMemo(() => schema.pivotTables(connection), [schema, connection]);
@@ -445,27 +424,14 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
         }
     };
 
-    const onSaveLayout = () => {
-        if (!layoutStore.canSave) {
-            notify('Save the layout in your local environment, then commit schema-viewer.json.');
-            return;
-        }
-        const positions: Positions = {};
-        flow.getNodes().forEach((n) => (positions[n.id.startsWith(`${connection}.`) ? n.id.slice(connection.length + 1) : n.id] = n.position));
-        layoutStore.save(connection, positions).then(notify, (e: Error) => notify(e.message));
-    };
-
     const onAutoLayout = () => {
-        ignoreSaved.current = true;
         setLayoutVersion((v) => v + 1);
-        notify(layoutStore.canSave ? 'Tables arranged automatically. Save the layout to keep it.' : 'Tables arranged automatically.');
+        notify('Tables arranged automatically.');
     };
 
     const connectionOptions = doc.connections.map((c) => ({ value: c.name, label: c.name, hint: `${c.driver} · ${c.tables.length} tables` }));
 
     const actions = [
-        { label: 'Auto layout', shortcut: 'Shift A', run: onAutoLayout },
-        ...(layoutStore.canSave ? [{ label: 'Save layout', shortcut: `${MOD} S`, run: onSaveLayout }] : []),
         { label: 'Copy Mermaid', shortcut: undefined, run: () => copy('Mermaid diagram', toMermaid(schema, connection)) },
         { label: 'Copy JSON', shortcut: undefined, run: () => copy('Schema JSON', toJson(schema)) },
         ...(narrow ? [{ label: 'Keyboard shortcuts', shortcut: undefined, run: () => setHelpOpen(true) }] : []),
@@ -487,11 +453,6 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
         if (mod && e.key.toLowerCase() === 'k') {
             e.preventDefault();
             searchRef.current?.focus();
-            return;
-        }
-        if (mod && e.key.toLowerCase() === 's') {
-            e.preventDefault();
-            onSaveLayout();
             return;
         }
         if (typing || mod || e.altKey) {
@@ -647,7 +608,18 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
                         proOptions={{ hideAttribution: true }}
                     >
                         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-                        <Controls showInteractive={false} />
+                        <Controls showInteractive={false}>
+                            <Tooltip content={<>Auto layout <kbd>Shift A</kbd></>} side="right">
+                                <ControlButton onClick={onAutoLayout} aria-label="Arrange tables automatically" data-tour="auto-layout">
+                                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                        <rect x="1.5" y="2" width="5" height="4" rx="1" />
+                                        <rect x="9.5" y="2" width="5" height="4" rx="1" />
+                                        <rect x="5.5" y="10" width="5" height="4" rx="1" />
+                                        <path d="M4 6 V8 H12 V6 M8 8 V10" />
+                                    </svg>
+                                </ControlButton>
+                            </Tooltip>
+                        </Controls>
                         {!narrow && <MiniMap pannable zoomable nodeStrokeWidth={2} />}
                     </ReactFlow>
                     <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="left">
@@ -736,7 +708,6 @@ const SHORTCUTS: [string[], string][] = [
     [['T', 'H'], 'Open the Table or Hints tab'],
     [['[', ']'], 'Previous or next connection'],
     [['Shift A'], 'Arrange tables automatically'],
-    [[`${MOD} S`], 'Save the layout'],
     [['S'], 'Show this list'],
     [['?'], 'Take the tour'],
 ];

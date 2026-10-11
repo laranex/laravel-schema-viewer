@@ -1851,3 +1851,11 @@ kbd {
         animation: none;
     }
 }
+
+.react-flow__controls-button .ui-icon {
+    width: 14px;
+    height: 14px;
+    max-width: none;
+    max-height: none;
+    fill: none;
+}
