@@ -27,16 +27,15 @@ final class ExportController
 
     public function __invoke(Request $request, SchemaViewer $viewer, ConnectionResolverInterface $connections): Response|JsonResponse
     {
-        $format = $request->query('format', 'mermaid');
-        $format = is_string($format) ? $format : '';
+        $format = $request->string('format', 'mermaid')->value();
 
         if (! isset(self::FORMATS[$format])) {
             return new JsonResponse(['message' => 'Use format mermaid, dbml, markdown or json.'], 422);
         }
 
         $document = $viewer->document();
-        $requested = $request->query('connection');
-        $name = is_string($requested) && $requested !== '' ? $requested : $connections->getDefaultConnection();
+        $requested = $request->string('connection')->value();
+        $name = $requested !== '' ? $requested : $connections->getDefaultConnection();
         $connection = $document->connection($name);
 
         if ($connection === null) {

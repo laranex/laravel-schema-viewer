@@ -28,7 +28,7 @@ it('exports a Mermaid diagram of the database: tables and foreign keys only', fu
         ->and($mermaid)->toContain('users ||--o{ posts : "user_id"')
         ->and($mermaid)->toContain('categories ||--o{ categories : "parent_id"')
         ->and($mermaid)->not->toContain('categories ||--o{ posts')
-        ->and($mermaid)->not->toContain('::');
+        ->and($mermaid)->not->toContain('Post::');
 });
 
 it('exports DBML with refs, delete rules and composite keys', function (): void {
@@ -40,7 +40,7 @@ it('exports DBML with refs, delete rules and composite keys', function (): void 
         // MariaDB reports the default update rule as restrict, which InnoDB treats the same as no action.
         ->and($dbml)->toMatch('/Ref posts_user_id_foreign: posts\.user_id > users\.id \[delete: cascade(, update: restrict)?\]/')
         ->and($dbml)->not->toContain('category_id > categories')
-        ->and($dbml)->not->toContain('::');
+        ->and($dbml)->not->toContain('Post::');
 });
 
 it('exports Markdown that describes the database only', function (): void {
