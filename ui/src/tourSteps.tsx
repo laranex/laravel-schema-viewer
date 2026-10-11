@@ -109,8 +109,8 @@ export const TOUR_STEPS: TourStep[] = [
         body: <p>Each database connection your app and its models use has its own diagram. A relation to a table on another connection shows as a dashed card you can click.</p>,
     },
     {
-        target: '[data-tour="menu-actions"]',
-        menu: 'always',
+        target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
+        menu: 'phone',
         title: 'Export',
         body: (
             <ul>
@@ -124,8 +124,8 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: '[data-tour="menu-shortcuts"]',
-        menu: 'always',
+        target: ['[data-tour="shortcuts"]', '[data-tour="menu-shortcuts"]'],
+        menu: 'phone',
         title: 'Keyboard shortcuts',
         body: (
             <p>
