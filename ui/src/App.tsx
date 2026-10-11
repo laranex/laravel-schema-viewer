@@ -76,7 +76,6 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const narrow = useNarrow();
     const [hovered, setHovered] = useState<string | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
-    const [helpOpen, setHelpOpen] = useState(false);
     const [tourOpen, setTourOpen] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     // While a tour step explains part of the phone menu, the tour keeps the menu open.
@@ -434,7 +433,6 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const actions = [
         { label: 'Copy Mermaid', shortcut: undefined, tour: undefined, run: () => copy('Mermaid diagram', toMermaid(schema, connection)) },
         { label: 'Copy JSON', shortcut: undefined, tour: undefined, run: () => copy('Schema JSON', toJson(schema)) },
-        { label: 'Keyboard shortcuts', shortcut: undefined, tour: 'menu-shortcuts', run: () => setHelpOpen(true) },
     ];
 
     const toggle = (key: keyof Layers) => setLayers((l) => ({ ...l, [key]: !l[key] }));
@@ -463,10 +461,8 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
         const actionsByKey: Record<string, () => void> = {
             '/': () => searchRef.current?.focus(),
             '?': () => setTourOpen(true),
-            s: () => setHelpOpen((o) => !o),
             Escape: () => {
-                if (helpOpen) setHelpOpen(false);
-                else if (sheetOpen) setSheetOpen(false);
+                if (sheetOpen) setSheetOpen(false);
                 else setSelected(null);
             },
             f: () => flow.fitView({ padding: 0.08, duration: 250 }),
@@ -542,7 +538,19 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                     />
                 ) : (
                     <div className="toolbar__group" role="group" aria-label="Connection and export">
-                        <Select id="connection" label="Connection" value={connection} onChange={switchConnection} options={connectionOptions} />
+                        <Select
+                            id="connection"
+                            label="Connection"
+                            value={connection}
+                            onChange={switchConnection}
+                            options={connectionOptions}
+                            hint={
+                                <>
+                                    <kbd className="kbd-hint">[</kbd>
+                                    <kbd className="kbd-hint">]</kbd>
+                                </>
+                            }
+                        />
                         <div className="toolbar__group" data-tour="actions">
                             {actions.slice(0, 2).map((a) => (
                                 <button key={a.label} type="button" className="button" onClick={a.run}>
@@ -550,15 +558,6 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                                 </button>
                             ))}
                         </div>
-                        <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
-                            <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
-                                <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
-                                    <rect x="1.5" y="2" width="17" height="12" rx="2" />
-                                    <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
-                                </svg>
-                                Keyboard shortcuts
-                            </button>
-                        </Tooltip>
                     </div>
                 )}
             </header>
@@ -566,7 +565,7 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
             {!narrow && (
                 <div className="layers" role="group" aria-label="Show on the diagram" data-tour="layers">
                     {LAYER_TOGGLES.map((t) => (
-                        <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} divider={t.key === 'framework'} />
+                        <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} hotkey={t.hotkey} divider={t.key === 'framework'} />
                     ))}
                     <span className="layers__note">
                         {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'}
@@ -599,9 +598,30 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                         proOptions={{ hideAttribution: true }}
                     >
                         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-                        <Controls showInteractive={false}>
+                        <Controls showInteractive={false} showZoom={false} showFitView={false}>
+                            <Tooltip content={<>Zoom in <kbd>+</kbd></>} side="right">
+                                <ControlButton onClick={() => flow.zoomIn({ duration: 150 })} aria-label="Zoom in" aria-keyshortcuts="+">
+                                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                        <path d="M8 3 V13 M3 8 H13" />
+                                    </svg>
+                                </ControlButton>
+                            </Tooltip>
+                            <Tooltip content={<>Zoom out <kbd>−</kbd></>} side="right">
+                                <ControlButton onClick={() => flow.zoomOut({ duration: 150 })} aria-label="Zoom out" aria-keyshortcuts="-">
+                                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                        <path d="M3 8 H13" />
+                                    </svg>
+                                </ControlButton>
+                            </Tooltip>
+                            <Tooltip content={<>Fit the diagram <kbd>F</kbd></>} side="right">
+                                <ControlButton onClick={() => flow.fitView({ padding: 0.08, duration: 250 })} aria-label="Fit the diagram" aria-keyshortcuts="F">
+                                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                        <path d="M2.5 6 V2.5 H6 M10 2.5 H13.5 V6 M13.5 10 V13.5 H10 M6 13.5 H2.5 V10" />
+                                    </svg>
+                                </ControlButton>
+                            </Tooltip>
                             <Tooltip content={<>Auto layout <kbd>Shift A</kbd></>} side="right">
-                                <ControlButton onClick={onAutoLayout} aria-label="Arrange tables automatically" data-tour="auto-layout">
+                                <ControlButton onClick={onAutoLayout} aria-label="Arrange tables automatically" aria-keyshortcuts="Shift+A" data-tour="auto-layout">
                                     <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
                                         <rect x="1.5" y="2" width="5" height="4" rx="1" />
                                         <rect x="9.5" y="2" width="5" height="4" rx="1" />
@@ -640,7 +660,6 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                 />
             </main>
 
-            <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
             <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
 
             {toast && (
@@ -657,13 +676,13 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
 }
 
 
-const LAYER_TOGGLES: { key: keyof Layers; label: string; swatch?: EdgeKind }[] = [
-    { key: 'both', label: 'FK + relation', swatch: 'both' },
-    { key: 'relation', label: 'Relation only', swatch: 'relation' },
-    { key: 'foreign_key', label: 'FK only', swatch: 'foreign_key' },
-    { key: 'through', label: 'Through', swatch: 'through' },
-    { key: 'framework', label: 'Framework tables' },
-    { key: 'allLabels', label: 'Relation names' },
+const LAYER_TOGGLES: { key: keyof Layers; label: string; swatch?: EdgeKind; hotkey: string }[] = [
+    { key: 'both', label: 'FK + relation', swatch: 'both', hotkey: '1' },
+    { key: 'relation', label: 'Relation only', swatch: 'relation', hotkey: '2' },
+    { key: 'foreign_key', label: 'FK only', swatch: 'foreign_key', hotkey: '3' },
+    { key: 'through', label: 'Through', swatch: 'through', hotkey: '4' },
+    { key: 'framework', label: 'Framework tables', hotkey: 'G' },
+    { key: 'allLabels', label: 'Relation names', hotkey: 'L' },
 ];
 
 function Swatch({ kind }: { kind: EdgeKind }) {
@@ -674,50 +693,16 @@ function Swatch({ kind }: { kind: EdgeKind }) {
     );
 }
 
-function LayerToggle({ on, onClick, label, swatch, divider }: { on: boolean; onClick: () => void; label: string; swatch?: EdgeKind; divider?: boolean }) {
+function LayerToggle({ on, onClick, label, swatch, hotkey, divider }: { on: boolean; onClick: () => void; label: string; swatch?: EdgeKind; hotkey: string; divider?: boolean }) {
     return (
         <>
             {divider && <span className="layers__divider" aria-hidden="true" />}
-            <button type="button" className="chip-toggle" aria-pressed={on} onClick={onClick}>
+            <button type="button" className="chip-toggle" aria-pressed={on} onClick={onClick} aria-keyshortcuts={hotkey}>
                 {swatch ? <Swatch kind={swatch} /> : <span className="check" aria-hidden="true" />}
                 {label}
+                <kbd className="kbd-hint">{hotkey}</kbd>
             </button>
         </>
     );
 }
 
-const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘' : 'Ctrl';
-
-const SHORTCUTS: [string[], string][] = [
-    [['/', `${MOD} K`], 'Search'],
-    [['Esc'], 'Clear the search or selection, close a panel'],
-    [['F'], 'Fit the diagram to the screen'],
-    [['+', '−'], 'Zoom in or out'],
-    [['L'], 'Show relation names on every edge, or only on the selected table'],
-    [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
-    [['G'], 'Show or hide framework tables'],
-    [['T', 'H'], 'Open the Table or Hints tab'],
-    [['[', ']'], 'Previous or next connection'],
-    [['Shift A'], 'Arrange tables automatically'],
-    [['S'], 'Show this list'],
-    [['?'], 'Take the tour'],
-];
-
-function ShortcutsHelp({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts">
-            <dl className="shortcuts">
-                {SHORTCUTS.map(([keys, label]) => (
-                    <div key={label} className="shortcuts__row">
-                        <dt>
-                            {keys.map((k) => (
-                                <kbd key={k}>{k}</kbd>
-                            ))}
-                        </dt>
-                        <dd>{label}</dd>
-                    </div>
-                ))}
-            </dl>
-        </Dialog>
-    );
-}

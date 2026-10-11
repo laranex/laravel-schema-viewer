@@ -21,12 +21,29 @@ const Check = () => (
 
 export type SelectOption = { value: string; label: ReactNode; hint?: ReactNode };
 
-export function Select({ id, value, onChange, options, label, compactLabel }: { id: string; value: string; onChange: (value: string) => void; options: SelectOption[]; label: string; compactLabel?: ReactNode }) {
+export function Select({
+    id,
+    value,
+    onChange,
+    options,
+    label,
+    compactLabel,
+    hint,
+}: {
+    id: string;
+    value: string;
+    onChange: (value: string) => void;
+    options: SelectOption[];
+    label: string;
+    compactLabel?: ReactNode;
+    hint?: ReactNode;
+}) {
     const current = options.find((o) => o.value === value);
     return (
         <SelectPrimitive.Root value={value} onValueChange={onChange}>
             <SelectPrimitive.Trigger id={id} className="ui-select" aria-label={label}>
                 <span className="ui-select__value">{compactLabel ?? current?.label}</span>
+                {hint}
                 <SelectPrimitive.Icon className="ui-select__icon">
                     <Chevron />
                 </SelectPrimitive.Icon>

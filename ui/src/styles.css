@@ -1242,38 +1242,12 @@ button:disabled {
     font-size: var(--text-sm);
 }
 
-/* Keyboard shortcuts */
+/* Keys */
 
-.kbd-icon {
-    font-weight: 600;
-    font-size: 15px;
-}
 
-dl.shortcuts {
-    display: grid;
-    gap: 2px;
-    margin: 4px 0 0;
-}
 
-.shortcuts__row {
-    display: grid;
-    grid-template-columns: 140px minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--line);
-}
 
-.shortcuts dt {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
 
-.shortcuts dd {
-    margin: 0;
-    font-size: var(--text-sm);
-}
 
 kbd {
     min-width: 22px;
@@ -1858,4 +1832,43 @@ kbd {
     max-width: none;
     max-height: none;
     fill: none;
+}
+
+/* Keyboard hints next to controls (not on touch screens) */
+
+.kbd-hint {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-bottom-width: 1px;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 16px;
+    opacity: 0.85;
+}
+
+.chip-toggle .kbd-hint {
+    margin-left: 2px;
+}
+
+.ui-select .kbd-hint + .kbd-hint {
+    margin-left: -6px;
+}
+
+.ui-tab .kbd-hint {
+    margin-left: 2px;
+}
+
+.search__hint {
+    position: absolute;
+    right: 8px;
+    pointer-events: none;
+}
+
+@media (max-width: 760px), (hover: none) {
+    .kbd-hint {
+        display: none;
+    }
 }

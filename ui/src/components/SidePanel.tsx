@@ -53,9 +53,11 @@ export function SidePanel({ schema, connection, selected, tab, onTab, onOpen, sh
             )}
             <Tabs value={tab} onValueChange={(v) => onTab(v as 'table' | 'hints')} className="panel__tabs-root">
                 <TabList label="Details">
-                    <Tab value="table">Table</Tab>
+                    <Tab value="table">
+                        Table <kbd className="kbd-hint">T</kbd>
+                    </Tab>
                     <Tab value="hints">
-                        Hints <span className="count">{hints.length}</span>
+                        Hints <span className="count">{hints.length}</span> <kbd className="kbd-hint">H</kbd>
                     </Tab>
                 </TabList>
                 <TabPanel value="table" className="panel__body">
