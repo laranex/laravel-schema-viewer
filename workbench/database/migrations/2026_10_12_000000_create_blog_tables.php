@@ -53,7 +53,8 @@ return new class extends Migration
 
         Schema::create('categories', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('parent_id')->nullable()->constrained('categories')->nullOnDelete();
+            // No delete rule: SQL Server rejects a self-referencing ON DELETE SET NULL as a cascade cycle.
+            $table->foreignId('parent_id')->nullable()->constrained('categories');
             $table->string('name');
         });
 

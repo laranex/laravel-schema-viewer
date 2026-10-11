@@ -87,7 +87,8 @@ it('raises each kind of hint where it applies', function (): void {
 
     expect(hintsOf($document, HintKind::RelationWithoutForeignKey))->toBe(['posts'])
         ->and(hintsOf($document, HintKind::ForeignKeyWithoutRelation))->toBe(['comments'])
-        ->and(hintsOf($document, HintKind::ForeignKeyWithoutIndex))->toContain('role_user')
+        // MySQL and MariaDB index every foreign key column themselves.
+        ->and(in_array('role_user', hintsOf($document, HintKind::ForeignKeyWithoutIndex), true))->toBe(! in_array(testDriver(), ['mysql', 'mariadb'], true))
         ->and(hintsOf($document, HintKind::ModelWithoutTable))->toBe(['ghosts'])
         ->and(hintsOf($document, HintKind::MorphWithoutMap))->toContain('comments', 'taggables')
         ->and(hintsOf($document, HintKind::UnresolvedRelation))->toBe(['posts']);

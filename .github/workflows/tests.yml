@@ -90,3 +90,72 @@ jobs:
       - name: Test Suite (Windows)
         if: runner.os == 'Windows'
         run: vendor/bin/pest
+
+  databases:
+    # The inspector reads each database's own catalog, so the suite also runs on every database Laravel supports.
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - db: mysql
+            image: mysql:8.4
+            port: 3306
+            health: --health-cmd="mysqladmin ping -h 127.0.0.1 -pSchema-Viewer-1" --health-interval=5s --health-timeout=5s --health-retries=20
+          - db: mariadb
+            image: mariadb:11.4
+            port: 3306
+            health: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+          - db: pgsql
+            image: postgres:17
+            port: 5432
+            health: --health-cmd="pg_isready -U postgres" --health-interval=5s --health-timeout=5s --health-retries=20
+          - db: sqlsrv
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            port: 1433
+            health: --health-cmd="/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Schema-Viewer-1 -Q 'SELECT 1'" --health-interval=10s --health-timeout=10s --health-retries=20
+
+    services:
+      database:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: Schema-Viewer-1
+          MYSQL_DATABASE: testing
+          MARIADB_ROOT_PASSWORD: Schema-Viewer-1
+          MARIADB_DATABASE: testing
+          POSTGRES_PASSWORD: Schema-Viewer-1
+          POSTGRES_DB: testing
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: Schema-Viewer-1
+        ports:
+          - ${{ matrix.port }}:${{ matrix.port }}
+        options: ${{ matrix.health }}
+
+    name: Database - ${{ matrix.db }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: 8.4
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, sqlite, pdo_sqlite, pdo_mysql, pdo_pgsql, sqlsrv, pdo_sqlsrv
+          ini-values: error_reporting=E_ALL
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer require "laravel/framework:13.*" "orchestra/testbench:11.*" --no-interaction --no-update
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress --no-scripts
+          composer run prepare
+
+      - name: Test Suite
+        env:
+          SCHEMA_VIEWER_DB: ${{ matrix.db }}
+          SCHEMA_VIEWER_DB_PORT: ${{ matrix.port }}
+        # One process: the tests share the database.
+        run: vendor/bin/pest

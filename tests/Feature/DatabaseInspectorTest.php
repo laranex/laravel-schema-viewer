@@ -36,6 +36,11 @@ it('reads columns, indexes and foreign keys', function (): void {
         ->and($posts->foreignKeys[0]->name)->toBe('posts_user_id_foreign')
         ->and($posts->isIndexed(['category_id']))->toBeTrue()
         ->and($posts->isIndexed(['title']))->toBeFalse();
+
+    // SQLite does not store column comments; the others do.
+    if (testDriver() !== 'sqlite' && testDriver() !== 'sqlsrv') {
+        expect($columns['title']->comment)->toBe('Shown in lists and feeds');
+    }
 });
 
 it('tags framework tables and leaves out excluded ones', function (): void {
@@ -50,7 +55,7 @@ it('serializes to the shape the viewer reads', function (): void {
     $json = json_decode((string) json_encode(inspectTesting()), true);
 
     expect($json)->toHaveKeys(['name', 'driver', 'tables'])
-        ->and($json['driver'])->toBe('sqlite')
+        ->and($json['driver'])->toBe(testDriver())
         ->and($json['tables'][0])->toHaveKeys(['name', 'comment', 'framework', 'columns', 'indexes', 'foreignKeys'])
         ->and($json['tables'][0]['columns'][0])->toHaveKeys(['name', 'type', 'typeName', 'nullable', 'default', 'autoIncrement', 'comment']);
 });

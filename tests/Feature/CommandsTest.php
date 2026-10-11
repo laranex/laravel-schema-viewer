@@ -24,7 +24,7 @@ it('exports a Mermaid diagram of the database: tables and foreign keys only', fu
     expect($mermaid)->toStartWith('erDiagram
 ')
         ->and($mermaid)->toContain('    posts {')
-        ->and($mermaid)->toContain('        integer user_id FK')
+        ->and($mermaid)->toMatch('/\n        \w+ user_id FK\n/')
         ->and($mermaid)->toContain('users ||--o{ posts : "user_id"')
         ->and($mermaid)->toContain('categories ||--o{ categories : "parent_id"')
         ->and($mermaid)->not->toContain('categories ||--o{ posts')
@@ -35,7 +35,7 @@ it('exports DBML with refs, delete rules and composite keys', function (): void 
     $dbml = exportAs('dbml');
 
     expect($dbml)->toContain('Table posts {')
-        ->and($dbml)->toContain('  id integer [pk, increment, not null]')
+        ->and($dbml)->toMatch('/\n  id .+ \[pk, increment, not null\]\n/')
         ->and($dbml)->toContain('    (user_id, role_id) [pk]')
         ->and($dbml)->toContain('Ref posts_user_id_foreign: posts.user_id > users.id [delete: cascade]')
         ->and($dbml)->not->toContain('category_id > categories')
@@ -45,9 +45,9 @@ it('exports DBML with refs, delete rules and composite keys', function (): void 
 it('exports Markdown that describes the database only', function (): void {
     $markdown = exportAs('markdown');
 
-    expect($markdown)->toContain('# Database schema: testing (sqlite)')
+    expect($markdown)->toContain('# Database schema: testing ('.testDriver().')')
         ->and($markdown)->toContain('## posts')
-        ->and($markdown)->toContain('| `user_id` | integer |  |  | FK → users.id |  |')
+        ->and($markdown)->toMatch('/\| `user_id` \| .+ \|  \|  \| FK → users.id \|  \|/')
         ->and($markdown)->toContain('- `posts_user_id_foreign`: (user_id) → users (id), on update no action, on delete cascade')
         ->and($markdown)->toContain('- `posts_category_id_index` (category_id)')
         ->and($markdown)->not->toContain('Model')
