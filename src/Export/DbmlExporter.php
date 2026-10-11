@@ -5,15 +5,14 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Export;
 
 use Laranex\LaravelSchemaViewer\Schema\ConnectionSchema;
-use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 use Laranex\LaravelSchemaViewer\Schema\Table;
 
 /**
- * DBML for dbdiagram.io: tables with their keys, then one Ref per link. Relations without a foreign key are marked in a comment.
+ * DBML for dbdiagram.io: one connection's tables with their keys and indexes, then one Ref per foreign key.
  */
 final class DbmlExporter
 {
-    public function export(SchemaDocument $document, ConnectionSchema $connection): string
+    public function export(ConnectionSchema $connection): string
     {
         $blocks = [];
 
@@ -64,30 +63,20 @@ final class DbmlExporter
         }
 
         $refs = [];
-        foreach ($document->links as $link) {
-            if ($link->from->connection !== $connection->name || $link->to->connection !== $connection->name) {
-                continue;
+        foreach ($connection->tables as $table) {
+            foreach ($table->foreignKeys as $fk) {
+                $settings = array_filter([$fk->onDelete !== 'no action' ? 'delete: '.$fk->onDelete : '', $fk->onUpdate !== 'no action' ? 'update: '.$fk->onUpdate : '']);
+                $refs[] = sprintf(
+                    'Ref %s: %s.%s %s %s.%s%s',
+                    $this->name($fk->name),
+                    $this->name($table->name),
+                    $this->columns($fk->columns),
+                    $table->isUnique($fk->columns) ? '-' : '>',
+                    $this->name($fk->foreignTable),
+                    $this->columns($fk->foreignColumns),
+                    $settings !== [] ? ' ['.implode(', ', $settings).']' : '',
+                );
             }
-
-            $fk = null;
-            foreach ($connection->table($link->from->table)->foreignKeys ?? [] as $candidate) {
-                if ($candidate->name === $link->foreignKey) {
-                    $fk = $candidate;
-                }
-            }
-
-            $one = $connection->table($link->from->table)?->isUnique($link->from->columns) ?? false;
-            $settings = $fk !== null ? array_filter([$fk->onDelete !== 'no action' ? 'delete: '.$fk->onDelete : '', $fk->onUpdate !== 'no action' ? 'update: '.$fk->onUpdate : '']) : [];
-            $refs[] = sprintf(
-                'Ref: %s.%s %s %s.%s%s%s',
-                $this->name($link->from->table),
-                $this->columns($link->from->columns),
-                $one ? '-' : '>',
-                $this->name($link->to->table),
-                $this->columns($link->to->columns),
-                $settings !== [] ? ' ['.implode(', ', $settings).']' : '',
-                $link->foreignKey === null ? ' // relation only, no foreign key: '.implode(', ', array_map(Names::relation(...), $link->relations)) : '',
-            );
         }
 
         return implode("\n\n", $blocks).($refs !== [] ? "\n\n".implode("\n", $refs) : '')."\n";

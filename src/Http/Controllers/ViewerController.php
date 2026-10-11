@@ -19,6 +19,7 @@ final class ViewerController
 
         $config = json_encode([
             'schemaUrl' => $url->route('schema-viewer.schema'),
+            'exportUrl' => $url->route('schema-viewer.export'),
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
 
         $css = htmlspecialchars($asset('app.css'), ENT_QUOTES);

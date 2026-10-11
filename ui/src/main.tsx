@@ -64,7 +64,7 @@ function Root() {
         );
     }
 
-    return <App doc={doc} example={!server} />;
+    return <App doc={doc} example={!server} exportUrl={server?.exportUrl} />;
 }
 
 createRoot(document.getElementById('root')!).render(

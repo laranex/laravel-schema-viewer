@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Export;
 
 use Laranex\LaravelSchemaViewer\Schema\ConnectionSchema;
-use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 
 /**
- * A Mermaid erDiagram for one connection: solid lines are foreign keys, dotted lines relations without one.
+ * A Mermaid erDiagram of one connection's database: tables, columns and foreign keys.
  */
 final class MermaidExporter
 {
-    public function export(SchemaDocument $document, ConnectionSchema $connection): string
+    public function export(ConnectionSchema $connection): string
     {
         $lines = ['erDiagram'];
 
@@ -36,21 +35,16 @@ final class MermaidExporter
             $lines[] = '    }';
         }
 
-        foreach ($document->links as $link) {
-            if ($link->from->connection !== $connection->name || $link->to->connection !== $connection->name) {
-                continue;
+        foreach ($connection->tables as $table) {
+            foreach ($table->foreignKeys as $fk) {
+                $lines[] = sprintf(
+                    '    %s ||--%s %s : "%s"',
+                    $this->ident($fk->foreignTable),
+                    $table->isUnique($fk->columns) ? 'o|' : 'o{',
+                    $this->ident($table->name),
+                    implode(', ', $fk->columns),
+                );
             }
-
-            $many = ! ($connection->table($link->from->table)?->isUnique($link->from->columns) ?? false);
-            $label = $link->relations !== [] ? implode(', ', array_map(fn (string $id): string => Names::relation($id), $link->relations)) : (string) $link->foreignKey;
-            $lines[] = sprintf(
-                '    %s ||%s%s %s : "%s"',
-                $this->ident($link->to->table),
-                $link->foreignKey !== null ? '--' : '..',
-                $many ? 'o{' : 'o|',
-                $this->ident($link->from->table),
-                str_replace('"', "'", $label),
-            );
         }
 
         return implode("\n", $lines)."\n";

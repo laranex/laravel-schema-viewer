@@ -115,16 +115,11 @@ export const TOUR_STEPS: TourStep[] = [
     {
         target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
         menu: 'phone',
-        title: 'Export',
+        title: 'Download',
         body: (
-            <ul>
-                <li>
-                    <b>Copy Mermaid</b>: this connection as a Mermaid diagram, for a README or a pull request.
-                </li>
-                <li>
-                    <b>Copy JSON</b>: everything the viewer knows, every connection, for scripts and AI agents.
-                </li>
-            </ul>
+            <p>
+                Download this connection's database schema (tables, columns, keys, indexes and foreign keys) as a <b>Mermaid</b> diagram for a README, <b>DBML</b> for dbdiagram.io, or <b>Markdown</b> to read.
+            </p>
         ),
     },
     {

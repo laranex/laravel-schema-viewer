@@ -63,3 +63,15 @@ it('can live on another path', function (): void {
     $this->get('/internal/schema')->assertOk();
     $this->get('/schema-viewer')->assertNotFound();
 });
+
+it('downloads the database schema as Mermaid, DBML or Markdown', function (): void {
+    expect($this->get('/schema-viewer/api/export?format=mermaid&connection=testing')
+        ->assertOk()
+        ->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.mmd"')
+        ->getContent())->toStartWith('erDiagram');
+
+    $this->get('/schema-viewer/api/export?format=dbml')->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.dbml"');
+    $this->get('/schema-viewer/api/export?format=markdown')->assertOk()->assertHeader('Content-Type', 'text/markdown; charset=utf-8');
+    $this->get('/schema-viewer/api/export?format=json')->assertStatus(422);
+    $this->get('/schema-viewer/api/export?format=dbml&connection=nope')->assertNotFound();
+});

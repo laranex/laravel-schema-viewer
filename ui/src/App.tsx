@@ -20,7 +20,6 @@ import { TOUR_STEPS } from './tourSteps';
 import { Dialog, Menu, Select, Tooltip, TooltipProvider } from './components/ui';
 import { SidePanel } from './components/SidePanel';
 import { ExternalNodeView, TableNodeView, type ExternalNodeType, type TableNodeType } from './components/TableNode';
-import { toJson, toMermaid } from './export';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass } from './graph';
 import { boxWidth, route, type Box } from './routing';
 import { autoLayout } from './layout';
@@ -47,17 +46,17 @@ function useNarrow() {
     return narrow;
 }
 
-export default function App({ doc, example = false }: { doc: SchemaDocument; example?: boolean }) {
+export default function App({ doc, example = false, exportUrl }: { doc: SchemaDocument; example?: boolean; exportUrl?: string }) {
     return (
         <ReactFlowProvider>
             <TooltipProvider>
-                <Viewer doc={doc} example={example} />
+                <Viewer doc={doc} example={example} exportUrl={exportUrl} />
             </TooltipProvider>
         </ReactFlowProvider>
     );
 }
 
-function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
+function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boolean; exportUrl?: string }) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
 
@@ -69,7 +68,6 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const [layers, setLayers] = useState<Layers>({ both: true, relation: true, foreign_key: true, through: true, framework: true, allLabels: true });
     const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
     const [toast, setToast] = useState<string | null>(null);
-    const [copyText, setCopyText] = useState<{ title: string; text: string } | null>(null);
     const [layoutVersion, setLayoutVersion] = useState(0);
     const [needsFit, setNeedsFit] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
@@ -431,13 +429,18 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
         setPending(null);
     };
 
-    const copy = async (title: string, text: string) => {
-        try {
-            await navigator.clipboard.writeText(text);
-            notify(`${title} copied.`);
-        } catch {
-            setCopyText({ title, text });
+    // The server builds the file, so a large schema never has to fit in the clipboard or the page's memory.
+    const download = (format: ExportFormat) => {
+        if (!exportUrl) {
+            notify('Downloads are blocked in this preview. In your app the file downloads.');
+            return;
         }
+        const link = document.createElement('a');
+        link.href = `${exportUrl}?${new URLSearchParams({ format, connection })}`;
+        link.download = '';
+        document.body.append(link);
+        link.click();
+        link.remove();
     };
 
     const onAutoLayout = () => {
@@ -448,8 +451,7 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const connectionOptions = doc.connections.map((c) => ({ value: c.name, label: c.name, hint: `${c.driver} · ${c.tables.length} tables` }));
 
     const actions = [
-        { label: 'Copy Mermaid', shortcut: undefined, tour: undefined, run: () => copy('Mermaid diagram', toMermaid(schema, connection)) },
-        { label: 'Copy JSON', shortcut: undefined, tour: undefined, run: () => copy('Schema JSON', toJson(schema)) },
+        ...EXPORTS.map((e) => ({ label: `Download ${e.label}`, shortcut: undefined, tour: undefined, run: () => download(e.format) })),
         { label: 'Keyboard shortcuts', shortcut: undefined, tour: 'menu-shortcuts', run: () => setHelpOpen(true) },
     ];
 
@@ -584,11 +586,19 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                             }
                         />
                         <div className="toolbar__group" data-tour="actions">
-                            {actions.slice(0, 2).map((a) => (
-                                <button key={a.label} type="button" className="button" onClick={a.run}>
-                                    {a.label}
-                                </button>
-                            ))}
+                            <Menu
+                                label="Download"
+                                triggerClass="button button--with-icon"
+                                trigger={
+                                    <>
+                                        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
+                                            <path d="M8 2.5 V10 M4.5 6.5 L8 10 L11.5 6.5 M2.5 13.5 H13.5" />
+                                        </svg>
+                                        Download
+                                    </>
+                                }
+                                items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
+                            />
                         </div>
                         <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
                             <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
@@ -710,13 +720,19 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                 </div>
             )}
 
-            <Dialog open={copyText !== null} onOpenChange={(o) => !o && setCopyText(null)} title={copyText?.title ?? ''} description="Copying is blocked here. Select the text and copy it." wide>
-                <textarea id="copy-text" className="ui-textarea" readOnly value={copyText?.text ?? ''} onFocus={(e) => e.currentTarget.select()} autoFocus />
-            </Dialog>
         </div>
     );
 }
 
+
+type ExportFormat = 'mermaid' | 'dbml' | 'markdown';
+
+// The database schema of the current connection (tables, columns, keys, indexes, foreign keys), without the Laravel side.
+const EXPORTS: { format: ExportFormat; label: string; hint: string }[] = [
+    { format: 'mermaid', label: 'Mermaid', hint: 'An ER diagram for READMEs and pull requests' },
+    { format: 'dbml', label: 'DBML', hint: 'For dbdiagram.io and other DBML tools' },
+    { format: 'markdown', label: 'Markdown', hint: 'A readable reference of every table' },
+];
 
 const LAYER_TOGGLES: { key: keyof Layers; label: string; swatch?: EdgeKind; hotkey: string }[] = [
     { key: 'both', label: 'FK + relation', swatch: 'both', hotkey: '1' },

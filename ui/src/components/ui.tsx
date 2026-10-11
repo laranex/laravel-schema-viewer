@@ -94,7 +94,7 @@ export function Tooltip({ content, children, side = 'top' }: { content: ReactNod
     );
 }
 
-export type MenuItem = { label: string; shortcut?: string; onSelect: () => void; tour?: string };
+export type MenuItem = { label: string; hint?: string; shortcut?: string; onSelect: () => void; tour?: string };
 
 export type MenuChoice = { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void; hint?: ReactNode };
 
@@ -108,7 +108,9 @@ export function Menu({
     toggles,
     open,
     onOpenChange,
+    triggerClass = 'button button--icon',
 }: {
+    triggerClass?: string;
     label: string;
     trigger: ReactNode;
     items: MenuItem[];
@@ -121,7 +123,7 @@ export function Menu({
         // Not modal: the guided tour opens this menu and its own card must stay clickable beside it.
         <MenuPrimitive.Root open={open} onOpenChange={onOpenChange} modal={false}>
             <MenuPrimitive.Trigger asChild>
-                <button type="button" className="button button--icon" aria-label={label}>
+                <button type="button" className={triggerClass} aria-label={label}>
                     {trigger}
                 </button>
             </MenuPrimitive.Trigger>
@@ -183,7 +185,10 @@ export function Menu({
                     <MenuPrimitive.Group data-tour="menu-actions">
                         {items.map((item) => (
                             <MenuPrimitive.Item key={item.label} className="ui-item" onSelect={item.onSelect} data-tour={item.tour}>
-                                <span className="ui-item__body">{item.label}</span>
+                                <span className="ui-item__body">
+                                    {item.label}
+                                    {item.hint && <span className="ui-item__hint">{item.hint}</span>}
+                                </span>
                                 {item.shortcut && <kbd className="ui-item__kbd">{item.shortcut}</kbd>}
                             </MenuPrimitive.Item>
                         ))}

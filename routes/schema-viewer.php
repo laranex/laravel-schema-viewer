@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
 use Laranex\LaravelSchemaViewer\Http\Controllers\AssetController;
+use Laranex\LaravelSchemaViewer\Http\Controllers\ExportController;
 use Laranex\LaravelSchemaViewer\Http\Controllers\SchemaController;
 use Laranex\LaravelSchemaViewer\Http\Controllers\ViewerController;
 use Laranex\LaravelSchemaViewer\Http\Middleware\Authorize;
@@ -19,5 +20,6 @@ Route::group([
 ], function (): void {
     Route::get('/', ViewerController::class)->name('index');
     Route::get('api/schema', SchemaController::class)->name('schema');
+    Route::get('api/export', ExportController::class)->name('export');
     Route::get('assets/{file}', AssetController::class)->where('file', '[A-Za-z0-9_./-]+')->name('asset');
 });

@@ -43,9 +43,9 @@ final class ExportCommand extends Command
 
         $content = match ($format) {
             'json' => (string) json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n",
-            'mermaid' => (new MermaidExporter)->export($document, $connection),
-            'dbml' => (new DbmlExporter)->export($document, $connection),
-            'markdown' => (new MarkdownExporter)->export($document, $connection),
+            'mermaid' => (new MermaidExporter)->export($connection),
+            'dbml' => (new DbmlExporter)->export($connection),
+            'markdown' => (new MarkdownExporter)->export($connection),
         };
 
         $output = $this->option('output');

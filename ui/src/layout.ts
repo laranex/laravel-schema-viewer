@@ -38,4 +38,5 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
 
 export type ServerConfig = {
     schemaUrl: string;
+    exportUrl: string;
 };
