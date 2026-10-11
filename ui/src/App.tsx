@@ -33,18 +33,18 @@ const nodeTypes = { table: TableNodeView, external: ExternalNodeView };
 const edgeTypes = { link: LinkEdgeView };
 
 const EXTERNAL_HEIGHT = 76;
-const NARROW = '(max-width: 760px)';
-
-function useNarrow() {
-    const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
+function useMedia(media: string) {
+    const [matches, setMatches] = useState(() => window.matchMedia(media).matches);
     useEffect(() => {
-        const query = window.matchMedia(NARROW);
-        const update = () => setNarrow(query.matches);
+        const query = window.matchMedia(media);
+        const update = () => setMatches(query.matches);
         query.addEventListener('change', update);
         return () => query.removeEventListener('change', update);
-    }, []);
-    return narrow;
+    }, [media]);
+    return matches;
 }
+
+const useNarrow = () => useMedia('(max-width: 760px)');
 
 export default function App({ doc, example = false, exportUrl }: { doc: SchemaDocument; example?: boolean; exportUrl?: string }) {
     return (
@@ -72,6 +72,7 @@ function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boo
     const [needsFit, setNeedsFit] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     const narrow = useNarrow();
+    const roomy = useMedia('(min-width: 1100px)');
     const [hovered, setHovered] = useState<string | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const [helpOpen, setHelpOpen] = useState(false);
@@ -690,7 +691,8 @@ function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boo
                                 </ControlButton>
                             </Tooltip>
                         </Controls>
-                        {!narrow && <MiniMap pannable zoomable nodeStrokeWidth={2} />}
+                        {/* Below 1100px the diagram needs the room more than an overview does. */}
+                        {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} style={{ width: 160, height: 110 }} />}
                     </ReactFlow>
                     <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="left">
                         <button type="button" className={`tour-fab${toured ? '' : ' is-new'}`} aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
