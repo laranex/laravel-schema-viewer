@@ -1663,3 +1663,191 @@ kbd {
         transform: rotate(360deg);
     }
 }
+
+/* Buttons */
+
+.button--with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.button--primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #062b24;
+}
+
+.button--primary:hover {
+    border-color: var(--accent-ink);
+    background: color-mix(in srgb, var(--accent) 88%, white);
+}
+
+.button--quiet {
+    border-color: transparent;
+    background: transparent;
+    color: var(--muted);
+}
+
+/* Tour button and guided tour */
+
+.canvas {
+    position: relative;
+}
+
+.react-flow__minimap {
+    margin-bottom: 76px !important;
+}
+
+.tour-fab {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    z-index: 8;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #062b24;
+    font-size: 20px;
+    font-weight: 600;
+    box-shadow: var(--shadow), 0 6px 16px rgb(0 0 0 / 22%);
+    cursor: pointer;
+}
+
+.tour-fab:hover {
+    background: color-mix(in srgb, var(--accent) 88%, white);
+}
+
+.tour-fab.is-new::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    animation: pulse 1.8s ease-out infinite;
+}
+
+@keyframes pulse {
+    from {
+        opacity: 0.8;
+        transform: scale(0.85);
+    }
+    to {
+        opacity: 0;
+        transform: scale(1.35);
+    }
+}
+
+@media (max-width: 760px) {
+    .tour-fab {
+        bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+.tour {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+}
+
+.tour__shade {
+    position: absolute;
+    inset: 0;
+    fill: rgb(6 12 10 / 62%);
+}
+
+.tour__ring {
+    position: absolute;
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
+    pointer-events: none;
+    transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+
+.tour__card {
+    position: absolute;
+    box-sizing: border-box;
+    display: grid;
+    gap: 10px;
+    padding: 14px 16px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--fg);
+    box-shadow: var(--shadow), 0 12px 32px rgb(0 0 0 / 28%);
+    transition: left 0.2s ease, top 0.2s ease;
+}
+
+.tour__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: -6px;
+}
+
+.tour__count {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.tour__title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.tour__body {
+    font-size: var(--text-sm);
+    line-height: 1.55;
+}
+
+.tour__body p {
+    margin: 0;
+}
+
+.tour__body ul {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-left: 18px;
+}
+
+.tour__progress {
+    display: flex;
+    gap: 4px;
+}
+
+.tour__progress span {
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--line);
+}
+
+.tour__progress span.is-done {
+    background: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.tour__progress span.is-on {
+    background: var(--accent);
+}
+
+.tour__actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tour-fab.is-new::after {
+        animation: none;
+    }
+}

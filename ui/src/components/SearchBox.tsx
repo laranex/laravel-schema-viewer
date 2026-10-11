@@ -68,7 +68,7 @@ export function SearchBox({ schema, connection, tables, query, onQuery, onPick, 
     const showList = open && query.trim() !== '';
 
     return (
-        <div className="field field--search search">
+        <div className="field field--search search" data-tour="search">
             <label htmlFor="search" className="sr-only">
                 Search tables, columns, models and relations
             </label>

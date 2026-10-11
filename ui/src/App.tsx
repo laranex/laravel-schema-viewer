@@ -14,6 +14,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EdgeMarkers, LinkEdgeView, type EdgeKind, type LinkEdgeData, type LinkEdgeType } from './components/LinkEdge';
 import { SearchBox } from './components/SearchBox';
+import { Tour } from './components/Tour';
+import { TOUR_STEPS } from './tourSteps';
 import { Dialog, Menu, Select, Tooltip, TooltipProvider } from './components/ui';
 import { SidePanel } from './components/SidePanel';
 import { ExternalNodeView, TableNodeView, type ExternalNodeType, type TableNodeType } from './components/TableNode';
@@ -75,6 +77,23 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
     const [hovered, setHovered] = useState<string | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const [helpOpen, setHelpOpen] = useState(false);
+    const [tourOpen, setTourOpen] = useState(false);
+    const [toured, setToured] = useState(() => {
+        try {
+            return localStorage.getItem('schema-viewer.toured') === '1';
+        } catch {
+            return true;
+        }
+    });
+    const endTour = useCallback(() => {
+        setTourOpen(false);
+        setToured(true);
+        try {
+            localStorage.setItem('schema-viewer.toured', '1');
+        } catch {
+            // Storage blocked: the button keeps its first-visit pulse, nothing else changes.
+        }
+    }, []);
     const toastTimer = useRef<number | undefined>(undefined);
     const initialized = useNodesInitialized();
 
@@ -419,6 +438,7 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
         { label: 'Copy Mermaid', shortcut: undefined, run: () => copy('Mermaid diagram', toMermaid(schema, connection)) },
         { label: 'Copy JSON', shortcut: undefined, run: () => copy('Schema JSON', toJson(schema)) },
         ...(narrow ? [{ label: 'Keyboard shortcuts', shortcut: undefined, run: () => setHelpOpen(true) }] : []),
+        ...(narrow ? [{ label: 'Take the tour', shortcut: undefined, run: () => setTourOpen(true) }] : []),
     ];
 
     const toggle = (key: keyof Layers) => setLayers((l) => ({ ...l, [key]: !l[key] }));
@@ -426,6 +446,9 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
     // Keyboard shortcuts. Typing in a field only answers to Escape, handled by the field itself.
     const shortcuts = useRef<(e: KeyboardEvent) => void>(() => undefined);
     shortcuts.current = (e: KeyboardEvent) => {
+        if (tourOpen) {
+            return;
+        }
         const target = e.target as HTMLElement | null;
         const typing = !!target && (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName));
         const mod = e.metaKey || e.ctrlKey;
@@ -448,7 +471,8 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
         const step = (by: number) => switchConnection(connections.at((connections.indexOf(connection) + by + connections.length) % connections.length) ?? connection);
         const actionsByKey: Record<string, () => void> = {
             '/': () => searchRef.current?.focus(),
-            '?': () => setHelpOpen((o) => !o),
+            '?': () => setTourOpen(true),
+            s: () => setHelpOpen((o) => !o),
             Escape: () => {
                 if (helpOpen) setHelpOpen(false);
                 else if (sheetOpen) setSheetOpen(false);
@@ -502,9 +526,13 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
                 <SearchBox schema={schema} connection={connection} tables={visibleTables} query={query} onQuery={setQuery} onPick={(table) => open(connection, table)} inputRef={searchRef} />
                 <div className="toolbar__spacer" />
                 {!narrow && (
-                    <Tooltip content={<>Keyboard shortcuts <kbd>?</kbd></>} side="bottom">
-                        <button type="button" className="button button--icon" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={() => setHelpOpen(true)}>
-                            <span aria-hidden="true" className="kbd-icon">?</span>
+                    <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
+                        <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
+                            <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
+                                <rect x="1.5" y="2" width="17" height="12" rx="2" />
+                                <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
+                            </svg>
+                            Shortcuts
                         </button>
                     </Tooltip>
                 )}
@@ -531,7 +559,7 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
                         }}
                     />
                 ) : (
-                    <div className="toolbar__group" role="group" aria-label="Layout and export">
+                    <div className="toolbar__group" role="group" aria-label="Layout and export" data-tour="actions">
                         <Select id="connection" label="Connection" value={connection} onChange={switchConnection} options={connectionOptions} />
                         {actions.map((a) =>
                             a.shortcut ? (
@@ -551,7 +579,7 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
             </header>
 
             {!narrow && (
-                <div className="layers" role="group" aria-label="Show on the diagram">
+                <div className="layers" role="group" aria-label="Show on the diagram" data-tour="layers">
                     {LAYER_TOGGLES.map((t) => (
                         <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} divider={t.key === 'framework'} />
                     ))}
@@ -584,6 +612,11 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
                         <Controls showInteractive={false} />
                         {!narrow && <MiniMap pannable zoomable nodeStrokeWidth={2} />}
                     </ReactFlow>
+                    <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="left">
+                        <button type="button" className={`tour-fab${toured ? '' : ' is-new'}`} aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
+                            ?
+                        </button>
+                    </Tooltip>
                 </div>
                 <SidePanel
                     schema={schema}
@@ -607,6 +640,7 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
             </main>
 
             <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
+            <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} />
 
             {toast && (
                 <div className="toast" role="status">
@@ -665,7 +699,8 @@ const SHORTCUTS: [string[], string][] = [
     [['[', ']'], 'Previous or next connection'],
     [['Shift A'], 'Arrange tables automatically'],
     [[`${MOD} S`], 'Save the layout'],
-    [['?'], 'Show this list'],
+    [['S'], 'Show this list'],
+    [['?'], 'Take the tour'],
 ];
 
 function ShortcutsHelp({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {

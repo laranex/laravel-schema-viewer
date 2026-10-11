@@ -1,0 +1,132 @@
+import type { TourStep } from './components/Tour';
+
+// The table card nearest the middle of the screen, so the step points at something in view.
+const centralTable = (): Element | null => {
+    const cards = [...document.querySelectorAll('.react-flow__node-table')];
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    return (
+        cards
+            .map((el) => ({ el, r: el.getBoundingClientRect() }))
+            .filter(({ r }) => r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight)
+            .sort((a, b) => Math.hypot(a.r.left + a.r.width / 2 - cx, a.r.top + a.r.height / 2 - cy) - Math.hypot(b.r.left + b.r.width / 2 - cx, b.r.top + b.r.height / 2 - cy))[0]?.el ?? null
+    );
+};
+
+const firstLabel = (): Element | null =>
+    [...document.querySelectorAll('.edge-label')].find((el) => {
+        const r = el.getBoundingClientRect();
+        return r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight;
+    }) ?? null;
+
+export const TOUR_STEPS: TourStep[] = [
+    {
+        title: 'Welcome to Schema Viewer',
+        body: <p>Every table in your database, joined with the relationships your Eloquent models declare. This tour shows each part in about a minute.</p>,
+    },
+    {
+        target: '.canvas',
+        title: 'The diagram',
+        body: (
+            <p>
+                Each card is a table. Referenced tables sit to the left of the tables that point at them. Drag cards to arrange them, scroll or pinch to zoom, and drag the background to move around.
+            </p>
+        ),
+    },
+    {
+        target: centralTable,
+        title: 'A table',
+        body: (
+            <ul>
+                <li>The header shows the table and the model that uses it.</li>
+                <li>
+                    <b>PK</b> marks the primary key, <b>FK</b> a foreign key, and <b>?</b> a nullable column.
+                </li>
+                <li>The right column shows the type, or the cast when the model casts it.</li>
+                <li>An amber number counts the hints for this table. Click the card to see everything about it.</li>
+            </ul>
+        ),
+    },
+    {
+        target: firstLabel,
+        title: 'A relationship',
+        body: (
+            <p>
+                Each line joins the column that holds the key to the column it points at. The label names the relation methods and the kind of relationship. Crow's feet mark the many side. Hover a label for the exact
+                columns.
+            </p>
+        ),
+    },
+    {
+        target: '[data-tour="layers"]',
+        title: 'What the lines mean',
+        body: (
+            <ul>
+                <li>
+                    <b>Green</b>: a foreign key that a relation also uses.
+                </li>
+                <li>
+                    <b>Amber dashes</b>: a relation without a foreign key, so rows can point at deleted ones.
+                </li>
+                <li>
+                    <b>Grey</b>: a foreign key no model declares.
+                </li>
+                <li>
+                    <b>Blue dots</b>: a through relation.
+                </li>
+            </ul>
+        ),
+    },
+    {
+        target: '[aria-label="More actions"]',
+        title: 'The menu',
+        body: <p>Switch connections, choose which lines and tables to show, arrange the tables and copy the schema from here.</p>,
+    },
+    {
+        target: '[data-tour="search"]',
+        title: 'Search',
+        body: <p>Find a table by its name, a column, its model or a relation. Pick a result to jump to the table.</p>,
+    },
+    {
+        target: '#connection',
+        title: 'Connections',
+        body: <p>Each database connection your app and its models use has its own diagram. A relation to a table on another connection shows as a dashed card you can click.</p>,
+    },
+    {
+        target: '.ui-tabs',
+        title: 'Details',
+        body: <p>The selected table's columns, relations, the relations that point at it, indexes and model settings: casts, fillable, hidden, scopes and observers.</p>,
+    },
+    {
+        target: '.ui-tabs .ui-tab:nth-child(2)',
+        title: 'Hints',
+        body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
+    },
+    {
+        target: '[data-tour="actions"]',
+        title: 'Layout and export',
+        body: (
+            <p>
+                Auto layout arranges the tables. Save layout writes the arrangement to <code>schema-viewer.json</code> for you to commit. Copy the diagram as Mermaid for a README, or the full schema as JSON.
+            </p>
+        ),
+    },
+    {
+        target: '[data-tour="shortcuts"]',
+        title: 'Keyboard shortcuts',
+        body: (
+            <p>
+                Everything here has a key. Open this list any time with <kbd>S</kbd>.
+            </p>
+        ),
+    },
+    {
+        target: '.tour-fab',
+        title: 'Come back any time',
+        body: (
+            <p>
+                Press this button or <kbd>?</kbd> to take the tour again.
+            </p>
+        ),
+    },
+];
