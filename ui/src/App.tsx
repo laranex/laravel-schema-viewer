@@ -80,8 +80,8 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const [tourOpen, setTourOpen] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     // While a tour step explains part of the phone menu, the tour keeps the menu open.
-    const [tourMenu, setTourMenu] = useState(false);
-    const onTourStep = useCallback((step: TourStep | null) => setTourMenu(!!step?.menu), []);
+    const [tourMenu, setTourMenu] = useState<TourStep['menu']>(undefined);
+    const onTourStep = useCallback((step: TourStep | null) => setTourMenu(step?.menu), []);
     const [toured, setToured] = useState(() => {
         try {
             return localStorage.getItem('schema-viewer.toured') === '1';
@@ -432,10 +432,10 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
     const connectionOptions = doc.connections.map((c) => ({ value: c.name, label: c.name, hint: `${c.driver} · ${c.tables.length} tables` }));
 
     const actions = [
-        { label: 'Copy Mermaid', shortcut: undefined, run: () => copy('Mermaid diagram', toMermaid(schema, connection)) },
-        { label: 'Copy JSON', shortcut: undefined, run: () => copy('Schema JSON', toJson(schema)) },
-        ...(narrow ? [{ label: 'Keyboard shortcuts', shortcut: undefined, run: () => setHelpOpen(true) }] : []),
-        ...(narrow ? [{ label: 'Take the tour', shortcut: undefined, run: () => setTourOpen(true) }] : []),
+        { label: 'Copy Mermaid', shortcut: undefined, tour: undefined, run: () => copy('Mermaid diagram', toMermaid(schema, connection)) },
+        { label: 'Copy JSON', shortcut: undefined, tour: undefined, run: () => copy('Schema JSON', toJson(schema)) },
+        { label: 'Keyboard shortcuts', shortcut: narrow ? undefined : 'S', tour: 'menu-shortcuts', run: () => setHelpOpen(true) },
+        { label: 'Take the tour', shortcut: narrow ? undefined : '?', tour: undefined, run: () => setTourOpen(true) },
     ];
 
     const toggle = (key: keyof Layers) => setLayers((l) => ({ ...l, [key]: !l[key] }));
@@ -517,59 +517,34 @@ function Viewer({ doc, example }: { doc: SchemaDocument; example: boolean }) {
                 </div>
                 <SearchBox schema={schema} connection={connection} tables={visibleTables} query={query} onQuery={setQuery} onPick={(table) => open(connection, table)} inputRef={searchRef} />
                 <div className="toolbar__spacer" />
-                {!narrow && (
-                    <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
-                        <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
-                            <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
-                                <rect x="1.5" y="2" width="17" height="12" rx="2" />
-                                <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
-                            </svg>
-                            Shortcuts
-                        </button>
-                    </Tooltip>
-                )}
-                {narrow ? (
-                    <Menu
-                        label="More actions"
-                        trigger={
-                            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" className="icon-fill">
-                                <circle cx="5" cy="12" r="1.8" />
-                                <circle cx="12" cy="12" r="1.8" />
-                                <circle cx="19" cy="12" r="1.8" />
-                            </svg>
-                        }
-                        items={actions.map((a) => ({ label: a.label, onSelect: a.run, tour: a.label === 'Keyboard shortcuts' ? 'menu-shortcuts' : undefined }))}
-                        open={menuOpen || (narrow && tourMenu)}
-                        onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
-                        choice={{ label: 'Connection', value: connection, options: connectionOptions, onChange: switchConnection }}
-                        toggles={{
-                            label: 'Show',
-                            items: LAYER_TOGGLES.map((t) => ({
-                                label: t.label,
-                                checked: layers[t.key],
-                                onChange: () => toggle(t.key),
-                                icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
-                            })),
-                        }}
-                    />
-                ) : (
-                    <div className="toolbar__group" role="group" aria-label="Layout and export" data-tour="actions">
-                        <Select id="connection" label="Connection" value={connection} onChange={switchConnection} options={connectionOptions} />
-                        {actions.map((a) =>
-                            a.shortcut ? (
-                                <Tooltip key={a.label} content={<kbd>{a.shortcut}</kbd>} side="bottom">
-                                    <button type="button" className="button" onClick={a.run}>
-                                        {a.label}
-                                    </button>
-                                </Tooltip>
-                            ) : (
-                                <button key={a.label} type="button" className="button" onClick={a.run}>
-                                    {a.label}
-                                </button>
-                            ),
-                        )}
-                    </div>
-                )}
+                {!narrow && <Select id="connection" label="Connection" value={connection} onChange={switchConnection} options={connectionOptions} />}
+                <Menu
+                    label="More actions"
+                    trigger={
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" className="icon-fill">
+                            <circle cx="5" cy="12" r="1.8" />
+                            <circle cx="12" cy="12" r="1.8" />
+                            <circle cx="19" cy="12" r="1.8" />
+                        </svg>
+                    }
+                    items={actions.map((a) => ({ label: a.label, shortcut: a.shortcut, onSelect: a.run, tour: a.tour }))}
+                    open={menuOpen || tourMenu === 'always' || (narrow && tourMenu === 'phone')}
+                    onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
+                    choice={narrow ? { label: 'Connection', value: connection, options: connectionOptions, onChange: switchConnection } : undefined}
+                    toggles={
+                        narrow
+                            ? {
+                                  label: 'Show',
+                                  items: LAYER_TOGGLES.map((t) => ({
+                                      label: t.label,
+                                      checked: layers[t.key],
+                                      onChange: () => toggle(t.key),
+                                      icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
+                                  })),
+                              }
+                            : undefined
+                    }
+                />
             </header>
 
             {!narrow && (

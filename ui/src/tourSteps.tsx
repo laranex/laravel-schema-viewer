@@ -83,7 +83,7 @@ export const TOUR_STEPS: TourStep[] = [
     },
     {
         target: ['[data-tour="layers"]', '[data-tour="menu-show"]'],
-        menu: true,
+        menu: 'phone',
         title: 'What the lines mean',
         body: (
             <ul>
@@ -104,13 +104,13 @@ export const TOUR_STEPS: TourStep[] = [
     },
     {
         target: ['#connection', '[data-tour="menu-connection"]'],
-        menu: true,
+        menu: 'phone',
         title: 'Connections',
         body: <p>Each database connection your app and its models use has its own diagram. A relation to a table on another connection shows as a dashed card you can click.</p>,
     },
     {
-        target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
-        menu: true,
+        target: '[data-tour="menu-actions"]',
+        menu: 'always',
         title: 'Export',
         body: (
             <ul>
@@ -124,8 +124,8 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: ['[data-tour="shortcuts"]', '[data-tour="menu-shortcuts"]'],
-        menu: true,
+        target: '[data-tour="menu-shortcuts"]',
+        menu: 'always',
         title: 'Keyboard shortcuts',
         body: (
             <p>

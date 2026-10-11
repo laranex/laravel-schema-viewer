@@ -6,8 +6,9 @@ export type TourStep = {
     target?: Target | Target[];
     title: string;
     body: ReactNode;
-    // The step explains something inside the phone menu: the tour opens the menu for it.
-    menu?: boolean;
+    // The step explains something inside the ⋯ menu, which the tour opens for it: on every screen, or only on phones
+    // (where the toolbar's controls move into the menu).
+    menu?: 'always' | 'phone';
 };
 
 type Target = string | (() => Element | null);
@@ -107,7 +108,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
     // Menu steps count when the menu exists (phones): their targets only appear once the tour opens it.
     // Steps that pick their element when shown (a table, a label) always count, so the total never depends on timing.
     const available = useMemo(
-        () => (open ? steps.filter((s) => !s.target || typeof s.target === 'function' || find(s.target) || (s.menu && menuSteps)) : []),
+        () => (open ? steps.filter((s) => !s.target || typeof s.target === 'function' || find(s.target) || s.menu === 'always' || (s.menu === 'phone' && menuSteps)) : []),
         [open, steps, menuSteps],
     );
     const [index, setIndex] = useState(0);
