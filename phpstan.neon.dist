@@ -1,0 +1,13 @@
+parameters:
+    level: 7
+    phpVersion: 80100
+    paths:
+        - src
+        - config
+    tmpDir: build/phpstan
+    configDirectories:
+        - '%currentWorkingDirectory%/config'
+    # Typed class constants need PHP 8.3; this package supports PHP 8.1.
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        - identifier: typeCoverage.constantTypeCoverage

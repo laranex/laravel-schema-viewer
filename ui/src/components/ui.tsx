@@ -1,0 +1,195 @@
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import * as MenuPrimitive from '@radix-ui/react-dropdown-menu';
+import * as SelectPrimitive from '@radix-ui/react-select';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import type { ReactNode } from 'react';
+
+// The viewer's own controls, built on Radix primitives and styled with the page's tokens.
+
+const Chevron = () => (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="ui-icon">
+        <path d="M4 6 L8 10 L12 6" />
+    </svg>
+);
+
+const Check = () => (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="ui-icon">
+        <path d="M3.5 8.5 L6.5 11.5 L12.5 4.5" />
+    </svg>
+);
+
+export type SelectOption = { value: string; label: ReactNode; hint?: ReactNode };
+
+export function Select({ id, value, onChange, options, label, compactLabel }: { id: string; value: string; onChange: (value: string) => void; options: SelectOption[]; label: string; compactLabel?: ReactNode }) {
+    const current = options.find((o) => o.value === value);
+    return (
+        <SelectPrimitive.Root value={value} onValueChange={onChange}>
+            <SelectPrimitive.Trigger id={id} className="ui-select" aria-label={label}>
+                <span className="ui-select__value">{compactLabel ?? current?.label}</span>
+                <SelectPrimitive.Icon className="ui-select__icon">
+                    <Chevron />
+                </SelectPrimitive.Icon>
+            </SelectPrimitive.Trigger>
+            <SelectPrimitive.Portal>
+                <SelectPrimitive.Content className="ui-popover ui-select__content" position="popper" sideOffset={6} align="start">
+                    <SelectPrimitive.Viewport>
+                        {options.map((o) => (
+                            <SelectPrimitive.Item key={o.value} value={o.value} className="ui-item">
+                                <span className="ui-item__check">
+                                    <SelectPrimitive.ItemIndicator>
+                                        <Check />
+                                    </SelectPrimitive.ItemIndicator>
+                                </span>
+                                <span className="ui-item__body">
+                                    <SelectPrimitive.ItemText>{o.label}</SelectPrimitive.ItemText>
+                                    {o.hint && <span className="ui-item__hint">{o.hint}</span>}
+                                </span>
+                            </SelectPrimitive.Item>
+                        ))}
+                    </SelectPrimitive.Viewport>
+                </SelectPrimitive.Content>
+            </SelectPrimitive.Portal>
+        </SelectPrimitive.Root>
+    );
+}
+
+export function TooltipProvider({ children }: { children: ReactNode }) {
+    return (
+        <TooltipPrimitive.Provider delayDuration={250} skipDelayDuration={150}>
+            {children}
+        </TooltipPrimitive.Provider>
+    );
+}
+
+// Wraps one focusable or hoverable element; the element must accept a ref (a DOM element or forwardRef component).
+export function Tooltip({ content, children, side = 'top' }: { content: ReactNode; children: ReactNode; side?: 'top' | 'right' | 'bottom' | 'left' }) {
+    return (
+        <TooltipPrimitive.Root>
+            <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+            <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content className="ui-tooltip" side={side} sideOffset={6} collisionPadding={12}>
+                    {content}
+                    <TooltipPrimitive.Arrow className="ui-tooltip__arrow" width={10} height={5} />
+                </TooltipPrimitive.Content>
+            </TooltipPrimitive.Portal>
+        </TooltipPrimitive.Root>
+    );
+}
+
+export type MenuItem = { label: string; shortcut?: string; onSelect: () => void };
+
+export type MenuChoice = { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void };
+
+export type MenuToggle = { label: string; checked: boolean; onChange: () => void; icon?: ReactNode };
+
+export function Menu({ label, trigger, items, choice, toggles }: { label: string; trigger: ReactNode; items: MenuItem[]; choice?: MenuChoice; toggles?: { label: string; items: MenuToggle[] } }) {
+    return (
+        <MenuPrimitive.Root>
+            <MenuPrimitive.Trigger asChild>
+                <button type="button" className="button button--icon" aria-label={label}>
+                    {trigger}
+                </button>
+            </MenuPrimitive.Trigger>
+            <MenuPrimitive.Portal>
+                <MenuPrimitive.Content className="ui-popover ui-menu" align="end" sideOffset={6} collisionPadding={12}>
+                    {choice && (
+                        <>
+                            <MenuPrimitive.Label className="ui-menu__label">{choice.label}</MenuPrimitive.Label>
+                            <MenuPrimitive.RadioGroup value={choice.value} onValueChange={choice.onChange}>
+                                {choice.options.map((o) => (
+                                    <MenuPrimitive.RadioItem key={o.value} value={o.value} className="ui-item ui-item--choice">
+                                        <span className="ui-item__check">
+                                            <MenuPrimitive.ItemIndicator>
+                                                <Check />
+                                            </MenuPrimitive.ItemIndicator>
+                                        </span>
+                                        <span className="ui-item__body">
+                                            {o.label}
+                                            {o.hint && <span className="ui-item__hint">{o.hint}</span>}
+                                        </span>
+                                    </MenuPrimitive.RadioItem>
+                                ))}
+                            </MenuPrimitive.RadioGroup>
+                            <MenuPrimitive.Separator className="ui-menu__separator" />
+                        </>
+                    )}
+                    {toggles && (
+                        <>
+                            <MenuPrimitive.Label className="ui-menu__label">{toggles.label}</MenuPrimitive.Label>
+                            {toggles.items.map((t) => (
+                                <MenuPrimitive.CheckboxItem
+                                    key={t.label}
+                                    className="ui-item ui-item--choice"
+                                    checked={t.checked}
+                                    onCheckedChange={t.onChange}
+                                    // Keep the menu open so several layers can be switched in one go.
+                                    onSelect={(e) => e.preventDefault()}
+                                >
+                                    <span className="ui-item__check">
+                                        <MenuPrimitive.ItemIndicator>
+                                            <Check />
+                                        </MenuPrimitive.ItemIndicator>
+                                    </span>
+                                    <span className="ui-item__body ui-item__body--row">
+                                        {t.label}
+                                        {t.icon}
+                                    </span>
+                                </MenuPrimitive.CheckboxItem>
+                            ))}
+                            <MenuPrimitive.Separator className="ui-menu__separator" />
+                        </>
+                    )}
+                    {items.map((item) => (
+                        <MenuPrimitive.Item key={item.label} className="ui-item" onSelect={item.onSelect}>
+                            <span className="ui-item__body">{item.label}</span>
+                            {item.shortcut && <kbd className="ui-item__kbd">{item.shortcut}</kbd>}
+                        </MenuPrimitive.Item>
+                    ))}
+                </MenuPrimitive.Content>
+            </MenuPrimitive.Portal>
+        </MenuPrimitive.Root>
+    );
+}
+
+export function Dialog({ open, onOpenChange, title, description, children, wide }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description?: string; children: ReactNode; wide?: boolean }) {
+    return (
+        <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+            <DialogPrimitive.Portal>
+                <DialogPrimitive.Overlay className="ui-overlay" />
+                <DialogPrimitive.Content className={`ui-dialog${wide ? ' ui-dialog--wide' : ''}`} {...(description ? {} : { 'aria-describedby': undefined })}>
+                    <div className="ui-dialog__head">
+                        <DialogPrimitive.Title className="ui-dialog__title">{title}</DialogPrimitive.Title>
+                        <DialogPrimitive.Close className="button button--icon button--ghost" aria-label="Close">
+                            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="ui-icon">
+                                <path d="M4 4 L12 12 M12 4 L4 12" />
+                            </svg>
+                        </DialogPrimitive.Close>
+                    </div>
+                    {description && <DialogPrimitive.Description className="ui-dialog__description">{description}</DialogPrimitive.Description>}
+                    {children}
+                </DialogPrimitive.Content>
+            </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
+    );
+}
+
+export const Tabs = TabsPrimitive.Root;
+
+export function TabList({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <TabsPrimitive.List className="ui-tabs" aria-label={label}>
+            {children}
+        </TabsPrimitive.List>
+    );
+}
+
+export function Tab({ value, children }: { value: string; children: ReactNode }) {
+    return (
+        <TabsPrimitive.Trigger value={value} className="ui-tab">
+            {children}
+        </TabsPrimitive.Trigger>
+    );
+}
+
+export const TabPanel = TabsPrimitive.Content;
