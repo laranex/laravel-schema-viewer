@@ -37,14 +37,37 @@ const find = (target: TourStep['target']): Element | null => {
     return null;
 };
 
-// The element's box plus some room, clipped to the window so a large area never draws past its edges.
+// The part of the element you can actually see: clipped by every scrolling or clipping container around it and by the
+// window, plus some room around it.
 const rectOf = (el: Element): Rect => {
     const r = el.getBoundingClientRect();
-    const left = Math.max(4, r.left - PAD);
-    const top = Math.max(4, r.top - PAD);
-    const right = Math.min(window.innerWidth - 4, r.right + PAD);
-    const bottom = Math.min(window.innerHeight - 4, r.bottom + PAD);
+    let left = r.left;
+    let top = r.top;
+    let right = r.right;
+    let bottom = r.bottom;
+    for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+            const p = parent.getBoundingClientRect();
+            left = Math.max(left, p.left);
+            top = Math.max(top, p.top);
+            right = Math.min(right, p.right);
+            bottom = Math.min(bottom, p.bottom);
+        }
+    }
+    left = Math.max(4, left - PAD);
+    top = Math.max(4, top - PAD);
+    right = Math.min(window.innerWidth - 4, right + PAD);
+    bottom = Math.min(window.innerHeight - 4, bottom + PAD);
     return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+};
+
+// Inside a menu or panel that scrolls, bring the element into view. Never inside the diagram: its container's
+// overflow is hidden, and scrolling it shifts the drawing.
+const reveal = (el: Element | null) => {
+    if (el && !el.closest('.react-flow')) {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
 };
 
 // Where the card goes: below, above, right or left of the spotlight, whichever fits first; clamped to the window.
@@ -112,7 +135,17 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
             setRect((prev) => (prev && next && Math.abs(prev.x - next.x) + Math.abs(prev.y - next.y) + Math.abs(prev.width - next.width) + Math.abs(prev.height - next.height) < 1 ? prev : next));
             frame = window.requestAnimationFrame(update);
         };
-        // No scrollIntoView: it would scroll the diagram's hidden-overflow container and shift the drawing.
+        // A menu opened for this step renders a frame later, so look for the element again briefly.
+        let tries = 0;
+        const revealSoon = () => {
+            const el = find(step.target);
+            if (el) {
+                reveal(el);
+            } else if (tries++ < 10) {
+                window.setTimeout(revealSoon, 50);
+            }
+        };
+        revealSoon();
         update();
         return () => window.cancelAnimationFrame(frame);
     }, [open, step]);

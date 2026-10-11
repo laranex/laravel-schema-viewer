@@ -36,7 +36,7 @@ final class DatabaseInspector
         $defaultSchema = $this->call($builder, 'getCurrentSchemaName');
 
         /** @var list<array<string, mixed>> $rows */
-        $rows = is_array($schemas) && $schemas !== [] ? $builder->getTables($schemas) : $builder->getTables();
+        $rows = is_array($schemas) && $schemas !== [] ? $this->call($builder, 'getTables', $schemas) : $builder->getTables();
 
         $tables = [];
 
@@ -69,11 +69,11 @@ final class DatabaseInspector
     }
 
     /**
-     * Calls a schema builder method that only Laravel 12 and later define.
+     * Calls a schema builder method, or a method signature, that only Laravel 12 and later have.
      */
-    private function call(object $builder, string $method): mixed
+    private function call(object $builder, string $method, mixed ...$arguments): mixed
     {
-        return method_exists($builder, $method) ? $builder->{$method}() : null;
+        return method_exists($builder, $method) ? $builder->{$method}(...$arguments) : null;
     }
 
     /**

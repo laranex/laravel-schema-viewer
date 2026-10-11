@@ -36,12 +36,12 @@ final class ModelInspector
             timestamps: $model->usesTimestamps(),
             softDeletes: in_array(SoftDeletes::class, class_uses_recursive($model), true),
             casts: $model->getCasts(),
-            fillable: array_values($model->getFillable()),
+            fillable: $this->strings($model->getFillable()),
             guarded: array_values($model->getGuarded()),
-            hidden: array_values($model->getHidden()),
-            appends: array_map(fn (mixed $name): string => (string) $name, $model->getAppends()),
+            hidden: $this->strings($model->getHidden()),
+            appends: $this->strings($model->getAppends()),
             scopes: $this->scopes($model),
-            globalScopes: array_map(fn (int|string $name): string => (string) $name, array_keys($model->getGlobalScopes())),
+            globalScopes: $this->strings(array_keys($model->getGlobalScopes())),
             observers: $this->observers($model),
         );
     }
@@ -78,20 +78,45 @@ final class ModelInspector
     }
 
     /**
+     * The registered listeners. The parameter is an object because only some Laravel versions put this method on the contract.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function rawListeners(object $events): array
+    {
+        $listeners = method_exists($events, 'getRawListeners') ? $events->getRawListeners() : [];
+
+        return is_array($listeners) ? $listeners : [];
+    }
+
+    /**
+     * Values as a list of strings, whatever the array's keys.
+     *
+     * @param  array<array-key, mixed>  $values
+     * @return list<string>
+     */
+    private function strings(array $values): array
+    {
+        $strings = [];
+
+        foreach ($values as $value) {
+            $strings[] = is_scalar($value) ? (string) $value : '';
+        }
+
+        return $strings;
+    }
+
+    /**
      * Observer classes listening to this model's events.
      *
      * @return list<string>
      */
     private function observers(Model $model): array
     {
-        if (! method_exists($this->events, 'getRawListeners')) {
-            return [];
-        }
-
         $observers = [];
 
         /** @var array<string, array<int, mixed>> $listeners */
-        $listeners = $this->events->getRawListeners();
+        $listeners = $this->rawListeners($this->events);
 
         foreach ($listeners as $event => $handlers) {
             if (! str_starts_with($event, 'eloquent.') || ! str_ends_with($event, ': '.$model::class)) {

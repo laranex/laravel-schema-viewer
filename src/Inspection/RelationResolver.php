@@ -178,7 +178,7 @@ final class RelationResolver
                 parentKey: $relation->getParentKeyName(),
                 relatedKey: $relation->getRelatedKeyName(),
                 columns: array_values(array_map(fn (mixed $column): string => is_string($column) ? $column : 'expression', $relation->getPivotColumns())),
-                using: $relation->getPivotClass() === \Illuminate\Database\Eloquent\Relations\Pivot::class ? null : $relation->getPivotClass(),
+                using: $this->pivotModel($relation->getPivotClass()),
                 accessor: $relation->getPivotAccessor(),
             );
 
@@ -275,6 +275,16 @@ final class RelationResolver
             is_scalar($value) => (string) $value,
             default => '?',
         };
+    }
+
+    /**
+     * The custom pivot model set with using(), or null for Laravel's own Pivot.
+     *
+     * @return class-string|null
+     */
+    private function pivotModel(string $class): ?string
+    {
+        return $class !== \Illuminate\Database\Eloquent\Relations\Pivot::class && class_exists($class) ? $class : null;
     }
 
     private function endpoint(Model $model, string $column): Endpoint
