@@ -101,11 +101,38 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
     useEffect(() => {
         if (needsFit && initialized) {
             setNeedsFit(false);
-            // Phones start on the selected table at a readable size; larger screens see the whole diagram.
-            const target = narrow && selected ? [{ id: nodeId(connection, selected) }] : undefined;
-            flow.fitView({ padding: narrow ? 0.25 : 0.08, nodes: target, maxZoom: narrow ? 1.1 : 1 });
+            userMoved.current = false;
+            fitRef.current();
         }
-    }, [needsFit, initialized, flow, narrow, selected, schema, connection]);
+    }, [needsFit, initialized]);
+
+    // Phones start on the selected table at a readable size; larger screens see the whole diagram.
+    const fitRef = useRef(() => undefined as unknown);
+    fitRef.current = () => {
+        const target = narrow && selected ? [{ id: nodeId(connection, selected) }] : undefined;
+        return flow.fitView({ padding: narrow ? 0.25 : 0.08, nodes: target, maxZoom: narrow ? 1.1 : 1 });
+    };
+
+    // The canvas can change size after the first fit (a phone's browser bars settling, a rotated screen):
+    // fit again until the person pans or zooms themselves.
+    const userMoved = useRef(false);
+    const canvasRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) {
+            return;
+        }
+        let last = '';
+        const observer = new ResizeObserver(([entry]) => {
+            const size = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+            if (size !== last && last !== '' && !userMoved.current) {
+                fitRef.current();
+            }
+            last = size;
+        });
+        observer.observe(canvas);
+        return () => observer.disconnect();
+    }, []);
 
     const notify = useCallback((message: string) => {
         setToast(message);
@@ -591,7 +618,7 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
             )}
 
             <main className="main">
-                <div className="canvas">
+                <div className="canvas" ref={canvasRef}>
                     <ReactFlow<AppNode, LinkEdgeType>
                         nodes={nodes}
                         edges={edges}
@@ -602,6 +629,11 @@ function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStor
                         onEdgeMouseEnter={(_, edge) => setHovered(edge.id)}
                         onEdgeMouseLeave={() => setHovered(null)}
                         onPaneClick={() => setSelected(null)}
+                        onMoveStart={(event) => {
+                            if (event) {
+                                userMoved.current = true;
+                            }
+                        }}
                         nodesConnectable={false}
                         edgesFocusable={false}
                         minZoom={0.2}

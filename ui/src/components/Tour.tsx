@@ -30,6 +30,11 @@ const rectOf = (el: Element): Rect => {
 function placeCard(rect: Rect | null, card: { width: number; height: number }) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    // Phones: dock the card to the top or bottom edge, away from the spotlight.
+    if (vw < 600) {
+        const spotlightLow = rect !== null && rect.y + rect.height / 2 > vh / 2;
+        return { left: 12, top: spotlightLow ? 12 : vh - card.height - 12 };
+    }
     if (!rect) {
         return { left: (vw - card.width) / 2, top: Math.max(16, (vh - card.height) / 2) };
     }
@@ -137,7 +142,7 @@ export function Tour({ steps, open, onClose }: { steps: TourStep[]; open: boolea
                 <rect width="100%" height="100%" mask="url(#tour-hole)" />
             </svg>
             {rect && <div className="tour__ring" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }} />}
-            <div ref={cardRef} className="tour__card" role="dialog" aria-modal="true" aria-labelledby="tour-title" style={{ left: position.left, top: position.top, width: Math.min(CARD_WIDTH, window.innerWidth - 32) }}>
+            <div ref={cardRef} className="tour__card" role="dialog" aria-modal="true" aria-labelledby="tour-title" style={{ left: position.left, top: position.top, width: window.innerWidth < 600 ? window.innerWidth - 24 : CARD_WIDTH }}>
                 <div className="tour__head">
                     <span className="tour__count">
                         {index + 1} of {available.length}
