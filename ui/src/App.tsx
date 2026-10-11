@@ -19,8 +19,8 @@ import { SidePanel } from './components/SidePanel';
 import { ExternalNodeView, TableNodeView, type ExternalNodeType, type TableNodeType } from './components/TableNode';
 import { toJson, toMermaid } from './export';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass } from './graph';
-import { boxWidth, route, type Box } from './routing';
-import { autoLayout, clearLayout, loadLayout, saveLayout, type Positions } from './layout';
+import { boxWidth, GAP, route, type Box } from './routing';
+import { autoLayout, type LayoutStore, type Positions } from './layout';
 import type { SchemaDocument } from './types';
 
 type AppNode = TableNodeType | ExternalNodeType;
@@ -44,17 +44,17 @@ function useNarrow() {
     return narrow;
 }
 
-export default function App({ doc }: { doc: SchemaDocument }) {
+export default function App({ doc, layoutStore, example = false }: { doc: SchemaDocument; layoutStore: LayoutStore; example?: boolean }) {
     return (
         <ReactFlowProvider>
             <TooltipProvider>
-                <Viewer doc={doc} />
+                <Viewer doc={doc} layoutStore={layoutStore} example={example} />
             </TooltipProvider>
         </ReactFlowProvider>
     );
 }
 
-function Viewer({ doc }: { doc: SchemaDocument }) {
+function Viewer({ doc, layoutStore, example }: { doc: SchemaDocument; layoutStore: LayoutStore; example: boolean }) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
 
@@ -68,6 +68,7 @@ function Viewer({ doc }: { doc: SchemaDocument }) {
     const [toast, setToast] = useState<string | null>(null);
     const [copyText, setCopyText] = useState<{ title: string; text: string } | null>(null);
     const [layoutVersion, setLayoutVersion] = useState(0);
+    const ignoreSaved = useRef(false);
     const [needsFit, setNeedsFit] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     const narrow = useNarrow();
@@ -116,9 +117,28 @@ function Viewer({ doc }: { doc: SchemaDocument }) {
         externals.forEach((_, id) => (sizes[id] = EXTERNAL_HEIGHT));
 
         const place = async () => {
-            const saved = loadLayout(connection);
-            const missing = [...ids].some((id) => !saved?.[id]);
-            const positions: Positions = saved && !missing ? saved : await autoLayout(schema, connection, ids, sizes);
+            const saved = ignoreSaved.current ? null : await layoutStore.load(connection);
+            ignoreSaved.current = false;
+            // Saved keys are table names for this connection and full ids for tables on other connections.
+            const savedKey = (id: string) => (id.startsWith(`${connection}.`) ? id.slice(connection.length + 1) : id);
+            const placed: Positions = {};
+            [...ids].forEach((id) => {
+                const position = saved?.[savedKey(id)];
+                if (position) {
+                    placed[id] = position;
+                }
+            });
+            const missing = new Set([...ids].filter((id) => !placed[id]));
+            let positions: Positions = placed;
+            if (missing.size === ids.size) {
+                positions = await autoLayout(schema, connection, ids, sizes);
+            } else if (missing.size > 0) {
+                // Tables added since the layout was saved: arranged among themselves, below the saved ones.
+                const fresh = await autoLayout(schema, connection, missing, sizes);
+                const bottom = Math.max(...Object.entries(placed).map(([id, p]) => p.y + (sizes[id] ?? 120)));
+                const left = Math.min(...Object.values(placed).map((p) => p.x));
+                Object.entries(fresh).forEach(([id, p]) => (positions[id] = { x: left + p.x, y: bottom + GAP / 2 + p.y }));
+            }
             if (cancelled) {
                 return;
             }
@@ -150,7 +170,7 @@ function Viewer({ doc }: { doc: SchemaDocument }) {
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [schema, connection, visibleTables, externals, layoutVersion]);
+    }, [schema, connection, visibleTables, externals, layoutVersion, layoutStore]);
 
     const neighbors = useMemo(() => (selected ? schema.neighbors(connection, selected, 1) : null), [schema, connection, selected]);
     const pivots = useMemo(() => schema.pivotTables(connection), [schema, connection]);
@@ -376,22 +396,26 @@ function Viewer({ doc }: { doc: SchemaDocument }) {
     };
 
     const onSaveLayout = () => {
+        if (!layoutStore.canSave) {
+            notify('Save the layout in your local environment, then commit schema-viewer.json.');
+            return;
+        }
         const positions: Positions = {};
-        flow.getNodes().forEach((n) => (positions[n.id] = n.position));
-        notify(saveLayout(connection, positions) ? 'Layout saved in this browser.' : 'This browser blocks storage, so the layout was not saved.');
+        flow.getNodes().forEach((n) => (positions[n.id.startsWith(`${connection}.`) ? n.id.slice(connection.length + 1) : n.id] = n.position));
+        layoutStore.save(connection, positions).then(notify, (e: Error) => notify(e.message));
     };
 
     const onAutoLayout = () => {
-        clearLayout(connection);
+        ignoreSaved.current = true;
         setLayoutVersion((v) => v + 1);
-        notify('Tables arranged automatically.');
+        notify(layoutStore.canSave ? 'Tables arranged automatically. Save the layout to keep it.' : 'Tables arranged automatically.');
     };
 
     const connectionOptions = doc.connections.map((c) => ({ value: c.name, label: c.name, hint: `${c.driver} · ${c.tables.length} tables` }));
 
     const actions = [
         { label: 'Auto layout', shortcut: 'Shift A', run: onAutoLayout },
-        { label: 'Save layout', shortcut: `${MOD} S`, run: onSaveLayout },
+        ...(layoutStore.canSave ? [{ label: 'Save layout', shortcut: `${MOD} S`, run: onSaveLayout }] : []),
         { label: 'Copy Mermaid', shortcut: undefined, run: () => copy('Mermaid diagram', toMermaid(schema, connection)) },
         { label: 'Copy JSON', shortcut: undefined, run: () => copy('Schema JSON', toJson(schema)) },
         ...(narrow ? [{ label: 'Keyboard shortcuts', shortcut: undefined, run: () => setHelpOpen(true) }] : []),
@@ -532,7 +556,8 @@ function Viewer({ doc }: { doc: SchemaDocument }) {
                         <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} divider={t.key === 'framework'} />
                     ))}
                     <span className="layers__note">
-                        {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'} · example data
+                        {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'}
+                        {example ? ' · example data' : ''}
                     </span>
                 </div>
             )}

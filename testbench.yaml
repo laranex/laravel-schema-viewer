@@ -1,6 +1,7 @@
 
 providers:
-  # - Workbench\App\Providers\WorkbenchServiceProvider
+  - Laranex\LaravelSchemaViewer\SchemaViewerServiceProvider
+  - Workbench\App\Providers\WorkbenchServiceProvider
 
 migrations:
   - workbench/database/migrations
@@ -9,7 +10,7 @@ seeders:
   - Workbench\Database\Seeders\DatabaseSeeder
 
 workbench:
-  start: '/'
+  start: '/schema-viewer'
   install: true
   health: false
   discovers:

@@ -59,7 +59,7 @@ final class DatabaseInspector
                 framework: Str::is($framework, $qualified),
                 columns: $this->columns($builder->getColumns($qualified)),
                 indexes: $this->indexes($builder->getIndexes($qualified)),
-                foreignKeys: $this->foreignKeys($builder->getForeignKeys($qualified), $prefix, is_string($defaultSchema) ? $defaultSchema : null),
+                foreignKeys: $this->foreignKeys($qualified, $builder->getForeignKeys($qualified), $prefix, is_string($defaultSchema) ? $defaultSchema : null),
             );
         }
 
@@ -128,10 +128,11 @@ final class DatabaseInspector
      * @param  array<int, array<string, mixed>>  $rows
      * @return list<ForeignKey>
      */
-    private function foreignKeys(array $rows, string $prefix, ?string $defaultSchema): array
+    private function foreignKeys(string $table, array $rows, string $prefix, ?string $defaultSchema): array
     {
         return array_values(array_map(fn (array $row): ForeignKey => new ForeignKey(
-            name: (string) $row['name'],
+            // SQLite keeps no constraint names; use the name Laravel's migrations would have given it.
+            name: ($row['name'] ?? '') !== '' ? (string) $row['name'] : $table.'_'.implode('_', $this->strings($row['columns'])).'_foreign',
             columns: $this->strings($row['columns']),
             foreignTable: $this->qualify(
                 $this->unprefixed((string) $row['foreign_table'], $prefix) ?? (string) $row['foreign_table'],

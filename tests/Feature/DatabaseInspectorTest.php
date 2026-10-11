@@ -33,6 +33,7 @@ it('reads columns, indexes and foreign keys', function (): void {
         ->and($posts->foreignKeys[0]->foreignTable)->toBe('users')
         ->and($posts->foreignKeys[0]->foreignColumns)->toBe(['id'])
         ->and($posts->foreignKeys[0]->onDelete)->toBe('cascade')
+        ->and($posts->foreignKeys[0]->name)->toBe('posts_user_id_foreign')
         ->and($posts->isIndexed(['category_id']))->toBeTrue()
         ->and($posts->isIndexed(['title']))->toBeFalse();
 });

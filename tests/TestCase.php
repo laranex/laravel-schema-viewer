@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Tests;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Laranex\LaravelSchemaViewer\SchemaViewerServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use ReflectionProperty;
@@ -29,94 +27,44 @@ abstract class TestCase extends Orchestra
         parent::tearDown();
     }
 
+    private string $environment = 'local';
+
+    /**
+     * @var array<string, mixed>
+     */
+    private array $viewerConfig = [];
+
+    /**
+     * Boot a fresh application in another environment or with other viewer settings; routes load at boot.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public function rebootWith(string $environment = 'local', array $config = []): void
+    {
+        $this->environment = $environment;
+        $this->viewerConfig = $config;
+        $this->refreshApplication();
+        $this->defineDatabaseMigrations();
+    }
+
     protected function defineEnvironment($app): void
     {
+        $app['env'] = $this->environment;
+        $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('k', 32)));
+
+        foreach ($this->viewerConfig as $key => $value) {
+            $app['config']->set('schema-viewer.'.$key, $value);
+        }
         $app['config']->set('database.default', 'testing');
         $app['config']->set('schema-viewer.models', [__DIR__.'/Fixtures/Models']);
     }
 
     /**
-     * A blog schema that uses every relation type the viewer draws.
+     * The blog schema shared with the workbench. The in-memory database is dropped after each test, so nothing rolls back.
      */
     protected function defineDatabaseMigrations(): void
     {
-        Schema::create('countries', function (Blueprint $table): void {
-            $table->id();
-            $table->char('code', 2)->unique();
-            $table->string('name');
-        });
-
-        Schema::create('users', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('country_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->timestamps();
-        });
-
-        Schema::create('roles', function (Blueprint $table): void {
-            $table->id();
-            $table->string('name');
-            $table->timestamps();
-        });
-
-        // No index starts with role_id: the composite primary key leads with user_id.
-        Schema::create('role_user', function (Blueprint $table): void {
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->unsignedBigInteger('role_id');
-            $table->foreign('role_id')->references('id')->on('roles')->cascadeOnDelete();
-            $table->timestamp('assigned_at')->nullable();
-            $table->primary(['user_id', 'role_id']);
-        });
-
-        Schema::create('categories', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('parent_id')->nullable()->constrained('categories')->nullOnDelete();
-            $table->string('name');
-        });
-
-        // category_id has no foreign key on purpose.
-        Schema::create('posts', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->unsignedBigInteger('category_id')->nullable()->index();
-            $table->string('title')->comment('Shown in lists and feeds');
-            $table->string('status')->default('draft');
-            $table->timestamp('published_at')->nullable();
-            $table->timestamps();
-            $table->softDeletes();
-        });
-
-        // No model declares the user relation behind this foreign key.
-        Schema::create('comments', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->morphs('commentable');
-            $table->text('body');
-            $table->boolean('approved')->default(false);
-            $table->timestamps();
-        });
-
-        Schema::create('tags', function (Blueprint $table): void {
-            $table->id();
-            $table->string('name');
-        });
-
-        Schema::create('taggables', function (Blueprint $table): void {
-            $table->foreignId('tag_id')->constrained()->cascadeOnDelete();
-            $table->morphs('taggable');
-        });
-
-        Schema::create('audit_logs', function (Blueprint $table): void {
-            $table->id();
-            $table->string('event');
-        });
-
-        Schema::create('jobs', function (Blueprint $table): void {
-            $table->id();
-            $table->string('queue')->index();
-        });
+        $migration = require dirname(__DIR__).'/workbench/database/migrations/2026_10_12_000000_create_blog_tables.php';
+        $migration->up();
     }
 }

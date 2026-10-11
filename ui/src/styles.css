@@ -1626,3 +1626,40 @@ kbd {
     justify-content: space-between;
     gap: 12px;
 }
+
+/* Loading and error states */
+
+.status {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 12px;
+    min-height: 100%;
+    padding-inline: 24px;
+    text-align: center;
+}
+
+.status h1 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.status p {
+    margin: 0;
+    max-width: 52ch;
+}
+
+.status__spinner {
+    width: 26px;
+    height: 26px;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
