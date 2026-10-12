@@ -25,20 +25,23 @@ type Props = {
 
 type TableProps = Pick<Props, 'schema' | 'onOpen' | 'editor' | 'focused' | 'onFocus' | 'onLeaveFocus' | 'onCopyLink'> & { connection: string; name: string };
 
+// Schemes a link must never carry; the server drops them too.
+const UNSAFE_HREF = /^[\s\0-\x1f]*(javascript|data|vbscript|blob|file):/i;
+
 // Where a model or relation is declared: a link that opens the editor, or the path to copy when there is none.
 function SourceLink({ source, editor, children }: { source: Source | null | undefined; editor: string | null; children: ReactNode }) {
     if (!source) {
         return <>{children}</>;
     }
     const where = `${source.file}:${source.line}`;
-    if (!editor) {
+    if (!editor || UNSAFE_HREF.test(editor)) {
         return (
             <Tooltip content={<code>{where}</code>}>
                 <span className="source">{children}</span>
             </Tooltip>
         );
     }
-    const href = editor.replace('{file}', source.file).replace('{line}', String(source.line));
+    const href = editor.replace('{file}', () => encodeURI(source.file)).replace('{line}', () => String(source.line));
     return (
         <Tooltip content={<>Open <code>{where}</code> in your editor</>}>
             <a className="source source--link" href={href}>

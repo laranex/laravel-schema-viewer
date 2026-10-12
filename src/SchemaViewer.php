@@ -53,6 +53,11 @@ class SchemaViewer
     ];
 
     /**
+     * Link schemes that run code or embed content instead of opening an editor.
+     */
+    private const UNSAFE_SCHEMES = ['javascript', 'data', 'vbscript', 'blob', 'file', 'about'];
+
+    /**
      * Tables that well-known packages create, by package name: the class that tells the package is installed, and the
      * table patterns. They are tagged with the package, so the viewer can show or hide them with one toggle.
      */
@@ -123,18 +128,32 @@ class SchemaViewer
 
     /**
      * The link that opens a file in the developer's editor, with {file} (relative to the application's root) and {line}
-     * left in; null when no editor is configured.
+     * left in; null when no editor is configured. Laravel's app.editor counts only in the local environment, since the
+     * link carries the application's path; schema-viewer.editor counts everywhere. A link with a scheme that runs code
+     * or embeds content (javascript:, data:, vbscript:, blob:, file:) is dropped.
      */
     public function editorHref(): ?string
     {
-        $editor = $this->config->get('schema-viewer.editor') ?? $this->config->get('app.editor');
+        $editor = $this->config->get('schema-viewer.editor');
+
+        if (($editor === null || $editor === '') && $this->app->environment('local')) {
+            $editor = $this->config->get('app.editor');
+        }
+
         $name = is_array($editor) ? ($editor['name'] ?? null) : $editor;
 
         if (is_array($editor) && is_string($editor['href'] ?? null)) {
             $href = $editor['href'];
-        } elseif (is_string($name) && $name !== '') {
+        } elseif (is_string($name) && preg_match('/^[A-Za-z][A-Za-z0-9+.-]*$/', $name) === 1) {
             $href = self::EDITORS[$name] ?? $name.'://open?file={file}&line={line}';
         } else {
+            return null;
+        }
+
+        // Browsers ignore control characters and spaces around and inside a scheme.
+        $scheme = preg_match('/^([A-Za-z][A-Za-z0-9+.-]*):/', (string) preg_replace('/[\x00-\x20]+/', '', $href), $match) === 1 ? strtolower($match[1]) : null;
+
+        if ($scheme === null || in_array($scheme, self::UNSAFE_SCHEMES, true)) {
             return null;
         }
 

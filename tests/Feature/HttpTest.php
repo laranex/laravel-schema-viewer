@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
+use Laranex\LaravelSchemaViewer\SchemaViewer;
 
 beforeEach(function (): void {
     $this->rebootWith('local');
@@ -54,6 +55,43 @@ it('tells the page how to open files in the editor', function (): void {
 
     config()->set('schema-viewer.editor', 'nano');
     expect($editor())->toBe("nano://open?file={$root}/{file}&line={line}");
+});
+
+it('drops editor links that would run code or embed content', function (string $href): void {
+    config()->set('schema-viewer.editor', ['href' => $href]);
+
+    expect(app(SchemaViewer::class)->editorHref())->toBeNull();
+})->with([
+    'javascript:alert(1)//{file}',
+    ' JavaScript:alert(1)//{file}',
+    "java\tscript:alert(1)//{file}",
+    'data:text/html,<script>alert(1)</script>{file}',
+    'vbscript:msgbox(1)//{file}',
+    'no-scheme/{file}',
+]);
+
+it('drops editor names that are not schemes', function (): void {
+    config()->set('schema-viewer.editor', 'javascript');
+    expect(app(SchemaViewer::class)->editorHref())->toBeNull();
+
+    config()->set('schema-viewer.editor', 'bad name:');
+    expect(app(SchemaViewer::class)->editorHref())->toBeNull();
+});
+
+it('reads app.editor only in the local environment, so the app path stays private elsewhere', function (): void {
+    $this->rebootWith('production', ['enabled' => true]);
+    Gate::define('viewSchema', fn (?User $user): bool => true);
+    $editor = function (): mixed {
+        preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', (string) $this->get('/schema-viewer')->assertOk()->getContent(), $match);
+
+        return json_decode($match[1], true)['editor'];
+    };
+
+    config()->set('app.editor', 'phpstorm');
+    expect($editor())->toBeNull();
+
+    config()->set('schema-viewer.editor', ['name' => 'vscode', 'base_path' => '/srv/app']);
+    expect($editor())->toBe('vscode://file//srv/app/{file}:{line}');
 });
 
 it('is off outside the local environment unless enabled', function (): void {

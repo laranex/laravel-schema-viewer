@@ -67,7 +67,8 @@ return [
     | cursor, zed, sublime and the other names Laravel's app.editor takes, or
     | ['href' => 'myeditor://open?file={file}&line={line}']. Add 'base_path'
     | when the editor sees the project at another path (Docker, Sail, WSL).
-    | Null uses app.editor; without either, the viewer shows no editor links.
+    | Null uses app.editor in the local environment only, since the links
+    | carry the app's path; without either, the viewer shows no editor links.
     |
     */
 
