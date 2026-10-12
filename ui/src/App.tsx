@@ -777,7 +777,7 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
                         {/* Below 1100px the diagram needs the room more than an overview does. */}
                         {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
                     </ReactFlow>
-                    <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="left">
+                    <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="right">
                         <button type="button" className={`tour-fab${toured ? '' : ' is-new'}`} aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
                             ?
                         </button>

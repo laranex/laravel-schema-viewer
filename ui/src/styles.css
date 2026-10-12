@@ -1669,14 +1669,11 @@ kbd {
     position: relative;
 }
 
-.react-flow__minimap {
-    margin-bottom: 64px !important;
-}
-
+/* Above the zoom controls (26px wide, 104px tall, 15px from the corner), centered on them. */
 .tour-fab {
     position: absolute;
-    right: 16px;
-    bottom: 16px;
+    left: 10px;
+    bottom: calc(15px + 104px + 12px);
     z-index: 8;
     display: grid;
     place-items: center;
@@ -1720,7 +1717,8 @@ kbd {
     .tour-fab {
         width: 40px;
         height: 40px;
-        bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+        left: 8px;
+        bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 104px + 12px);
     }
 }
 
