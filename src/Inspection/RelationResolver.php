@@ -275,7 +275,8 @@ final class RelationResolver
             $constraints[] = $this->where($where);
         }
 
-        foreach ($relation->getQuery()->getQuery()->joins ?? [] as $join) {
+        // Laravel 10 types joins as an array, later versions as nullable.
+        foreach ((array) $relation->getQuery()->getQuery()->joins as $join) {
             $constraints[] = 'join '.(is_string($join->table) ? $join->table : 'expression');
         }
 
