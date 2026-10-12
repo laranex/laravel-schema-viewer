@@ -30,6 +30,8 @@ export type Table = {
     name: string;
     comment: string | null;
     framework: boolean;
+    // The Composer package that owns the table, such as laravel/passport; null for the application's own tables.
+    package?: string | null;
     columns: Column[];
     indexes: Index[];
     foreignKeys: ForeignKey[];
@@ -129,8 +131,14 @@ export type Hint = {
     severity: 'warning' | 'info';
     connection: string;
     table: string;
+    columns?: string | null;
+    relation?: string | null;
     message: string;
+    // The hints.ignore rules that leave this hint out, from the narrowest to the widest.
+    ignore?: { hint: IgnoreRule; kindOnTable: IgnoreRule; table: IgnoreRule; kind: IgnoreRule };
 };
+
+export type IgnoreRule = Partial<Record<'connection' | 'table' | 'kind' | 'columns' | 'relation', string>>;
 
 export type SchemaDocument = {
     version: 1;

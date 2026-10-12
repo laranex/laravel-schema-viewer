@@ -8,11 +8,13 @@ use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Eloquent\Model;
+use InvalidArgumentException;
 use Laranex\LaravelSchemaViewer\Graph\SchemaGraph;
 use Laranex\LaravelSchemaViewer\Inspection\DatabaseInspector;
 use Laranex\LaravelSchemaViewer\Inspection\ModelFinder;
 use Laranex\LaravelSchemaViewer\Inspection\ModelInspector;
 use Laranex\LaravelSchemaViewer\Inspection\RelationResolver;
+use Laranex\LaravelSchemaViewer\Schema\IgnoreRule;
 use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 
 /**
@@ -50,13 +52,13 @@ class SchemaViewer
     ];
 
     /**
-     * Tables that well-known packages create and own, keyed by a class each package ships. Tagged as framework tables
-     * while the package is installed, so their by-design gaps (Passport's tokens have no foreign keys) give no hints.
+     * Tables that well-known packages create, by package name: the class that tells the package is installed, and the
+     * table patterns. They are tagged with the package, so the viewer can show or hide them with one toggle.
      */
     private const PACKAGE_TABLES = [
-        'Laravel\\Passport\\Passport' => ['oauth_*'],
-        'Spatie\\Permission\\PermissionRegistrar' => ['permissions', 'roles', 'model_has_permissions', 'model_has_roles', 'role_has_permissions'],
-        'Jeffgreco13\\FilamentBreezy\\FilamentBreezyServiceProvider' => ['breezy_*'],
+        'laravel/passport' => ['Laravel\\Passport\\Passport', ['oauth_*']],
+        'spatie/laravel-permission' => ['Spatie\\Permission\\PermissionRegistrar', ['permissions', 'roles', 'model_has_permissions', 'model_has_roles', 'role_has_permissions']],
+        'jeffgreco13/filament-breezy' => ['Jeffgreco13\\FilamentBreezy\\FilamentBreezyServiceProvider', ['breezy_*']],
     ];
 
     public function __construct(
@@ -86,11 +88,11 @@ class SchemaViewer
         }
 
         $connections = array_map(
-            fn (string $name) => $this->database->inspect($name, $this->strings('schema-viewer.exclude_tables'), $this->frameworkTables()),
+            fn (string $name) => $this->database->inspect($name, $this->strings('schema-viewer.exclude_tables'), $this->strings('schema-viewer.framework_tables'), $this->packageTables()),
             $this->connectionNames($models),
         );
 
-        return $this->graph->build($connections, $models, $relations, $unresolved, $this->strings('schema-viewer.hints.ignore'));
+        return $this->graph->build($connections, $models, $relations, $unresolved, $this->ignoreRules());
     }
 
     /**
@@ -159,31 +161,47 @@ class SchemaViewer
     }
 
     /**
-     * The configured framework tables, plus the tables of the installed packages unless package_tables is false.
+     * The hints.ignore rules.
      *
-     * @return list<string>
+     * @return list<IgnoreRule>
+     *
+     * @throws InvalidArgumentException When a rule names an unknown field or kind.
      */
-    public function frameworkTables(): array
+    public function ignoreRules(): array
     {
-        $tables = $this->strings('schema-viewer.framework_tables');
+        $rules = $this->config->get('schema-viewer.hints.ignore', []);
 
-        if ($this->config->get('schema-viewer.package_tables', true) === false) {
-            return $tables;
+        if (! is_array($rules)) {
+            throw new InvalidArgumentException('schema-viewer.hints.ignore must be a list of rules.');
         }
 
-        foreach (self::PACKAGE_TABLES as $class => $names) {
+        return array_values(array_map(IgnoreRule::fromConfig(...), $rules));
+    }
+
+    /**
+     * The table patterns of the installed packages, by package name; none when package_tables is false.
+     *
+     * @return array<string, list<string>>
+     */
+    public function packageTables(): array
+    {
+        if ($this->config->get('schema-viewer.package_tables', true) === false) {
+            return [];
+        }
+
+        $tables = [];
+
+        foreach (self::PACKAGE_TABLES as $package => [$class, $names]) {
             if (! $this->installed($class)) {
                 continue;
             }
 
             // spatie/laravel-permission lets the application rename its tables.
-            $renamed = $class === 'Spatie\\Permission\\PermissionRegistrar' ? $this->config->get('permission.table_names') : null;
-            $names = is_array($renamed) && $renamed !== [] ? array_values(array_map('strval', $renamed)) : $names;
-
-            array_push($tables, ...$names);
+            $renamed = $package === 'spatie/laravel-permission' ? $this->config->get('permission.table_names') : null;
+            $tables[$package] = is_array($renamed) && $renamed !== [] ? array_values(array_map('strval', $renamed)) : $names;
         }
 
-        return array_values(array_unique($tables));
+        return $tables;
     }
 
     /**

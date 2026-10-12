@@ -10,6 +10,7 @@ use Laranex\LaravelSchemaViewer\Schema\DerivedLink;
 use Laranex\LaravelSchemaViewer\Schema\Endpoint;
 use Laranex\LaravelSchemaViewer\Schema\Hint;
 use Laranex\LaravelSchemaViewer\Schema\HintKind;
+use Laranex\LaravelSchemaViewer\Schema\IgnoreRule;
 use Laranex\LaravelSchemaViewer\Schema\Link;
 use Laranex\LaravelSchemaViewer\Schema\LinkState;
 use Laranex\LaravelSchemaViewer\Schema\ModelInfo;
@@ -27,9 +28,9 @@ final class SchemaGraph
      * @param  list<ModelInfo>  $models
      * @param  list<RelationInfo>  $relations
      * @param  list<UnresolvedRelation>  $unresolved
-     * @param  list<string>  $ignoredHints  Hint kinds, or kind:table pairs, to leave out.
+     * @param  list<IgnoreRule>  $ignore  Hints to leave out.
      */
-    public function build(array $connections, array $models, array $relations, array $unresolved, array $ignoredHints = [], ?string $generatedAt = null): SchemaDocument
+    public function build(array $connections, array $models, array $relations, array $unresolved, array $ignore = [], ?string $generatedAt = null): SchemaDocument
     {
         $this->pairInverses($relations);
 
@@ -93,8 +94,15 @@ final class SchemaGraph
 
         $hints = array_values(array_filter(
             $this->hints($connections, $models, $relations, $unresolved, $built),
-            fn (Hint $hint): bool => ! in_array($hint->kind->value, $ignoredHints, true)
-                && ! in_array($hint->kind->value.':'.$hint->table, $ignoredHints, true),
+            function (Hint $hint) use ($ignore): bool {
+                foreach ($ignore as $rule) {
+                    if ($rule->matches($hint)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            },
         ));
 
         return new SchemaDocument(
@@ -225,7 +233,7 @@ final class SchemaGraph
                         $hints[] = new Hint(HintKind::ForeignKeyWithoutIndex, $connection->name, $table->name, sprintf(
                             '%s.%s has a foreign key but no index that starts with it, so deleting or updating %s row scans the whole table.',
                             $table->name, implode(', ', $fk->columns), $this->article(Str::singular($fk->foreignTable)),
-                        ));
+                        ), implode(',', $fk->columns));
                     }
                 }
             }
@@ -244,7 +252,7 @@ final class SchemaGraph
                 $hints[] = new Hint(HintKind::ForeignKeyWithoutRelation, $link->from->connection, $link->from->table, sprintf(
                     '%s links %s to %s, but no model declares a relation for it.',
                     $link->foreignKey, $link->from->table, $link->to->table,
-                ));
+                ), implode(',', $link->from->columns));
             }
         }
 
@@ -279,7 +287,7 @@ final class SchemaGraph
             $hints[] = new Hint(HintKind::MorphWithoutMap, $connection, $table, sprintf(
                 '%s.%s stores class names such as %s, so renaming a model breaks existing rows. Map them with Relation::enforceMorphMap().',
                 $table, $column, $class,
-            ));
+            ), $column);
         }
 
         foreach ($unresolved as $failure) {
@@ -288,11 +296,11 @@ final class SchemaGraph
                 ? new Hint(HintKind::UnresolvedRelation, $model->connection ?? '', $model->table ?? '', sprintf(
                     '%s::%s() could not be read (the viewer calls it on a blank model, with no row loaded): %s',
                     $failure->model, $failure->method, $failure->reason,
-                ))
+                ), relation: $failure->model.'::'.$failure->method)
                 : new Hint(HintKind::UnresolvedPackageRelation, $model->connection ?? '', $model->table ?? '', sprintf(
                     '%s::%s() comes from %s and could not be read (the viewer calls it on a blank model, with no row loaded), which is common for package relations that need one: %s',
                     $failure->model, $failure->method, $failure->package, $failure->reason,
-                ));
+                ), relation: $failure->model.'::'.$failure->method);
         }
 
         return $hints;
@@ -329,21 +337,21 @@ final class SchemaGraph
             return new Hint(HintKind::CustomRelation, $link->from->connection, $link->from->table, sprintf(
                 '%s %s %s, so matching %s is only part of the link. Custom query, foreign key not checked.',
                 $labels, count($link->relations) > 1 ? 'join' : 'joins', implode(', ', array_unique($joins)), $columns,
-            ));
+            ), implode(',', $link->from->columns));
         }
 
         if ($target !== null && ! $target->isUnique($link->to->columns)) {
             return new Hint(HintKind::CustomRelation, $link->from->connection, $link->from->table, sprintf(
                 '%s %s %s, which is not a unique key, so no foreign key can back it. Custom keys, foreign key not checked.',
                 $labels, count($link->relations) > 1 ? 'match' : 'matches', $columns,
-            ));
+            ), implode(',', $link->from->columns));
         }
 
         return new Hint(HintKind::RelationWithoutForeignKey, $link->from->connection, $link->from->table, sprintf(
             '%s %s %s.%s, which has no foreign key to %s, so rows can point to %s that no longer exists.',
             $labels, count($link->relations) > 1 ? 'use' : 'uses',
             $link->from->table, implode(', ', $link->from->columns), $link->to->table, $this->article(Str::singular($link->to->table)),
-        ));
+        ), implode(',', $link->from->columns));
     }
 
     /**

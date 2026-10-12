@@ -31,8 +31,9 @@ Every setting has a default, so most apps configure nothing. Publish `config/sch
 - `default_connection` (`SCHEMA_VIEWER_DEFAULT_CONNECTION`): what the viewer opens on, `all` (every connection on one diagram) or one connection's name.
 - `editor` (`SCHEMA_VIEWER_EDITOR`): `phpstorm`, `vscode`, `cursor`, `zed` or another name Laravel's `app.editor` takes, or `['href' => '…{file}…{line}']`, plus `base_path` when the editor sees the project elsewhere (Docker, WSL); null uses `app.editor`. Models and relations in the viewer then open at their line.
 - `models`: folders scanned for models; null scans `app/Models`.
-- `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed. `package_tables` (default `true`) adds the tables of installed Passport, spatie/laravel-permission and Filament Breezy.
-- `hints.ignore` (kinds or `kind:table` pairs) and `hints.fail_on` (kinds that fail `schema-viewer:check`).
+- `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed. `package_tables` (default `true`) tags the tables of installed Passport, spatie/laravel-permission and Filament Breezy with their package; they still get hints.
+- `hints.ignore`: a list of rules; a hint is left out when it matches every field a rule names (`connection` and `table` take wildcards, plus `kind`, `columns`, `relation`), e.g. `['kind' => 'morph_without_map']`, `['connection' => 'mysql', 'table' => 'audit_logs']`, `['table' => 'oauth_*']`, `['connection' => 'mysql', 'table' => 'comments', 'kind' => 'relation_without_foreign_key', 'columns' => 'user_id']`. Each hint in the JSON export carries its rules in `ignore` (`hint`, `kindOnTable`, `table`, `kind`), and `schema-viewer:check` prints the narrowest one; copy those rather than writing rules by hand. Unknown fields or kinds are rejected.
+- `hints.fail_on`: kinds that fail `schema-viewer:check`.
 
 Outside `local`, the viewer needs a gate:
 

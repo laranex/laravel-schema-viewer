@@ -24,6 +24,7 @@ final class Table implements JsonSerializable
         public readonly array $columns,
         public readonly array $indexes,
         public readonly array $foreignKeys,
+        public readonly ?string $package = null,
     ) {}
 
     public function hasColumn(string $name): bool
@@ -70,7 +71,7 @@ final class Table implements JsonSerializable
     }
 
     /**
-     * @return array{name: string, comment: string|null, framework: bool, columns: list<Column>, indexes: list<Index>, foreignKeys: list<ForeignKey>}
+     * @return array{name: string, comment: string|null, framework: bool, package: string|null, columns: list<Column>, indexes: list<Index>, foreignKeys: list<ForeignKey>}
      */
     public function jsonSerialize(): array
     {
@@ -78,6 +79,7 @@ final class Table implements JsonSerializable
             'name' => $this->name,
             'comment' => $this->comment,
             'framework' => $this->framework,
+            'package' => $this->package,
             'columns' => $this->columns,
             'indexes' => $this->indexes,
             'foreignKeys' => $this->foreignKeys,

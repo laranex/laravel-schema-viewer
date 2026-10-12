@@ -89,8 +89,9 @@ return [
     | so the viewer can hide them with one toggle, and get no hints since you
     | do not own their schema. Both accept wildcards.
     |
-    | Package tables adds the tables of installed packages that own their
-    | schema: Passport (oauth_*), spatie/laravel-permission and Breezy.
+    | Package tables tags the tables of installed packages (Passport's
+    | oauth_*, spatie/laravel-permission, Filament Breezy) with the package,
+    | so the viewer can hide them with one toggle. They still get hints.
     |
     */
 
@@ -109,7 +110,20 @@ return [
     | Hints
     |--------------------------------------------------------------------------
     |
-    | Ignore takes hint kinds, or kind:table pairs, that you have accepted.
+    | Ignore lists the hints you have accepted. A hint is left out when it
+    | matches every field a rule names; a field left out matches anything.
+    | Fields: connection, table (both take wildcards), kind, columns and
+    | relation. Each hint in the viewer and in schema-viewer:check shows the
+    | rule that ignores it, ready to copy:
+    |
+    |   ['kind' => 'morph_without_map']                     a kind, everywhere
+    |   ['connection' => 'legacy']                          a connection
+    |   ['connection' => 'mysql', 'table' => 'audit_logs']  a table
+    |   ['table' => 'oauth_*']                              tables, by wildcard
+    |   ['connection' => 'mysql', 'table' => 'comments',
+    |    'kind' => 'relation_without_foreign_key', 'columns' => 'user_id']
+    |                                                       one hint
+    |
     | schema-viewer:check exits non-zero when a hint of a fail_on kind remains.
     |
     | Kinds: relation_without_foreign_key, foreign_key_without_relation,

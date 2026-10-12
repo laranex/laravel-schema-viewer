@@ -117,15 +117,21 @@ it('rejects an unknown format or connection', function (): void {
 
 it('fails the check on the configured hint kinds', function (): void {
     $this->artisan('schema-viewer:check')
-        ->expectsOutputToContain('model_without_table')
+        ->expectsOutputToContain("'table' => 'ghosts', 'kind' => 'model_without_table'")
         ->assertFailed();
 });
 
 it('passes the check when only other kinds remain', function (): void {
     $this->artisan('schema-viewer:check', ['--fail-on' => ['relation_without_foreign_key']])->assertFailed();
 
-    config()->set('schema-viewer.hints.ignore', ['relation_without_foreign_key', 'model_without_table', 'unresolved_relation', 'foreign_key_without_index']);
+    config()->set('schema-viewer.hints.ignore', [['kind' => 'relation_without_foreign_key'], ['kind' => 'model_without_table'], ['kind' => 'unresolved_relation'], ['kind' => 'foreign_key_without_index']]);
 
     $this->artisan('schema-viewer:check')->assertSuccessful();
     $this->artisan('schema-viewer:check', ['--fail-on' => ['made_up']])->assertExitCode(2);
+
+    config()->set('schema-viewer.hints.ignore', [['tabel' => 'posts']]);
+
+    $this->artisan('schema-viewer:check')
+        ->expectsOutputToContain('Unknown hints.ignore field [tabel]')
+        ->assertExitCode(2);
 });

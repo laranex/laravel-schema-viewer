@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { relationKind, relationLabel, shortClass, type Schema } from '../graph';
 import { Tab, TabList, TabPanel, Tabs, Tooltip } from './ui';
-import type { Hint, Relation, Source } from '../types';
+import type { Hint, IgnoreRule, Relation, Source } from '../types';
 
 type Props = {
     schema: Schema;
@@ -122,6 +122,78 @@ export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, s
     );
 }
 
+const KIND_LABEL: Record<Hint['kind'], string> = {
+    relation_without_foreign_key: 'relation without FK',
+    foreign_key_without_relation: 'FK without relation',
+    foreign_key_without_index: 'FK without index',
+    model_without_table: 'model without table',
+    morph_without_map: 'morph without map',
+    unresolved_relation: 'unresolved relation',
+    unresolved_package_relation: 'package relation',
+    custom_relation: 'custom relation',
+};
+
+// A rule as the PHP array to paste into hints.ignore in config/schema-viewer.php.
+function php(rule: IgnoreRule): string {
+    const quote = (value: string) => `'${value.replace(/'/g, "\\'")}'`;
+    return `[${Object.entries(rule)
+        .map(([field, value]) => `${quote(field)} => ${quote(value ?? '')}`)
+        .join(', ')}],`;
+}
+
+// The hints.ignore rules that leave a hint out, each ready to copy.
+function IgnoreRules({ hint }: { hint: Hint }) {
+    const [copied, setCopied] = useState<string | null>(null);
+    if (!hint.ignore) {
+        return null;
+    }
+    const { ignore } = hint;
+    const rows: [string, string, IgnoreRule][] = [
+        ['hint', 'Only this hint', ignore.hint],
+        ['kindOnTable', `Every ${KIND_LABEL[hint.kind]} hint on ${hint.table}`, ignore.kindOnTable],
+        ['table', `Every hint on ${hint.table}`, ignore.table],
+        ['kind', `Every ${KIND_LABEL[hint.kind]} hint`, ignore.kind],
+    ];
+    const seen = new Set<string>();
+    const unique = rows.filter(([, , rule]) => {
+        const code = php(rule);
+        return seen.has(code) ? false : (seen.add(code), true);
+    });
+    const copy = (key: string, code: string) => {
+        navigator.clipboard?.writeText(code).then(
+            () => {
+                setCopied(key);
+                window.setTimeout(() => setCopied((current) => (current === key ? null : current)), 1500);
+            },
+            () => setCopied(null),
+        );
+    };
+    return (
+        <details className="ignore">
+            <summary>Ignore…</summary>
+            <p className="ignore__help">
+                Add a rule to <code>hints.ignore</code> in <code>config/schema-viewer.php</code>:
+            </p>
+            <ul className="ignore__rules">
+                {unique.map(([key, label, rule]) => {
+                    const code = php(rule);
+                    return (
+                        <li key={key}>
+                            <span className="ignore__label">{label}</span>
+                            <span className="ignore__row">
+                                <code>{code}</code>
+                                <button type="button" className="button button--small" onClick={() => copy(key, code)} aria-label={`Copy the rule: ${label}`}>
+                                    {copied === key ? 'Copied' : 'Copy'}
+                                </button>
+                            </span>
+                        </li>
+                    );
+                })}
+            </ul>
+        </details>
+    );
+}
+
 function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean; onOpen: (connection: string, table: string) => void }) {
     if (!hints.length) {
         return <p className="panel__empty">{several ? 'No hints on any connection.' : 'No hints on this connection.'}</p>;
@@ -135,9 +207,12 @@ function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean;
                         <span className="hint__title">{HINT_TITLE[h.kind]}</span>
                     </div>
                     <p>{h.message}</p>
-                    <button type="button" className="link-button" onClick={() => onOpen(h.connection, h.table)}>
-                        Show {several ? `${h.connection}.${h.table}` : h.table}
-                    </button>
+                    <div className="hint__actions">
+                        <button type="button" className="link-button" onClick={() => onOpen(h.connection, h.table)}>
+                            Show {several ? `${h.connection}.${h.table}` : h.table}
+                        </button>
+                        <IgnoreRules hint={h} />
+                    </div>
                 </li>
             ))}
         </ul>
@@ -170,7 +245,7 @@ function TableDetails({ schema, connection, name, onOpen, editor, focused, onFoc
             <header className="details__head">
                 <h2>{table.name}</h2>
                 <p className="details__sub">
-                    {connection} · {table.columns.length} columns{table.framework ? ' · framework table' : ''}
+                    {connection} · {table.columns.length} columns{table.framework ? ' · framework table' : ''}{table.package ? ` · from ${table.package}` : ''}
                 </p>
                 {table.comment && <p className="details__comment">{table.comment}</p>}
                 <div className="chips">
@@ -205,6 +280,7 @@ function TableDetails({ schema, connection, name, onOpen, editor, focused, onFoc
             {hints.map((h, i) => (
                 <div key={i} className={`callout callout--${h.severity}`}>
                     <strong>{HINT_TITLE[h.kind]}.</strong> {h.message}
+                    <IgnoreRules hint={h} />
                 </div>
             ))}
 

@@ -2289,3 +2289,73 @@ a.source--link:focus-visible .ui-icon {
         flex-basis: 0;
     }
 }
+
+/* Ignore rules under a hint */
+
+.hint__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px 16px;
+}
+
+.ignore {
+    font-size: var(--text-sm);
+    min-width: 0;
+}
+
+.hint__actions .ignore[open] {
+    flex-basis: 100%;
+}
+
+.callout .ignore {
+    margin-top: 6px;
+}
+
+.ignore > summary {
+    cursor: pointer;
+    color: var(--muted);
+    width: fit-content;
+}
+
+.ignore > summary:hover {
+    color: var(--fg);
+}
+
+.ignore__help {
+    margin: 6px 0;
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.ignore__rules {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.ignore__label {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--muted);
+    margin-bottom: 2px;
+}
+
+.ignore__row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.ignore__row code {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+}

@@ -23,8 +23,9 @@ final class DatabaseInspector
     /**
      * @param  list<string>  $exclude  Table name patterns never shown.
      * @param  list<string>  $framework  Table name patterns tagged as framework tables.
+     * @param  array<string, list<string>>  $packages  Table name patterns tagged with the package that owns them, by package name.
      */
-    public function inspect(string $name, array $exclude = [], array $framework = []): ConnectionSchema
+    public function inspect(string $name, array $exclude = [], array $framework = [], array $packages = []): ConnectionSchema
     {
         /** @var Connection $connection */
         $connection = $this->connections->connection($name);
@@ -60,12 +61,27 @@ final class DatabaseInspector
                 columns: $this->columns($builder->getColumns($qualified)),
                 indexes: $this->indexes($builder->getIndexes($qualified)),
                 foreignKeys: $this->foreignKeys($qualified, $builder->getForeignKeys($qualified), $prefix, is_string($defaultSchema) ? $defaultSchema : null),
+                package: $this->package($qualified, $packages),
             );
         }
 
         usort($tables, fn (Table $a, Table $b): int => strcmp($a->name, $b->name));
 
         return new ConnectionSchema($name, $connection->getDriverName(), $tables);
+    }
+
+    /**
+     * @param  array<string, list<string>>  $packages
+     */
+    private function package(string $table, array $packages): ?string
+    {
+        foreach ($packages as $package => $patterns) {
+            if (Str::is($patterns, $table)) {
+                return $package;
+            }
+        }
+
+        return null;
     }
 
     /**

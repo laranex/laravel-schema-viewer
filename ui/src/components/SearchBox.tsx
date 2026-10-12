@@ -125,7 +125,7 @@ export function SearchBox({ schema, tables, multiple, query, onQuery, onPick, in
                             <span className="search__name">{r.table.name}</span>
                             <span className="search__meta">
                                 {multiple && `${r.connection} · `}
-                                {r.models.length ? r.models.join(', ') : r.table.framework ? 'framework table' : 'no model'}
+                                {r.models.length ? r.models.join(', ') : r.table.framework ? 'framework table' : (r.table.package ?? 'no model')}
                                 {r.reason && <span className="search__reason"> · {r.reason}</span>}
                             </span>
                         </li>

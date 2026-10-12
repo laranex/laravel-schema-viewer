@@ -142,8 +142,8 @@ it('puts "a" or "an" before a row by how its table sounds', function (): void {
     );
 });
 
-it('tags the tables of installed packages as framework tables, so they get no hints', function (): void {
-    expect(app(SchemaViewer::class)->frameworkTables())->not->toContain('oauth_*', 'roles');
+it('tags the tables of installed packages with the package, and still gives them hints', function (): void {
+    expect(app(SchemaViewer::class)->packageTables())->toBe([]);
 
     if (! class_exists('Laravel\\Passport\\Passport')) {
         eval('namespace Laravel\\Passport; class Passport {}');
@@ -155,24 +155,73 @@ it('tags the tables of installed packages as framework tables, so they get no hi
 
     config()->set('permission.table_names', ['roles' => 'roles', 'permissions' => 'permissions']);
 
-    expect(app(SchemaViewer::class)->frameworkTables())->toContain('oauth_*', 'roles', 'permissions')
-        ->not->toContain('model_has_roles')
-        ->and(collect(schemaDocument()->connections[0]->tables)->firstWhere('name', 'roles')?->framework)->toBeTrue();
+    expect(app(SchemaViewer::class)->packageTables())->toBe([
+        'laravel/passport' => ['oauth_*'],
+        'spatie/laravel-permission' => ['roles', 'permissions'],
+    ]);
+
+    $document = schemaDocument();
+    $roles = collect($document->connections[0]->tables)->firstWhere('name', 'roles');
+
+    expect($roles?->package)->toBe('spatie/laravel-permission')
+        ->and($roles?->framework)->toBeFalse()
+        ->and($roles?->jsonSerialize()['package'])->toBe('spatie/laravel-permission')
+        ->and(collect($document->connections[0]->tables)->firstWhere('name', 'posts')?->package)->toBeNull();
 
     config()->set('schema-viewer.package_tables', false);
 
-    expect(app(SchemaViewer::class)->frameworkTables())->not->toContain('oauth_*');
+    expect(app(SchemaViewer::class)->packageTables())->toBe([]);
 });
 
-it('leaves out ignored hints', function (): void {
-    config()->set('schema-viewer.hints.ignore', ['morph_without_map', 'model_without_table:ghosts']);
+it('gives each hint the hints.ignore rules that leave it out, narrowest first', function (): void {
+    $hints = collect(schemaDocument()->hints);
+    $category = $hints->first(fn (Hint $hint): bool => $hint->kind === HintKind::RelationWithoutForeignKey);
+    $broken = $hints->first(fn (Hint $hint): bool => $hint->kind === HintKind::UnresolvedRelation);
+    $ghost = $hints->first(fn (Hint $hint): bool => $hint->kind === HintKind::ModelWithoutTable);
 
-    $document = schemaDocument();
-
-    expect(hintsOf($document, HintKind::MorphWithoutMap))->toBe([])
-        ->and(hintsOf($document, HintKind::ModelWithoutTable))->toBe([])
-        ->and(hintsOf($document, HintKind::RelationWithoutForeignKey))->toBe(['posts']);
+    expect($category?->jsonSerialize()['ignore'])->toBe([
+        'hint' => ['connection' => 'testing', 'table' => 'posts', 'kind' => 'relation_without_foreign_key', 'columns' => 'category_id'],
+        'kindOnTable' => ['connection' => 'testing', 'table' => 'posts', 'kind' => 'relation_without_foreign_key'],
+        'table' => ['connection' => 'testing', 'table' => 'posts'],
+        'kind' => ['kind' => 'relation_without_foreign_key'],
+    ])
+        ->and($broken?->ignoreRules()['hint'])->toBe(['kind' => 'unresolved_relation', 'relation' => Models\Post::class.'::broken'])
+        ->and($ghost?->ignoreRules()['hint'])->toBe(['connection' => 'testing', 'table' => 'ghosts', 'kind' => 'model_without_table']);
 });
+
+it('leaves out the hints that match every field of an ignore rule', function (): void {
+    Models\Post::resolveRelationUsing('editor', fn (Models\Post $post) => $post->belongsTo(Models\User::class, 'status'));
+    $columns = fn (): array => collect(schemaDocument()->hints)->where('kind', HintKind::RelationWithoutForeignKey)->pluck('columns')->all();
+
+    expect($columns())->toBe(['category_id', 'status']);
+
+    config()->set('schema-viewer.hints.ignore', [['connection' => 'testing', 'table' => 'posts', 'kind' => 'relation_without_foreign_key', 'columns' => 'category_id']]);
+    expect($columns())->toBe(['status']);
+
+    config()->set('schema-viewer.hints.ignore', [['kind' => 'relation_without_foreign_key', 'columns' => 'category_id', 'connection' => 'other']]);
+    expect($columns())->toBe(['category_id', 'status']);
+
+    config()->set('schema-viewer.hints.ignore', [['kind' => 'unresolved_relation', 'relation' => '\\'.Models\Post::class.'::broken']]);
+    expect(hintsOf(schemaDocument(), HintKind::UnresolvedRelation))->toBe([]);
+
+    config()->set('schema-viewer.hints.ignore', [['table' => 'p*'], ['connection' => 'testing', 'table' => 'comments']]);
+    $tables = collect(schemaDocument()->hints)->pluck('table');
+    expect($tables)->not->toContain('posts')->not->toContain('comments')->toContain('ghosts');
+
+    config()->set('schema-viewer.hints.ignore', [['connection' => 'test*']]);
+    expect(schemaDocument()->hints)->toBe([]);
+});
+
+it('refuses an ignore rule with an unknown field or kind', function (mixed $rule, string $message): void {
+    config()->set('schema-viewer.hints.ignore', [$rule]);
+
+    expect(fn () => schemaDocument())->toThrow(InvalidArgumentException::class, $message);
+})->with([
+    'a string' => ['morph_without_map', 'got "morph_without_map"'],
+    'an unknown field' => [['tabel' => 'posts'], 'Unknown hints.ignore field [tabel]'],
+    'an unknown kind' => [['kind' => 'morph_map'], 'Unknown hint kind [morph_map]'],
+    'an empty value' => [['table' => ''], 'must be a non-empty string'],
+]);
 
 it('describes the models', function (): void {
     $models = collect(schemaDocument()->models)->keyBy('class');

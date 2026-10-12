@@ -1,4 +1,4 @@
-import type { Column, ForeignKey, Index, Link, Model, Relation, SchemaDocument, Table } from '../types';
+import type { Column, ForeignKey, Hint, Index, Link, Model, Relation, SchemaDocument, Table } from '../types';
 
 // Example data for the prototype: a blog app on PostgreSQL plus an analytics database.
 
@@ -144,6 +144,10 @@ const pgsqlTables: Table[] = [
         true,
     ),
     table('migrations', [col('id', 'integer', { autoIncrement: true }), col('migration', 'varchar(255)'), col('batch', 'integer')], [primary('migrations')], [], true),
+    {
+        ...table('oauth_access_tokens', [col('id', 'varchar(100)'), col('user_id', 'bigint', { nullable: true }), col('client_id', 'uuid'), col('revoked', 'boolean')], [primary('oauth_access_tokens')]),
+        package: 'laravel/passport',
+    },
 ];
 
 const analyticsTables: Table[] = [
@@ -303,12 +307,13 @@ export const schema: SchemaDocument = {
     relations,
     links,
     derivedLinks: [{ id: 'd1', connection: 'pgsql', from: 'countries', to: 'posts', via: ['users'], relation: 'App\\Models\\Country::posts' }],
-    hints: [
+    hints: ([
         {
             kind: 'relation_without_foreign_key',
             severity: 'warning',
             connection: 'pgsql',
             table: 'posts',
+            columns: 'category_id',
             message: 'Post::category uses posts.category_id, which has no foreign key, so a post can point to a deleted category.',
         },
         {
@@ -323,6 +328,7 @@ export const schema: SchemaDocument = {
             severity: 'warning',
             connection: 'pgsql',
             table: 'role_user',
+            columns: 'role_id',
             message: 'role_user.role_id has a foreign key but no index that starts with it. PostgreSQL does not add one, so deleting a role scans the whole table.',
         },
         {
@@ -337,6 +343,7 @@ export const schema: SchemaDocument = {
             severity: 'warning',
             connection: 'pgsql',
             table: 'posts',
+            relation: 'App\\Models\\Post::legacyAuthor',
             message: 'Post::legacyAuthor() could not be resolved: Call to undefined method App\\Models\\Post::legacyUser().',
         },
         {
@@ -346,5 +353,20 @@ export const schema: SchemaDocument = {
             table: 'events',
             message: 'Event::user points to pgsql.users on another connection, so it can never have a foreign key.',
         },
-    ],
+    ] as Hint[]).map(withIgnore),
 };
+
+// The rules the server sends with each hint.
+function withIgnore(hint: Hint): Hint {
+    const table = { connection: hint.connection, table: hint.table };
+    const kindOnTable = { ...table, kind: hint.kind };
+    return {
+        ...hint,
+        ignore: {
+            hint: hint.relation ? { kind: hint.kind, relation: hint.relation } : hint.columns ? { ...kindOnTable, columns: hint.columns } : kindOnTable,
+            kindOnTable,
+            table,
+            kind: { kind: hint.kind },
+        },
+    };
+}

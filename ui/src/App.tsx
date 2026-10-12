@@ -34,7 +34,7 @@ type TableRef = { connection: string; table: string };
 // The connection picker's value for every connection at once.
 const ALL = '*';
 
-type Layers = Record<EdgeKind, boolean> & { framework: boolean; allLabels: boolean };
+type Layers = Record<EdgeKind, boolean> & { framework: boolean; package: boolean; allLabels: boolean };
 
 const nodeTypes = { table: TableNodeView, external: ExternalNodeView, region: RegionNodeView };
 const edgeTypes = { link: LinkEdgeView };
@@ -152,7 +152,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const connection = selected?.connection ?? scopeConnections[0];
     const [tab, setTab] = useState<'table' | 'hints'>('table');
     const [query, setQuery] = useState('');
-    const [layers, setLayers] = useState<Layers>({ both: true, relation: true, foreign_key: true, through: true, framework: true, allLabels: true });
+    const [layers, setLayers] = useState<Layers>({ both: true, relation: true, foreign_key: true, through: true, framework: true, package: true, allLabels: true });
     const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
     const [toast, setToast] = useState<string | null>(null);
     const [layoutVersion, setLayoutVersion] = useState(0);
@@ -235,8 +235,19 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
 
     // Every table in view, with its connection.
     const visibleTables = useMemo(
-        () => scopeConnections.flatMap((c) => schema.tables(c).filter((t) => layers.framework || !t.framework).map((table) => ({ connection: c, table }))),
-        [schema, scopeConnections, layers.framework],
+        () =>
+            scopeConnections.flatMap((c) =>
+                schema
+                    .tables(c)
+                    .filter((t) => (layers.framework || !t.framework) && (layers.package || !t.package))
+                    .map((table) => ({ connection: c, table })),
+            ),
+        [schema, scopeConnections, layers.framework, layers.package],
+    );
+    // The Package tables toggle only shows when a package owns tables here.
+    const layerToggles = useMemo(
+        () => (scopeConnections.some((c) => schema.tables(c).some((t) => t.package)) ? LAYER_TOGGLES : LAYER_TOGGLES.filter((t) => t.key !== 'package')),
+        [schema, scopeConnections],
     );
     const tablesById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), e])), [visibleTables]);
 
@@ -777,6 +788,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
             '-': () => flow.zoomOut({ duration: 150 }),
             l: () => toggle('allLabels'),
             g: () => toggle('framework'),
+            p: () => toggle('package'),
             '1': () => toggle('both'),
             '2': () => toggle('relation'),
             '3': () => toggle('foreign_key'),
@@ -848,7 +860,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                             }}
                             toggles={{
                                 label: 'Show',
-                                items: LAYER_TOGGLES.map((t) => ({
+                                items: layerToggles.map((t) => ({
                                     label: t.label,
                                     checked: layers[t.key],
                                     onChange: () => toggle(t.key),
@@ -912,7 +924,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
 
                 {!narrow && (
                     <div className="layers" role="group" aria-label="Show on the diagram" data-tour="layers">
-                        {LAYER_TOGGLES.map((t) => (
+                        {layerToggles.map((t) => (
                             <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} hotkey={t.hotkey} divider={t.key === 'framework'} />
                         ))}
                         <span className="layers__divider" aria-hidden="true" />
@@ -1126,6 +1138,7 @@ const LAYER_TOGGLES: { key: keyof Layers; label: string; swatch?: EdgeKind; hotk
     { key: 'foreign_key', label: 'FK only', swatch: 'foreign_key', hotkey: '3' },
     { key: 'through', label: 'Through', swatch: 'through', hotkey: '4' },
     { key: 'framework', label: 'Framework tables', hotkey: 'G' },
+    { key: 'package', label: 'Package tables', hotkey: 'P' },
     { key: 'allLabels', label: 'Relation names', hotkey: 'L' },
 ];
 
@@ -1160,6 +1173,7 @@ const SHORTCUTS: [string[], string][] = [
     [['L'], 'Show relation names on every edge, or only on the selected table'],
     [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
     [['G'], 'Show or hide framework tables'],
+    [['P'], 'Show or hide package tables, such as Passport\'s oauth_*'],
     [['T', 'H'], 'Open the Table or Hints tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
     [['Shift A'], 'Arrange tables automatically'],

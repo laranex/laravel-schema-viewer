@@ -6,7 +6,9 @@ namespace Laranex\LaravelSchemaViewer\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository as Config;
+use InvalidArgumentException;
 use Laranex\LaravelSchemaViewer\Schema\HintKind;
+use Laranex\LaravelSchemaViewer\Schema\IgnoreRule;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 
 final class CheckCommand extends Command
@@ -31,6 +33,14 @@ final class CheckCommand extends Command
             return self::INVALID;
         }
 
+        try {
+            $viewer->ignoreRules();
+        } catch (InvalidArgumentException $e) {
+            $this->components->error($e->getMessage());
+
+            return self::INVALID;
+        }
+
         $hints = $viewer->document()->hints;
 
         if ($hints === []) {
@@ -49,8 +59,11 @@ final class CheckCommand extends Command
                 $hint->kind->value,
             );
             $this->line('  <fg=gray>'.$hint->message.'</>');
+            $this->line('  <fg=gray>Ignore it:</> '.IgnoreRule::php($hint->ignoreRules()['hint']).',');
         }
 
+        $this->newLine();
+        $this->line('  <fg=gray>To accept a hint, add its rule to hints.ignore in config/schema-viewer.php.</>');
         $this->newLine();
 
         if ($failing > 0) {
