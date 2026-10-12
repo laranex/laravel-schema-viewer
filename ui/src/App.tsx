@@ -67,8 +67,8 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
 
-    // One connection, or ALL to put every connection on the diagram.
-    const [scope, setScope] = useState(doc.connections[0].name);
+    // One connection, or ALL to put every connection on the diagram: the start when there is more than one.
+    const [scope, setScope] = useState(doc.connections.length > 1 ? ALL : doc.connections[0].name);
     const [selected, setSelected] = useState<TableRef | null>(null);
     const [pending, setPending] = useState<TableRef | null>(null);
     const scopeConnections = useMemo(() => (scope === ALL ? doc.connections.map((c) => c.name) : [scope]), [doc, scope]);
