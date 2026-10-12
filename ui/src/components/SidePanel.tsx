@@ -19,10 +19,11 @@ type Props = {
     // The table focus mode is on, if any.
     focused: { connection: string; table: string } | null;
     onFocus: (table: { connection: string; table: string }) => void;
+    onLeaveFocus: () => void;
     onCopyLink: () => void;
 };
 
-type TableProps = Pick<Props, 'schema' | 'onOpen' | 'editor' | 'focused' | 'onFocus' | 'onCopyLink'> & { connection: string; name: string };
+type TableProps = Pick<Props, 'schema' | 'onOpen' | 'editor' | 'focused' | 'onFocus' | 'onLeaveFocus' | 'onCopyLink'> & { connection: string; name: string };
 
 // Where a model or relation is declared: a link that opens the editor, or the path to copy when there is none.
 function SourceLink({ source, editor, children }: { source: Source | null | undefined; editor: string | null; children: ReactNode }) {
@@ -61,7 +62,7 @@ const HINT_TITLE: Record<Hint['kind'], string> = {
     custom_relation: 'Custom relation, foreign key not checked',
 };
 
-export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, onCopyLink }: Props) {
+export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, onLeaveFocus, onCopyLink }: Props) {
     const hints = connections.flatMap((c) => schema.hints(c));
     const models = selected ? schema.modelsFor(selected.connection, selected.table) : [];
 
@@ -108,6 +109,7 @@ export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, s
                             editor={editor}
                             focused={focused}
                             onFocus={onFocus}
+                            onLeaveFocus={onLeaveFocus}
                             onCopyLink={onCopyLink}
                         />
                     ) : (
@@ -219,7 +221,7 @@ function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean;
     );
 }
 
-function TableDetails({ schema, connection, name, onOpen, editor, focused, onFocus, onCopyLink }: TableProps) {
+function TableDetails({ schema, connection, name, onOpen, editor, focused, onFocus, onLeaveFocus, onCopyLink }: TableProps) {
     const table = schema.table(connection, name);
     if (!table) {
         return null;
@@ -261,7 +263,11 @@ function TableDetails({ schema, connection, name, onOpen, editor, focused, onFoc
                 </div>
                 <div className="details__actions">
                     {focused?.connection === connection && focused.table === name ? (
-                        <span className="badge badge--focus">In focus</span>
+                        <Tooltip content={<>Leave focus mode <kbd>Esc</kbd></>}>
+                            <button type="button" className="badge badge--focus" aria-pressed="true" onClick={onLeaveFocus}>
+                                In focus
+                            </button>
+                        </Tooltip>
                     ) : (
                         <Tooltip content={<>Show only this table and its neighbors <kbd>Shift F</kbd></>}>
                             <button type="button" className="button button--small" onClick={() => onFocus({ connection, table: name })}>

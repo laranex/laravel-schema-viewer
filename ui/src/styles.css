@@ -2207,6 +2207,16 @@ dl.shortcuts {
     font-weight: 600;
 }
 
+button.badge--focus {
+    border: 0;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+button.badge--focus:hover {
+    background: color-mix(in srgb, var(--accent-soft) 70%, var(--accent) 30%);
+}
+
 /* Models and relations open in the editor */
 
 .source {

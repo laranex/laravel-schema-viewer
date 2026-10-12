@@ -9,7 +9,7 @@ export type TourStep = {
     // The step explains something inside the ⋯ menu, which the tour opens for it: on every screen, or only on phones
     // (where the toolbar's controls move into the menu).
     menu?: 'always' | 'phone';
-    // A toolbar menu the tour opens for this step on wider screens, so the step can show what is inside it.
+    // A toolbar menu the tour opens beside the spotlighted button on wider screens, so the step shows what is inside it.
     opens?: 'download';
 };
 
@@ -84,6 +84,12 @@ const reveal = (el: Element | null) => {
     }
 };
 
+const union = (a: Rect, b: DOMRect): Rect => {
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
+    return { x, y, width: Math.max(a.x + a.width, b.right) - x, height: Math.max(a.y + a.height, b.bottom) - y };
+};
+
 // Where the card goes: below, above, right or left of the spotlight, whichever fits first; clamped to the window.
 function placeCard(rect: Rect | null, card: { width: number; height: number }) {
     const vw = window.innerWidth;
@@ -126,6 +132,8 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
     );
     const [index, setIndex] = useState(0);
     const [rect, setRect] = useState<Rect | null>(null);
+    // The spotlight plus a menu the tour opened beside it: the card goes clear of both.
+    const [around, setAround] = useState<Rect | null>(null);
     const [card, setCard] = useState({ width: CARD_WIDTH, height: 180 });
     const cardRef = useRef<HTMLDivElement>(null);
     const nextRef = useRef<HTMLButtonElement>(null);
@@ -146,7 +154,11 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
         const update = () => {
             const el = find(step.target);
             const next = el ? rectOf(el) : null;
-            setRect((prev) => (prev && next && Math.abs(prev.x - next.x) + Math.abs(prev.y - next.y) + Math.abs(prev.width - next.width) + Math.abs(prev.height - next.height) < 1 ? prev : next));
+            const same = (prev: Rect | null, n: Rect | null) => (prev && n && Math.abs(prev.x - n.x) + Math.abs(prev.y - n.y) + Math.abs(prev.width - n.width) + Math.abs(prev.height - n.height) < 1 ? prev : n);
+            setRect((prev) => same(prev, next));
+            const opened = step.opens ? document.querySelector(`[data-tour="${step.opens}-menu"]`) : null;
+            const wide = next && opened ? union(next, opened.getBoundingClientRect()) : null;
+            setAround((prev) => same(prev, wide));
             frame = window.requestAnimationFrame(update);
         };
         // A menu opened for this step renders a frame later, so look for the element again briefly.
@@ -203,7 +215,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
         return null;
     }
 
-    const position = placeCard(rect, card);
+    const position = placeCard(around ?? rect, card);
     const last = index === available.length - 1;
 
     return (

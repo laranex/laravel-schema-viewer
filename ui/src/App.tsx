@@ -1080,6 +1080,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                         editor={editor ?? null}
                         focused={focus}
                         onFocus={focusOn}
+                        onLeaveFocus={endFocus}
                         onCopyLink={copyLink}
                         connections={scopeConnections}
                         selected={selected}
