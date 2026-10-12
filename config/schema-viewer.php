@@ -44,6 +44,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default Connection
+    |--------------------------------------------------------------------------
+    |
+    | What the viewer opens on: 'all' puts every connection on one diagram,
+    | or name one connection, e.g. 'mysql'. An unknown name opens on all.
+    |
+    */
+
+    'default_connection' => env('SCHEMA_VIEWER_DEFAULT_CONNECTION', 'all'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Models
     |--------------------------------------------------------------------------
     |

@@ -17,6 +17,22 @@ it('is open in the local environment', function (): void {
         ->assertSee('/schema-viewer/api/schema', false);
 });
 
+it('tells the page which connection to open on', function (): void {
+    $config = function (): array {
+        preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', (string) $this->get('/schema-viewer')->getContent(), $match);
+
+        return json_decode($match[1], true);
+    };
+
+    expect($config()['defaultConnection'])->toBe('all');
+
+    config()->set('schema-viewer.default_connection', 'testing');
+    expect($config()['defaultConnection'])->toBe('testing');
+
+    config()->set('schema-viewer.default_connection', '');
+    expect($config()['defaultConnection'])->toBe('all');
+});
+
 it('is off outside the local environment unless enabled', function (): void {
     $this->rebootWith('production');
 

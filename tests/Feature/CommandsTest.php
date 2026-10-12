@@ -81,6 +81,7 @@ it('exports the viewer as one standalone HTML file that needs no server', functi
         ->and($html)->not->toContain('./assets/')
         ->and(substr_count(strtolower($html), '</script'))->toBe(2)
         ->and($config)->not->toHaveKey('schemaUrl')
+        ->and($config['defaultConnection'])->toBe('all')
         ->and($config['schema']['connections'][0]['name'])->toBe('testing')
         ->and($config['schema']['relations'])->not->toBeEmpty()
         ->and($config['downloads']['testing']['mermaid'])->toStartWith('erDiagram')
@@ -92,13 +93,15 @@ it('exports the viewer as one standalone HTML file that needs no server', functi
 });
 
 it('writes the standalone viewer to a named HTML file', function (): void {
+    config()->set('schema-viewer.default_connection', 'testing');
     $path = sys_get_temp_dir().'/schema-'.uniqid().'.html';
 
     $this->artisan('schema-viewer:export', ['--format' => 'html', '--output' => $path])
         ->expectsOutputToContain('Schema exported to')
         ->assertSuccessful();
 
-    expect((string) file_get_contents($path))->toContain('window.__SCHEMA_VIEWER__');
+    expect((string) file_get_contents($path))->toContain('window.__SCHEMA_VIEWER__')
+        ->toContain('"defaultConnection":"testing"');
     unlink($path);
 });
 

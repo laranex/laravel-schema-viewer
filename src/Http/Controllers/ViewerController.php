@@ -6,13 +6,14 @@ namespace Laranex\LaravelSchemaViewer\Http\Controllers;
 
 use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Http\Response;
+use Laranex\LaravelSchemaViewer\SchemaViewer;
 
 /**
  * The viewer page: the built app plus the URLs it talks to.
  */
 final class ViewerController
 {
-    public function __invoke(UrlGenerator $url): Response
+    public function __invoke(UrlGenerator $url, SchemaViewer $viewer): Response
     {
         $version = substr(hash('sha256', (string) @filemtime(__DIR__.'/../../../dist/app.js')), 0, 12);
         $asset = fn (string $file): string => $url->route('schema-viewer.asset', ['file' => $file]).'?v='.$version;
@@ -20,6 +21,7 @@ final class ViewerController
         $config = json_encode([
             'schemaUrl' => $url->route('schema-viewer.schema'),
             'exportUrl' => $url->route('schema-viewer.export'),
+            'defaultConnection' => $viewer->defaultConnection(),
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
 
         $css = htmlspecialchars($asset('app.css'), ENT_QUOTES);

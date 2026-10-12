@@ -15,7 +15,10 @@ final class HtmlExporter
 {
     public function __construct(private readonly string $dist = __DIR__.'/../../dist') {}
 
-    public function export(SchemaDocument $document): string
+    /**
+     * @param  string  $defaultConnection  What the viewer opens on: 'all' or one connection's name.
+     */
+    public function export(SchemaDocument $document, string $defaultConnection = 'all'): string
     {
         $downloads = [];
 
@@ -28,7 +31,7 @@ final class HtmlExporter
         }
 
         $config = json_encode(
-            ['schema' => $document, 'downloads' => $downloads],
+            ['schema' => $document, 'downloads' => $downloads, 'defaultConnection' => $defaultConnection],
             JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
 

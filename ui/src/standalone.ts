@@ -6,9 +6,9 @@ const FORMATS = ['mermaid', 'dbml', 'markdown'] as const;
 // The whole viewer as one HTML file: the same file `php artisan schema-viewer:export --format=html` writes (see
 // HtmlExporter), built from what this page already has. Its own script and stylesheet with the fonts inlined, the
 // schema it shows, and each connection's downloads, from the export URL or, in a static export, from the page itself.
-export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownloads | undefined, exportUrl: string | undefined): Promise<string> {
+export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownloads | undefined, exportUrl: string | undefined, defaultConnection = 'all'): Promise<string> {
     const [css, js, files] = await Promise.all([styles(), script(), downloads ?? fetchDownloads(doc, exportUrl)]);
-    const config = JSON.stringify({ schema: doc, downloads: files })
+    const config = JSON.stringify({ schema: doc, downloads: files, defaultConnection })
         .replace(/</g, '\\u003c')
         .replace(/>/g, '\\u003e')
         .replace(/&/g, '\\u0026')

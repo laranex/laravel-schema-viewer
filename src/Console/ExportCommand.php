@@ -44,7 +44,7 @@ final class ExportCommand extends Command
 
         $content = match ($format) {
             'json' => (string) json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n",
-            'html' => (new HtmlExporter)->export($document),
+            'html' => (new HtmlExporter)->export($document, $viewer->defaultConnection()),
             'mermaid' => (new MermaidExporter)->export($connection),
             'dbml' => (new DbmlExporter)->export($connection),
             'markdown' => (new MarkdownExporter)->export($connection),

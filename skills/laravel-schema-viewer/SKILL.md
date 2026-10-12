@@ -28,6 +28,7 @@ Every setting has a default, so most apps configure nothing. Publish `config/sch
 - `enabled` (`SCHEMA_VIEWER_ENABLED`): unset means on in `local`, off elsewhere.
 - `path` (`SCHEMA_VIEWER_PATH`, default `schema-viewer`), `domain`, `middleware` (default `['web']`).
 - `connections`: null reads the default connection plus every connection a model uses; a list reads exactly those.
+- `default_connection` (`SCHEMA_VIEWER_DEFAULT_CONNECTION`): what the viewer opens on, `all` (every connection on one diagram) or one connection's name.
 - `models`: folders scanned for models; null scans `app/Models`.
 - `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed.
 - `hints.ignore` (kinds or `kind:table` pairs) and `hints.fail_on` (kinds that fail `schema-viewer:check`).

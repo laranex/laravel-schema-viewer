@@ -55,6 +55,16 @@ class SchemaViewer
     }
 
     /**
+     * What the viewer opens on: 'all' or one connection's name.
+     */
+    public function defaultConnection(): string
+    {
+        $value = $this->config->get('schema-viewer.default_connection');
+
+        return is_string($value) && $value !== '' ? $value : 'all';
+    }
+
+    /**
      * @return list<string>
      */
     public function modelPaths(): array

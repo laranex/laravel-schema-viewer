@@ -53,22 +53,25 @@ function useMedia(media: string) {
 
 const useNarrow = () => useMedia('(max-width: 760px)');
 
-export default function App({ doc, example = false, exportUrl, downloads }: { doc: SchemaDocument; example?: boolean; exportUrl?: string; downloads?: StaticDownloads }) {
+export default function App({ doc, example = false, exportUrl, downloads, defaultConnection }: { doc: SchemaDocument; example?: boolean; exportUrl?: string; downloads?: StaticDownloads; defaultConnection?: string }) {
     return (
         <ReactFlowProvider>
             <TooltipProvider>
-                <Viewer doc={doc} example={example} exportUrl={exportUrl} downloads={downloads} />
+                <Viewer doc={doc} example={example} exportUrl={exportUrl} downloads={downloads} defaultConnection={defaultConnection} />
             </TooltipProvider>
         </ReactFlowProvider>
     );
 }
 
-function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; example: boolean; exportUrl?: string; downloads?: StaticDownloads }) {
+function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc: SchemaDocument; example: boolean; exportUrl?: string; downloads?: StaticDownloads; defaultConnection?: string }) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
 
-    // One connection, or ALL to put every connection on the diagram: the start when there is more than one.
-    const [scope, setScope] = useState(doc.connections.length > 1 ? ALL : doc.connections[0].name);
+    // One connection, or ALL to put every connection on the diagram. It opens on the configured connection when the
+    // schema has it; otherwise on every connection, or the only one.
+    const [scope, setScope] = useState(() =>
+        doc.connections.some((c) => c.name === defaultConnection) ? (defaultConnection as string) : doc.connections.length > 1 ? ALL : doc.connections[0].name,
+    );
     const [selected, setSelected] = useState<TableRef | null>(null);
     const [pending, setPending] = useState<TableRef | null>(null);
     const scopeConnections = useMemo(() => (scope === ALL ? doc.connections.map((c) => c.name) : [scope]), [doc, scope]);
@@ -504,7 +507,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
             return;
         }
         notify('Building the standalone viewer…');
-        standaloneHtml(doc, downloads, exportUrl).then(
+        standaloneHtml(doc, downloads, exportUrl, defaultConnection).then(
             (html) => {
                 const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
                 save(url, 'schema-viewer.html');

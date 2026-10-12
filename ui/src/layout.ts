@@ -104,6 +104,8 @@ export type ServerConfig = {
     exportUrl?: string;
     schema?: SchemaDocument;
     downloads?: StaticDownloads;
+    // What the viewer opens on: 'all' or one connection's name (config schema-viewer.default_connection).
+    defaultConnection?: string;
 };
 
 // Each connection's Mermaid, DBML and Markdown files, written by schema-viewer:export --format=html.
