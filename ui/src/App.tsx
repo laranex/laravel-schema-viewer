@@ -715,7 +715,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
                 save(url, 'schema-viewer.html');
                 window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-                notify('Standalone viewer downloaded.');
+                notify('HTML page downloaded. Open it in any browser, offline.');
             },
             (e: Error) => notify(`The standalone viewer could not be built: ${e.message}`),
         );
@@ -723,8 +723,8 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
 
     // Below the per-connection formats, under its own heading: the HTML file covers every connection.
     const allConnectionsGroup = {
-        label: <span className="ui-menu__heading">Download all connections</span>,
-        items: [{ label: 'Standalone viewer (HTML)', hint: 'One file that opens without your app', onSelect: downloadHtml }],
+        label: <span className="ui-menu__heading">Use it offline</span>,
+        items: [{ label: 'This page as HTML', hint: 'Opens in any browser, offline, with every connection', onSelect: downloadHtml }],
     };
 
     const onAutoLayout = () => {
