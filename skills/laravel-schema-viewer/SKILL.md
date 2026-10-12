@@ -16,7 +16,7 @@ Use this skill before writing a migration, a model, a relation or a query in a L
 ## Install
 
 ```bash
-composer require laranex/laravel-schema-viewer:^1.0@alpha --dev
+composer require laranex/laravel-schema-viewer --dev
 ```
 
 Requires PHP 8.1+ and Laravel 10.36 to 13. The service provider registers itself. Install it as a dev dependency unless the team wants the viewer on a server.

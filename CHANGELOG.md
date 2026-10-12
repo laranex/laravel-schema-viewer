@@ -2,7 +2,7 @@
 
 All notable changes to `laravel-schema-viewer` will be documented in this file.
 
-## v1.0.0 - Unreleased
+## v1.0.0 - 2026-10-13
 
 First release.
 
