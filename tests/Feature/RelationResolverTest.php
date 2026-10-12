@@ -9,6 +9,7 @@ use Laranex\LaravelSchemaViewer\Schema\RelationInfo;
 use Laranex\LaravelSchemaViewer\Schema\UnresolvedRelation;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\Models;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\Packages;
+use Laranex\LaravelSchemaViewer\Tests\Fixtures\Unsafe;
 
 /**
  * @return array{relations: array<string, RelationInfo>, unresolved: list<UnresolvedRelation>}
@@ -152,4 +153,54 @@ it('never calls methods that are not relations and runs no query', function (): 
     }
 
     expect($queries)->toBe(0);
+});
+
+it('never lets a method that writes reach the database', function (): void {
+    DB::table('users')->insert(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    DB::table('posts')->insert(['user_id' => 1, 'title' => 'First']);
+
+    // Any statement that reached the database would go through the connection's PDO; quoting for the query log may not.
+    $connection = DB::connection();
+    $pdo = $connection->getPdo();
+    $tripwire = new class('sqlite::memory:') extends PDO
+    {
+        public function prepare(string $query, array $options = []): PDOStatement|false
+        {
+            throw new LogicException('A query reached the database.');
+        }
+
+        public function exec(string $statement): int|false
+        {
+            throw new LogicException('A query reached the database.');
+        }
+    };
+    $connection->setPdo($tripwire)->setReadPdo($tripwire);
+
+    try {
+        $found = resolveRelations(new Unsafe\Wiper);
+    } finally {
+        $connection->setPdo($pdo)->setReadPdo($pdo);
+    }
+
+    expect($connection->pretending())->toBeFalse()
+        ->and(collect($found['unresolved'])->pluck('method')->sort()->values()->all())->toBe(['addPost', 'renameUsers', 'wipePosts'])
+        ->and(collect($found['unresolved'])->pluck('reason')->unique()->all())->toBe(['It returned int instead of a relation.'])
+        ->and(DB::table('users')->pluck('name')->all())->toBe(['Ada'])
+        ->and(DB::table('posts')->pluck('title')->all())->toBe(['First']);
+});
+
+it('pretends on every open connection, not only the model\'s own', function (): void {
+    config()->set('database.connections.side', config('database.connections.testing'));
+    $side = DB::connection('side');
+    $pretended = false;
+    Models\Post::resolveRelationUsing('probe', function (Models\Post $post) use ($side, &$pretended) {
+        $pretended = $side->pretending();
+
+        return $post->belongsTo(Models\User::class, 'user_id');
+    });
+
+    resolveRelations(new Models\Post);
+
+    expect($pretended)->toBeTrue()
+        ->and($side->pretending())->toBeFalse();
 });

@@ -16,6 +16,7 @@ use Laranex\LaravelSchemaViewer\Inspection\ModelInspector;
 use Laranex\LaravelSchemaViewer\Inspection\RelationResolver;
 use Laranex\LaravelSchemaViewer\Schema\IgnoreRule;
 use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
+use Throwable;
 
 /**
  * Builds the schema document for the configured connections and models.
@@ -78,10 +79,25 @@ class SchemaViewer
         $relations = [];
         $unresolved = [];
 
+        $instances = [];
+
         foreach ($this->finder->find($this->modelPaths()) as $class) {
             /** @var Model $model */
             $model = new $class;
+            $instances[] = $model;
             $models[] = $this->models->inspect($model);
+        }
+
+        // Open every model's connection first, so relation methods run with all of them pretending.
+        foreach (array_unique(array_map(fn (Schema\ModelInfo $model): string => $model->connection, $models)) as $name) {
+            try {
+                $this->connections->connection($name);
+            } catch (Throwable) {
+                // The model's relations report the failure.
+            }
+        }
+
+        foreach ($instances as $model) {
             $found = $this->relations->resolve($model);
             array_push($relations, ...$found['relations']);
             array_push($unresolved, ...$found['unresolved']);

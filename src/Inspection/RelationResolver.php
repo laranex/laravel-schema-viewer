@@ -6,6 +6,7 @@ namespace Laranex\LaravelSchemaViewer\Inspection;
 
 use Closure;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -29,7 +30,8 @@ use SplFileObject;
 use Throwable;
 
 /**
- * Finds a model's relation methods and reads each one from the relation object it returns. No query runs.
+ * Finds a model's relation methods and reads each one from the relation object it returns. No query runs: the methods
+ * are called with every connection they may reach pretending, so one that also writes cannot change the database.
  */
 final class RelationResolver
 {
@@ -45,6 +47,7 @@ final class RelationResolver
     public function __construct(
         private readonly ModelInspector $models,
         private readonly Application $app,
+        private readonly ConnectionResolverInterface $connections,
     ) {}
 
     /**
@@ -55,25 +58,72 @@ final class RelationResolver
         $relations = [];
         $unresolved = [];
 
-        foreach ($this->candidates($model) as $name => $call) {
-            try {
-                $relation = Relation::noConstraints($call);
-            } catch (Throwable $e) {
-                $unresolved[] = new UnresolvedRelation($model::class, $name, $e->getMessage(), $this->package($model, $name));
+        $this->pretending($this->reachable($model), function () use ($model, &$relations, &$unresolved): void {
+            foreach ($this->candidates($model) as $name => $call) {
+                try {
+                    $relation = Relation::noConstraints($call);
 
-                continue;
+                    if (! $relation instanceof Relation) {
+                        $unresolved[] = new UnresolvedRelation($model::class, $name, 'It returned '.get_debug_type($relation).' instead of a relation.', $this->package($model, $name));
+
+                        continue;
+                    }
+
+                    $relations[] = $this->describe($model, $name, $relation);
+                } catch (Throwable $e) {
+                    $unresolved[] = new UnresolvedRelation($model::class, $name, $e->getMessage(), $this->package($model, $name));
+                }
             }
-
-            if (! $relation instanceof Relation) {
-                $unresolved[] = new UnresolvedRelation($model::class, $name, 'It returned '.get_debug_type($relation).' instead of a relation.', $this->package($model, $name));
-
-                continue;
-            }
-
-            $relations[] = $this->describe($model, $name, $relation);
-        }
+        });
 
         return ['relations' => $relations, 'unresolved' => $unresolved];
+    }
+
+    /**
+     * The connections a relation method may reach: the default, the model's own and every connection already open.
+     *
+     * @return list<string>
+     */
+    private function reachable(Model $model): array
+    {
+        $names = [$this->connections->getDefaultConnection(), $model->getConnectionName() ?? $this->connections->getDefaultConnection()];
+
+        if (method_exists($this->connections, 'getConnections')) {
+            foreach (array_keys((array) $this->connections->getConnections()) as $name) {
+                $names[] = (string) $name;
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Run the callback with each connection pretending: queries are logged, never sent to the database. The callback
+     * must not throw, since Laravel 10 leaves a connection pretending when it does.
+     *
+     * @param  list<string>  $names
+     * @param  Closure(): void  $callback
+     */
+    private function pretending(array $names, Closure $callback): void
+    {
+        $name = array_shift($names);
+
+        if ($name === null) {
+            $callback();
+
+            return;
+        }
+
+        try {
+            $connection = $this->connections->connection($name);
+        } catch (Throwable) {
+            // A connection that cannot be opened cannot be written to either.
+            $this->pretending($names, $callback);
+
+            return;
+        }
+
+        $connection->pretend(fn () => $this->pretending($names, $callback));
     }
 
     /**
