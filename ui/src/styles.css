@@ -1669,23 +1669,24 @@ kbd {
     position: relative;
 }
 
-/* Above the zoom controls (26px wide, 104px tall, 15px from the corner), centered on them. */
+/* Above the zoom controls (26px wide, 104px tall, 15px from the corner), centered on them, with a pulsing ring so
+   it stays noticeable. */
 .tour-fab {
     position: absolute;
-    left: 10px;
-    bottom: calc(15px + 104px + 12px);
+    left: 14px;
+    bottom: calc(15px + 104px + 14px);
     z-index: 8;
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
+    width: 28px;
+    height: 28px;
     border: 0;
     border-radius: 50%;
     background: var(--accent);
     color: #062b24;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
-    box-shadow: var(--shadow), 0 6px 16px rgb(0 0 0 / 22%);
+    box-shadow: var(--shadow);
     cursor: pointer;
 }
 
@@ -1693,10 +1694,10 @@ kbd {
     background: color-mix(in srgb, var(--accent) 88%, white);
 }
 
-.tour-fab.is-new::after {
+.tour-fab::after {
     content: '';
     position: absolute;
-    inset: -5px;
+    inset: -7px;
     border: 2px solid var(--accent);
     border-radius: 50%;
     animation: pulse 1.8s ease-out infinite;
@@ -1715,10 +1716,10 @@ kbd {
 
 @media (max-width: 760px) {
     .tour-fab {
-        width: 40px;
-        height: 40px;
-        left: 8px;
-        bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 104px + 12px);
+        width: 30px;
+        height: 30px;
+        left: 13px;
+        bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 104px + 14px);
     }
 }
 
@@ -1736,6 +1737,7 @@ kbd {
 
 .tour__ring {
     position: absolute;
+    box-sizing: border-box;
     border: 2px solid var(--accent);
     border-radius: 12px;
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
@@ -1819,8 +1821,9 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .tour-fab.is-new::after {
+    .tour-fab::after {
         animation: none;
+        opacity: 0.6;
     }
 }
 

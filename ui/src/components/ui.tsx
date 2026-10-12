@@ -96,6 +96,8 @@ export function Tooltip({ content, children, side = 'top' }: { content: ReactNod
 
 export type MenuItem = { label: string; hint?: string; shortcut?: string; onSelect: () => void; tour?: string };
 
+export type MenuGroup = { label?: ReactNode; items: MenuItem[] };
+
 export type MenuChoice = { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void; hint?: ReactNode };
 
 export type MenuToggle = { label: string; checked: boolean; onChange: () => void; icon?: ReactNode; hotkey?: string };
@@ -110,12 +112,12 @@ export function Menu({
     onOpenChange,
     triggerClass = 'button button--icon',
     itemsLabel,
-    extraItems = [],
+    groups = [],
 }: {
     triggerClass?: string;
-    // A section heading above the items, and items after them below a divider.
+    // A section heading above the items, and more sections after them, each below a divider with its own heading.
     itemsLabel?: ReactNode;
-    extraItems?: MenuItem[];
+    groups?: MenuGroup[];
     label: string;
     trigger: ReactNode;
     items: MenuItem[];
@@ -199,10 +201,11 @@ export function Menu({
                             </MenuPrimitive.Item>
                         ))}
                     </MenuPrimitive.Group>
-                    {extraItems.length > 0 && (
-                        <>
+                    {groups.map((group, i) => (
+                        <MenuPrimitive.Group key={i}>
                             <MenuPrimitive.Separator className="ui-menu__separator" />
-                            {extraItems.map((item) => (
+                            {group.label && <MenuPrimitive.Label className="ui-menu__label">{group.label}</MenuPrimitive.Label>}
+                            {group.items.map((item) => (
                                 <MenuPrimitive.Item key={item.label} className="ui-item" onSelect={item.onSelect} data-tour={item.tour}>
                                     <span className="ui-item__body">
                                         {item.label}
@@ -210,8 +213,8 @@ export function Menu({
                                     </span>
                                 </MenuPrimitive.Item>
                             ))}
-                        </>
-                    )}
+                        </MenuPrimitive.Group>
+                    ))}
                 </MenuPrimitive.Content>
             </MenuPrimitive.Portal>
         </MenuPrimitive.Root>

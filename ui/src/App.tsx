@@ -112,22 +112,7 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
     // While a tour step explains part of the phone menu, the tour keeps the menu open.
     const [tourMenu, setTourMenu] = useState<TourStep['menu']>(undefined);
     const onTourStep = useCallback((step: TourStep | null) => setTourMenu(step?.menu), []);
-    const [toured, setToured] = useState(() => {
-        try {
-            return localStorage.getItem('schema-viewer.toured') === '1';
-        } catch {
-            return true;
-        }
-    });
-    const endTour = useCallback(() => {
-        setTourOpen(false);
-        setToured(true);
-        try {
-            localStorage.setItem('schema-viewer.toured', '1');
-        } catch {
-            // Storage blocked: the button keeps its first-visit pulse, nothing else changes.
-        }
-    }, []);
+    const endTour = useCallback(() => setTourOpen(false), []);
     const toastTimer = useRef<number | undefined>(undefined);
     const initialized = useNodesInitialized();
 
@@ -518,7 +503,11 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
         );
     };
 
-    const htmlItem = { label: 'Standalone viewer (HTML)', hint: 'Every connection in one file that opens without your app', onSelect: downloadHtml };
+    // Below the per-connection formats, under its own heading: the HTML file covers every connection.
+    const allConnectionsGroup = {
+        label: <span className="ui-menu__heading">Download all connections</span>,
+        items: [{ label: 'Standalone viewer (HTML)', hint: 'One file that opens without your app', onSelect: downloadHtml }],
+    };
 
     const onAutoLayout = () => {
         setLayoutVersion((v) => v + 1);
@@ -633,7 +622,7 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
                         }
                         itemsLabel={downloadHeading}
                         items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
-                        extraItems={[htmlItem, { label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }]}
+                        groups={[allConnectionsGroup, { items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
                         open={menuOpen || tourMenu === 'phone'}
                         onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
                         choice={{
@@ -688,7 +677,7 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
                                 }
                                 itemsLabel={downloadHeading}
                                 items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
-                                extraItems={[htmlItem]}
+                                groups={[allConnectionsGroup]}
                             />
                         </div>
                         <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
@@ -778,7 +767,7 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
                         {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
                     </ReactFlow>
                     <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="right">
-                        <button type="button" className={`tour-fab${toured ? '' : ' is-new'}`} aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
+                        <button type="button" className="tour-fab" aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
                             ?
                         </button>
                     </Tooltip>
