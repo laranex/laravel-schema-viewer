@@ -1,7 +1,7 @@
 import { BaseEdge, EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
-import { memo } from 'react';
+import { createContext, memo, useContext, useSyncExternalStore } from 'react';
 import { LABEL_WIDTH, type Route } from '../routing';
-import { Tooltip } from './ui';
+import { LazyTooltip } from './ui';
 
 export type EdgeKind = 'both' | 'relation' | 'foreign_key' | 'through';
 
@@ -15,6 +15,8 @@ export type LinkEdgeData = {
     showLabel: boolean;
     emphasized: boolean;
     dim: boolean;
+    // While a card it ends on is dragged, the route is stale: the edge runs through the middle instead.
+    floating: boolean;
     route: Route;
 };
 
@@ -26,6 +28,34 @@ const KIND_LABEL: Record<EdgeKind, string> = {
     foreign_key: 'foreign key without a relation',
     through: 'through relation',
 };
+
+// The edge under the pointer. Edges read it from this store, so hovering re-renders the two edges it changes, not the
+// whole diagram, and never routes the edges again.
+export class HoverStore {
+    private id: string | null = null;
+    private readonly listeners = new Set<() => void>();
+
+    set(id: string | null) {
+        if (id !== this.id) {
+            this.id = id;
+            this.listeners.forEach((l) => l());
+        }
+    }
+
+    get = () => this.id;
+
+    subscribe = (listener: () => void) => {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+    };
+}
+
+export const EdgeHover = createContext(new HoverStore());
+
+function useHovered(id: string) {
+    const store = useContext(EdgeHover);
+    return useSyncExternalStore(store.subscribe, () => store.get() === id);
+}
 
 // An orthogonal path with rounded corners: across to the lane, along it, across to the target.
 function orthogonal(sx: number, sy: number, cx: number, tx: number, ty: number): string {
@@ -48,14 +78,19 @@ function orthogonal(sx: number, sy: number, cx: number, tx: number, ty: number):
 }
 
 function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: EdgeProps<LinkEdgeType>) {
+    const hovered = useHovered(id);
     if (!data) {
         return null;
     }
 
-    const { kind, route } = data;
+    const { kind } = data;
+    const route = data.floating ? { ...data.route, channelX: (sourceX + targetX) / 2, labelX: (sourceX + targetX) / 2, labelY: (sourceY + targetY) / 2 } : data.route;
     const path = orthogonal(sourceX, sourceY, route.channelX, targetX, targetY);
-    const className = ['link-edge', `link-edge--${kind}`, data.morph ? 'link-edge--morph' : '', data.dim ? 'is-dim' : '', selected ? 'is-selected' : ''].filter(Boolean).join(' ');
-    const showLabel = data.showLabel && !data.dim;
+    const emphasized = data.emphasized || hovered;
+    const className = ['link-edge', `link-edge--${kind}`, data.morph ? 'link-edge--morph' : '', data.dim ? 'is-dim' : '', selected ? 'is-selected' : '', hovered ? 'is-hovered' : '']
+        .filter(Boolean)
+        .join(' ');
+    const showLabel = (data.showLabel || hovered) && !data.dim;
 
     return (
         <>
@@ -69,7 +104,7 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: Ed
             />
             {showLabel && (
                 <EdgeLabelRenderer>
-                    <Tooltip
+                    <LazyTooltip
                         content={
                             <>
                                 <code>{data.label}</code>
@@ -81,13 +116,13 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: Ed
                         }
                     >
                         <div
-                            className={`edge-label edge-label--${kind}${data.emphasized ? ' is-emphasized' : ''} nodrag nopan`}
+                            className={`edge-label edge-label--${kind}${emphasized ? ' is-emphasized' : ''} nodrag nopan`}
                             style={{ width: LABEL_WIDTH, transform: `translate(-50%, -50%) translate(${route.labelX}px, ${route.labelY}px)` }}
                         >
                             <span className="edge-label__text">{data.label}</span>
                             <span className="edge-label__chip">{data.relationship}</span>
                         </div>
-                    </Tooltip>
+                    </LazyTooltip>
                 </EdgeLabelRenderer>
             )}
         </>

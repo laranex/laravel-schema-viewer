@@ -12,8 +12,8 @@ import {
     type Node,
     type NodeMouseHandler,
 } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import { EdgeMarkers, LinkEdgeView, type EdgeKind, type LinkEdgeData, type LinkEdgeType } from './components/LinkEdge';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { EdgeHover, EdgeMarkers, HoverStore, LinkEdgeView, type EdgeKind, type LinkEdgeData, type LinkEdgeType } from './components/LinkEdge';
 import { SearchBox } from './components/SearchBox';
 import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
@@ -21,7 +21,7 @@ import { Dialog, Menu, Select, Tooltip, TooltipProvider } from './components/ui'
 import { SidePanel } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
-import { boxWidth, route, type Box } from './routing';
+import { boxWidth, route, type Box, type Route } from './routing';
 import { layoutConnections, type StaticDownloads } from './layout';
 import { standaloneHtml } from './standalone';
 import type { SchemaDocument, Table } from './types';
@@ -40,6 +40,26 @@ const nodeTypes = { table: TableNodeView, external: ExternalNodeView, region: Re
 const edgeTypes = { link: LinkEdgeView };
 
 const EXTERNAL_HEIGHT = 76;
+
+const NONE: string[] = [];
+
+// Equal node or edge data: the same values, arrays compared item by item, so unchanged cards and edges keep their
+// objects and skip rendering.
+function sameData(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+    for (const key in b) {
+        const x = a[key];
+        const y = b[key];
+        if (x === y) {
+            continue;
+        }
+        if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length || x.some((v, i) => v !== y[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+const sameRoute = (a: Route, b: Route) => a.sourceSide === b.sourceSide && a.targetSide === b.targetSide && a.channelX === b.channelX && a.labelX === b.labelX && a.labelY === b.labelY;
 
 // Remembered per browser; storage can be blocked, and then nothing is remembered.
 function stored<T>(key: string, fallback: T, valid: (value: unknown) => boolean): T {
@@ -162,7 +182,9 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const roomy = useMedia('(min-width: 1100px)');
     // The panel sits beside the diagram, so its width can be dragged.
     const sideBySide = useMedia('(min-width: 961px)');
-    const [hovered, setHovered] = useState<string | null>(null);
+    const [hover] = useState(() => new HoverStore());
+    // The card being dragged: its edges float until it is dropped, then every edge is routed again.
+    const [dragging, setDragging] = useState<string | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const [helpOpen, setHelpOpen] = useState(false);
     // Whether each control shows its shortcut key beside it. Off by default; remembered per browser.
@@ -327,7 +349,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                         id: nodeId(c, t.name),
                         type: 'table',
                         position: positions[nodeId(c, t.name)] ?? { x: 0, y: 0 },
-                        data: { connection: c, table: t, models: [], pivot: false, hintCount: 0, dim: false, active: false, primary: [], foreign: [], linked: [], casts: {}, fold: 'all', shown: [] },
+                        data: { connection: c, table: t, models: [], pivot: false, hintCount: 0, dim: false, active: false, primary: [], foreign: [], linked: [], casts: {}, fold: 'all', shown: [], ends: [] },
                         width: NODE_WIDTH,
                     }),
                 ),
@@ -354,13 +376,62 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const neighbors = useMemo(() => (selected ? schema.neighbors(selected.connection, selected.table, 1) : null), [schema, selected]);
     const pivots = useMemo(() => new Set(scopeConnections.flatMap((c) => [...schema.pivotTables(c)].map((t) => nodeId(c, t)))), [schema, scopeConnections]);
 
-    const isDim = useCallback(
-        (id: string) => {
-            const entry = tablesById.get(id);
-            return query.trim() !== '' && (!entry || !schema.matches(entry.connection, entry.table, query));
-        },
-        [schema, tablesById, query],
-    );
+    // Search dims the cards it does not match. It runs on a deferred query, so typing stays responsive on large schemas.
+    const deferredQuery = useDeferredValue(query);
+    const matched = useMemo(() => {
+        const q = deferredQuery.trim();
+        if (q === '') {
+            return null;
+        }
+        const ids = new Set<string>();
+        tablesById.forEach((e, id) => schema.matches(e.connection, e.table, q) && ids.add(id));
+        return ids;
+    }, [schema, tablesById, deferredQuery]);
+    const isDim = useCallback((id: string) => matched !== null && !matched.has(id), [matched]);
+
+    // The columns of each card that the selected table's links use.
+    const linkedColumns = useMemo(() => {
+        const out = new Map<string, string[]>();
+        if (!selected) {
+            return out;
+        }
+        const add = (end: { connection: string; table: string; columns: string[] }) => {
+            const id = nodeId(end.connection, end.table);
+            out.set(id, [...(out.get(id) ?? []), ...end.columns]);
+        };
+        const at = (end: { connection: string; table: string }) => end.connection === selected.connection && end.table === selected.table;
+        for (const l of schema.links(selected.connection)) {
+            if (at(l.from) || at(l.to)) {
+                add(l.from);
+                add(l.to);
+            }
+        }
+        return out;
+    }, [schema, selected]);
+
+    // What a card shows that only the schema decides, worked out once per table.
+    const cards = useMemo(() => {
+        const cache = new Map<string, { models: string[]; primary: string[]; foreign: string[]; casts: Record<string, string>; ends: string[]; hintCount: number }>();
+        return (c: string, t: Table) => {
+            const id = nodeId(c, t.name);
+            let card = cache.get(id);
+            if (!card) {
+                const models = schema.modelsFor(c, t.name);
+                const keys = schema.keyColumns(c, t.name);
+                card = {
+                    models: models.map((m) => shortClass(m.class)),
+                    primary: t.indexes.find((i) => i.primary)?.columns ?? NONE,
+                    foreign: t.foreignKeys.flatMap((f) => f.columns),
+                    casts: Object.assign({}, ...models.map((m) => m.casts)) as Record<string, string>,
+                    // Edges end on key columns, and through links on the first column.
+                    ends: t.columns.filter((col, i) => i === 0 || keys.has(col.name)).map((col) => col.name),
+                    hintCount: schema.hints(c, t.name).length,
+                };
+                cache.set(id, card);
+            }
+            return card;
+        };
+    }, [schema]);
 
     // What each node shows for the current selection and search.
     const decorate = useCallback(
@@ -369,54 +440,57 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 return n;
             }
             if (n.type === 'external') {
-                return { ...n, data: { ...n.data, dim: isDim(n.id) } };
+                const dim = isDim(n.id);
+                return dim === n.data.dim ? n : { ...n, data: { ...n.data, dim } };
             }
             const t = n.data.table;
-            const c = n.data.connection;
-            const models = schema.modelsFor(c, t.name);
-            const at = (end: { connection: string; table: string }, ref: TableRef | null) => ref !== null && end.connection === ref.connection && end.table === ref.table;
-            const touching = selected ? schema.links(selected.connection).filter((l) => at(l.from, selected) || at(l.to, selected)) : [];
-            const self = { connection: c, table: t.name };
-            const linked = touching.flatMap((l) => [...(at(l.from, self) ? l.from.columns : []), ...(at(l.to, self) ? l.to.columns : [])]);
-            return {
-                ...n,
-                selected: n.id === selectedId,
-                data: {
-                    ...n.data,
-                    models: models.map((m) => shortClass(m.class)),
-                    pivot: pivots.has(n.id),
-                    hintCount: schema.hints(c, t.name).length,
-                    dim: isDim(n.id),
-                    active: neighbors !== null && neighbors.has(n.id) && n.id !== selectedId,
-                    primary: t.indexes.find((i) => i.primary)?.columns ?? [],
-                    foreign: t.foreignKeys.flatMap((f) => f.columns),
-                    linked,
-                    casts: Object.assign({}, ...models.map((m) => m.casts)),
-                    fold: folds[n.id] ?? columns,
-                    shown: shownOf(n.id, t),
-                },
+            const data = {
+                ...n.data,
+                ...cards(n.data.connection, t),
+                pivot: pivots.has(n.id),
+                dim: isDim(n.id),
+                active: neighbors !== null && neighbors.has(n.id) && n.id !== selectedId,
+                linked: linkedColumns.get(n.id) ?? NONE,
+                fold: folds[n.id] ?? columns,
+                shown: shownOf(n.id, t),
             };
+            const isSelected = n.id === selectedId;
+            if (!!n.selected === isSelected && sameData(n.data, data)) {
+                return n;
+            }
+            return { ...n, selected: isSelected, data };
         },
-        [schema, selected, selectedId, neighbors, pivots, isDim, folds, columns, shownOf],
+        [cards, selectedId, neighbors, pivots, isDim, linkedColumns, folds, columns, shownOf],
     );
     const decorateRef = useRef(decorate);
     decorateRef.current = decorate;
 
     useEffect(() => {
-        setNodes((current) => current.map(decorate));
+        setNodes((current) => {
+            const next = current.map(decorate);
+            return next.some((n, i) => n !== current[i]) ? next : current;
+        });
     }, [decorate, setNodes]);
 
-    const positionOf = useCallback((id: string) => nodes.find((n) => n.id === id), [nodes]);
+    // The cards on the diagram: the same set while cards only move or change their decoration.
+    const shownIdsRef = useRef<Set<string>>(new Set());
+    const shownIds = useMemo(() => {
+        const next = new Set(nodes.filter((n) => !n.hidden && n.type !== 'region').map((n) => n.id));
+        const prev = shownIdsRef.current;
+        if (prev.size === next.size && [...next].every((id) => prev.has(id))) {
+            return prev;
+        }
+        shownIdsRef.current = next;
+        return next;
+    }, [nodes]);
 
-    const edges = useMemo((): LinkEdgeType[] => {
-        const visible = (id: string) => {
-            const n = positionOf(id);
-            return n && !n.hidden ? n : undefined;
-        };
+    // What each edge connects and shows. Hovering an edge is read by the edge itself (EdgeHover), so it changes nothing here.
+    type Spec = { id: string; source: string; target: string; sourceColumn: string; targetColumn: string; data: Omit<LinkEdgeData, 'route' | 'floating'> };
+    const specs = useMemo((): Spec[] => {
+        const visible = (id: string) => shownIds.has(id);
         const touches = (a: string, b: string) => selectedId !== null && (a === selectedId || b === selectedId);
         const firstColumn = (c: string, name: string) => schema.table(c, name)?.columns[0]?.name ?? 'id';
 
-        type Spec = { id: string; source: string; target: string; sourceColumn: string; targetColumn: string; data: Omit<LinkEdgeData, 'route'> };
         const specs: Spec[] = [];
 
         for (const l of links) {
@@ -441,8 +515,8 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                     many: !schema.isUnique(l.from.connection, l.from.table, l.from.columns),
                     label: names.length ? names.join(' · ') : (l.foreignKey ?? ''),
                     detail: `${l.from.table}.${l.from.columns.join(', ')} → ${l.to.table}.${l.to.columns.join(', ')}`,
-                    showLabel: layers.allLabels || touch || hovered === l.id,
-                    emphasized: touch || hovered === l.id,
+                    showLabel: layers.allLabels || touch,
+                    emphasized: touch,
                     dim: isDim(source) || isDim(target) || (selected !== null && !touch),
                 },
             });
@@ -469,20 +543,31 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                         many: true,
                         label: `${d.relation.split('::')[1]} via ${d.via.join(', ')}`,
                         detail: `${d.from} → ${d.via.join(' → ')} → ${d.to}`,
-                        showLabel: layers.allLabels || touch || hovered === d.id,
-                        emphasized: touch || hovered === d.id,
+                        showLabel: layers.allLabels || touch,
+                        emphasized: touch,
                         dim: isDim(source) || isDim(target) || (selected !== null && !touch),
                     },
                 });
             }
         }
 
-        const boxes = new Map<string, Box>();
-        nodes.forEach((n) => {
+        return specs;
+    }, [schema, links, derived, layers, selectedId, selected, isDim, shownIds]);
+
+    // Where each card is and which rows it shows. While a card is dragged this keeps the last place, so edges are
+    // routed again once, on drop, instead of on every frame.
+    const routedNodes = useRef(nodes);
+    if (dragging === null) {
+        routedNodes.current = nodes;
+    }
+    const boxes = useMemo(() => {
+        const map = new Map<string, Box>();
+        const parts: string[] = [];
+        routedNodes.current.forEach((n) => {
             if (n.hidden || n.type === 'region') {
                 return;
             }
-            boxes.set(n.id, {
+            const box: Box = {
                 id: n.id,
                 x: n.position.x,
                 y: n.position.y,
@@ -490,32 +575,60 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 height: n.measured?.height ?? (n.type === 'table' ? nodeHeight(n.data.table, n.data.shown.length) : EXTERNAL_HEIGHT),
                 rows: n.type === 'table' ? n.data.shown : ['id'],
                 folded: n.type === 'table',
-            });
+            };
+            map.set(n.id, box);
+            parts.push(`${box.id}@${box.x},${box.y},${box.width},${box.height}:${box.rows.join(',')}`);
         });
-        const routes = route(
-            boxes,
-            specs.map((s) => ({ id: s.id, source: s.source, target: s.target, sourceColumn: s.sourceColumn, targetColumn: s.targetColumn, labelled: s.data.showLabel })),
-        );
+        return { map, key: parts.join('|') };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [routedNodes.current]);
 
-        return specs.flatMap((s): LinkEdgeType[] => {
+    // Routes are worked out again only when a card moved or resized, or the edges or their labels changed.
+    const routesRef = useRef<{ key: string; routes: Map<string, Route> } | null>(null);
+    const routes = useMemo(() => {
+        const requests = specs.map((s) => ({ id: s.id, source: s.source, target: s.target, sourceColumn: s.sourceColumn, targetColumn: s.targetColumn, labelled: s.data.showLabel }));
+        const key = `${boxes.key}#${requests.map((r) => `${r.id}:${r.source}.${r.sourceColumn}>${r.target}.${r.targetColumn}${r.labelled ? '+' : ''}`).join(',')}`;
+        if (routesRef.current?.key !== key) {
+            routesRef.current = { key, routes: route(boxes.map, requests) };
+        }
+        return routesRef.current.routes;
+    }, [boxes, specs]);
+
+    // The edges, keeping each unchanged edge's object so React Flow skips it.
+    const edgeCache = useRef(new Map<string, LinkEdgeType>());
+    const edges = useMemo((): LinkEdgeType[] => {
+        const cache = edgeCache.current;
+        const next = new Map<string, LinkEdgeType>();
+        const out: LinkEdgeType[] = [];
+        for (const s of specs) {
             const r = routes.get(s.id);
             if (!r) {
-                return [];
+                continue;
             }
-            return [
-                {
-                    id: s.id,
-                    type: 'link',
-                    source: s.source,
-                    target: s.target,
-                    sourceHandle: `${s.sourceColumn}|s${r.sourceSide}`,
-                    targetHandle: `${s.targetColumn}|t${r.targetSide}`,
-                    zIndex: s.data.emphasized ? 10 : 0,
-                    data: { ...s.data, route: r },
-                },
-            ];
-        });
-    }, [schema, links, derived, layers, selectedId, hovered, isDim, positionOf, nodes]);
+            const floating = dragging !== null && (s.source === dragging || s.target === dragging);
+            const sourceHandle = `${s.sourceColumn}|s${r.sourceSide}`;
+            const targetHandle = `${s.targetColumn}|t${r.targetSide}`;
+            const zIndex = s.data.emphasized ? 10 : 0;
+            const prev = cache.get(s.id);
+            const edge: LinkEdgeType =
+                prev &&
+                prev.data &&
+                prev.source === s.source &&
+                prev.target === s.target &&
+                prev.sourceHandle === sourceHandle &&
+                prev.targetHandle === targetHandle &&
+                prev.zIndex === zIndex &&
+                prev.data.floating === floating &&
+                sameRoute(prev.data.route, r) &&
+                sameData(prev.data, s.data)
+                    ? prev
+                    : { id: s.id, type: 'link', source: s.source, target: s.target, sourceHandle, targetHandle, zIndex, data: { ...s.data, floating, route: r } };
+            next.set(s.id, edge);
+            out.push(edge);
+        }
+        edgeCache.current = next;
+        return out;
+    }, [specs, routes, dragging]);
 
     const centerOn = useCallback(
         (id: string) => {
@@ -631,11 +744,15 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
 
     // Dragging the panel's edge sets its width, kept between the panel's minimum and room for the diagram.
     const mainRef = useRef<HTMLElement>(null);
-    const resizePanel = (width: number | null) => {
+    // Dragging remembers the width once, on release; the keyboard and double-click remember it at once.
+    const resizePanel = (width: number | null, remember = true) => {
         const room = mainRef.current?.getBoundingClientRect().width ?? window.innerWidth;
         const next = width === null ? null : Math.round(Math.min(Math.max(width, 280), room - 360));
         setPanelWidth(next);
-        store('schema-viewer.panel-width', next);
+        if (remember) {
+            store('schema-viewer.panel-width', next);
+        }
+        return next;
     };
     const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
         const main = mainRef.current;
@@ -647,8 +764,14 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         const handle = e.currentTarget;
         handle.setPointerCapture(e.pointerId);
         const right = main.getBoundingClientRect().right;
-        const move = (ev: PointerEvent) => resizePanel(right - ev.clientX);
+        let last: number | null = null;
+        const move = (ev: PointerEvent) => {
+            last = resizePanel(right - ev.clientX, false);
+        };
         const up = () => {
+            if (last !== null) {
+                store('schema-viewer.panel-width', last);
+            }
             handle.removeEventListener('pointermove', move);
             handle.removeEventListener('pointerup', up);
             handle.removeEventListener('pointercancel', up);
@@ -823,294 +946,299 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const hintCount = scopeConnections.reduce((n, c) => n + schema.hints(c).length, 0);
 
     return (
-        <TableActions.Provider value={tableActions}>
-            <div className={`app${keysOn ? '' : ' keys-off'}`}>
-                <EdgeMarkers />
-                <header className="toolbar">
-                    <div className="toolbar__brand">
-                        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className="brand-mark">
-                            <rect x="2.5" y="3.5" width="8" height="7" rx="1.5" />
-                            <rect x="13.5" y="13.5" width="8" height="7" rx="1.5" />
-                            <path d="M10.5 7 H14 a2 2 0 0 1 2 2 V13.5" />
-                        </svg>
-                        <span>Schema Viewer</span>
-                    </div>
-                    <SearchBox schema={schema} tables={visibleTables} multiple={scopeConnections.length > 1} query={query} onQuery={setQuery} onPick={open} inputRef={searchRef} />
-                    <div className="toolbar__spacer" />
-                    {narrow ? (
-                        <Menu
-                            label="More actions"
-                            trigger={
-                                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" className="icon-fill">
-                                    <circle cx="5" cy="12" r="1.8" />
-                                    <circle cx="12" cy="12" r="1.8" />
-                                    <circle cx="19" cy="12" r="1.8" />
-                                </svg>
-                            }
-                            itemsLabel={downloadHeading}
-                            items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
-                            groups={[allConnectionsGroup, { items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
-                            open={menuOpen || tourMenu === 'phone'}
-                            onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
-                            choice={{
-                                label: 'Connection',
-                                value: scope,
-                                options: connectionOptions,
-                                onChange: switchConnection,
-                                hint: (
-                                    <span className="ui-menu__keys">
-                                        <kbd className="kbd-hint">[</kbd>
-                                        <kbd className="kbd-hint">]</kbd>
-                                    </span>
-                                ),
-                            }}
-                            toggles={{
-                                label: 'Show',
-                                items: layerToggles.map((t) => ({
-                                    label: t.label,
-                                    checked: layers[t.key],
-                                    onChange: () => toggle(t.key),
-                                    icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
-                                    hotkey: t.hotkey,
-                                })),
-                            }}
-                            afterToggles={{
-                                label: 'Columns',
-                                value: columns,
-                                options: FOLDS.map((f) => ({ value: f, label: COLUMN_CHOICES[f].label, hint: COLUMN_CHOICES[f].hint })),
-                                onChange: (v) => setColumns(v as Fold),
-                                hint: <kbd className="kbd-hint">C</kbd>,
-                                tour: 'menu-columns',
-                            }}
-                        />
-                    ) : (
-                        <div className="toolbar__group" role="group" aria-label="Connection and export">
-                            <Select
-                                id="connection"
-                                label="Connection"
-                                value={scope}
-                                onChange={switchConnection}
-                                options={connectionOptions}
-                                hint={
-                                    <>
-                                        <kbd className="kbd-hint">[</kbd>
-                                        <kbd className="kbd-hint">]</kbd>
-                                    </>
+        <EdgeHover.Provider value={hover}>
+            <TableActions.Provider value={tableActions}>
+                <div className={`app${keysOn ? '' : ' keys-off'}`}>
+                    <EdgeMarkers />
+                    <header className="toolbar">
+                        <div className="toolbar__brand">
+                            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className="brand-mark">
+                                <rect x="2.5" y="3.5" width="8" height="7" rx="1.5" />
+                                <rect x="13.5" y="13.5" width="8" height="7" rx="1.5" />
+                                <path d="M10.5 7 H14 a2 2 0 0 1 2 2 V13.5" />
+                            </svg>
+                            <span>Schema Viewer</span>
+                        </div>
+                        <SearchBox schema={schema} tables={visibleTables} multiple={scopeConnections.length > 1} query={query} onQuery={setQuery} onPick={open} inputRef={searchRef} />
+                        <div className="toolbar__spacer" />
+                        {narrow ? (
+                            <Menu
+                                label="More actions"
+                                trigger={
+                                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" className="icon-fill">
+                                        <circle cx="5" cy="12" r="1.8" />
+                                        <circle cx="12" cy="12" r="1.8" />
+                                        <circle cx="19" cy="12" r="1.8" />
+                                    </svg>
                                 }
+                                itemsLabel={downloadHeading}
+                                items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
+                                groups={[allConnectionsGroup, { items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
+                                open={menuOpen || tourMenu === 'phone'}
+                                onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
+                                choice={{
+                                    label: 'Connection',
+                                    value: scope,
+                                    options: connectionOptions,
+                                    onChange: switchConnection,
+                                    hint: (
+                                        <span className="ui-menu__keys">
+                                            <kbd className="kbd-hint">[</kbd>
+                                            <kbd className="kbd-hint">]</kbd>
+                                        </span>
+                                    ),
+                                }}
+                                toggles={{
+                                    label: 'Show',
+                                    items: layerToggles.map((t) => ({
+                                        label: t.label,
+                                        checked: layers[t.key],
+                                        onChange: () => toggle(t.key),
+                                        icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
+                                        hotkey: t.hotkey,
+                                    })),
+                                }}
+                                afterToggles={{
+                                    label: 'Columns',
+                                    value: columns,
+                                    options: FOLDS.map((f) => ({ value: f, label: COLUMN_CHOICES[f].label, hint: COLUMN_CHOICES[f].hint })),
+                                    onChange: (v) => setColumns(v as Fold),
+                                    hint: <kbd className="kbd-hint">C</kbd>,
+                                    tour: 'menu-columns',
+                                }}
                             />
-                            <div className="toolbar__group" data-tour="actions">
-                                <Menu
-                                    label="Download"
-                                    triggerClass="button button--with-icon"
-                                    trigger={
+                        ) : (
+                            <div className="toolbar__group" role="group" aria-label="Connection and export">
+                                <Select
+                                    id="connection"
+                                    label="Connection"
+                                    value={scope}
+                                    onChange={switchConnection}
+                                    options={connectionOptions}
+                                    hint={
                                         <>
-                                            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
-                                                <path d="M8 2.5 V10 M4.5 6.5 L8 10 L11.5 6.5 M2.5 13.5 H13.5" />
-                                            </svg>
-                                            Download
+                                            <kbd className="kbd-hint">[</kbd>
+                                            <kbd className="kbd-hint">]</kbd>
                                         </>
                                     }
-                                    open={downloadOpen || (!narrow && tourOpens === 'download')}
-                                    onOpenChange={(o) => !tourOpens && setDownloadOpen(o)}
-                                    tour="download-menu"
-                                    itemsLabel={downloadHeading}
-                                    items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
-                                    groups={[allConnectionsGroup]}
                                 />
-                            </div>
-                            <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
-                                <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
-                                    <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
-                                        <rect x="1.5" y="2" width="17" height="12" rx="2" />
-                                        <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
-                                    </svg>
-                                    Keyboard shortcuts
-                                </button>
-                            </Tooltip>
-                        </div>
-                    )}
-                </header>
-
-                {!narrow && (
-                    <div className="layers" role="group" aria-label="Show on the diagram" data-tour="layers">
-                        {layerToggles.map((t) => (
-                            <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} hotkey={t.hotkey} divider={t.key === 'framework'} />
-                        ))}
-                        <span className="layers__divider" aria-hidden="true" />
-                        <div className="segmented" role="radiogroup" aria-label="Columns" aria-keyshortcuts="C" data-tour="columns">
-                            <span className="segmented__label">Columns</span>
-                            {FOLDS.map((f) => (
-                                <Tooltip key={f} content={<>{COLUMN_CHOICES[f].hint} <kbd>C</kbd></>} side="bottom">
-                                    <button type="button" role="radio" aria-checked={columns === f} className="segmented__option" onClick={() => setColumns(f)}>
-                                        {COLUMN_CHOICES[f].label}
-                                    </button>
-                                </Tooltip>
-                            ))}
-                            <kbd className="kbd-hint">C</kbd>
-                        </div>
-                        <span className="layers__note">
-                            {scopeConnections.length > 1 ? `${scopeConnections.length} connections · ` : ''}
-                            {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'}
-                            {example ? ' · example data' : ''}
-                        </span>
-                    </div>
-                )}
-
-                <main
-                    className={`main${sideBySide && panelWidth !== null ? ' has-panel-width' : ''}`}
-                    ref={mainRef}
-                    style={panelWidth !== null ? ({ '--panel-width': `${panelWidth}px` } as CSSProperties) : undefined}
-                >
-                    <div className="canvas" ref={canvasRef}>
-                        <ReactFlow<AppNode, LinkEdgeType>
-                            nodes={nodes}
-                            edges={edges}
-                            nodeTypes={nodeTypes}
-                            edgeTypes={edgeTypes}
-                            onNodesChange={onNodesChange}
-                            onNodeClick={onNodeClick}
-                            onNodeDoubleClick={(_, node) => {
-                                if (node.type === 'table') {
-                                    focusOn({ connection: node.data.connection, table: node.data.table.name });
-                                }
-                            }}
-                            zoomOnDoubleClick={false}
-                            onEdgeMouseEnter={(_, edge) => setHovered(edge.id)}
-                            onEdgeMouseLeave={() => setHovered(null)}
-                            onPaneClick={() => setSelected(null)}
-                            onMoveStart={(event) => {
-                                if (event) {
-                                    userMoved.current = true;
-                                }
-                            }}
-                            nodesConnectable={false}
-                            edgesFocusable={false}
-                            minZoom={0.08}
-                            maxZoom={2}
-                            proOptions={{ hideAttribution: true }}
-                        >
-                            <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-                            <Controls showInteractive={false} showZoom={false} showFitView={false}>
-                                <Tooltip content={<>Zoom in <kbd>+</kbd></>} side="right">
-                                    <ControlButton onClick={() => flow.zoomIn({ duration: 150 })} aria-label="Zoom in" aria-keyshortcuts="+">
-                                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                            <path d="M8 3 V13 M3 8 H13" />
+                                <div className="toolbar__group" data-tour="actions">
+                                    <Menu
+                                        label="Download"
+                                        triggerClass="button button--with-icon"
+                                        trigger={
+                                            <>
+                                                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
+                                                    <path d="M8 2.5 V10 M4.5 6.5 L8 10 L11.5 6.5 M2.5 13.5 H13.5" />
+                                                </svg>
+                                                Download
+                                            </>
+                                        }
+                                        open={downloadOpen || (!narrow && tourOpens === 'download')}
+                                        onOpenChange={(o) => !tourOpens && setDownloadOpen(o)}
+                                        tour="download-menu"
+                                        itemsLabel={downloadHeading}
+                                        items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
+                                        groups={[allConnectionsGroup]}
+                                    />
+                                </div>
+                                <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
+                                    <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
+                                        <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
+                                            <rect x="1.5" y="2" width="17" height="12" rx="2" />
+                                            <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
                                         </svg>
-                                    </ControlButton>
-                                </Tooltip>
-                                <Tooltip content={<>Zoom out <kbd>−</kbd></>} side="right">
-                                    <ControlButton onClick={() => flow.zoomOut({ duration: 150 })} aria-label="Zoom out" aria-keyshortcuts="-">
-                                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                            <path d="M3 8 H13" />
-                                        </svg>
-                                    </ControlButton>
-                                </Tooltip>
-                                <Tooltip content={<>Fit the diagram <kbd>F</kbd></>} side="right">
-                                    <ControlButton onClick={() => flow.fitView({ padding: 0.08, duration: 250 })} aria-label="Fit the diagram" aria-keyshortcuts="F">
-                                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                            <path d="M2.5 6 V2.5 H6 M10 2.5 H13.5 V6 M13.5 10 V13.5 H10 M6 13.5 H2.5 V10" />
-                                        </svg>
-                                    </ControlButton>
-                                </Tooltip>
-                                <Tooltip content={<>Auto layout <kbd>Shift A</kbd></>} side="right">
-                                    <ControlButton onClick={onAutoLayout} aria-label="Arrange tables automatically" aria-keyshortcuts="Shift+A" data-tour="auto-layout">
-                                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                            <rect x="1.5" y="2" width="5" height="4" rx="1" />
-                                            <rect x="9.5" y="2" width="5" height="4" rx="1" />
-                                            <rect x="5.5" y="10" width="5" height="4" rx="1" />
-                                            <path d="M4 6 V8 H12 V6 M8 8 V10" />
-                                        </svg>
-                                    </ControlButton>
-                                </Tooltip>
-                            </Controls>
-                            {/* Below 1100px the diagram needs the room more than an overview does. */}
-                            {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
-                        </ReactFlow>
-                        {focus && (
-                            <div className="focus-bar" role="group" aria-label="Focus mode">
-                                <span className="focus-bar__label">
-                                    Focus on <code>{scopeConnections.length > 1 ? `${focus.connection}.${focus.table}` : focus.table}</code>
-                                </span>
-                                <span className="segmented" role="radiogroup" aria-label="Links away">
-                                    {[1, 2, 3].map((d) => (
-                                        <button key={d} type="button" role="radio" aria-checked={focus.depth === d} className="segmented__option" onClick={() => focusOn(focus, d)}>
-                                            {d} {d === 1 ? 'link' : 'links'}
-                                        </button>
-                                    ))}
-                                </span>
-                                <span className="focus-bar__count">{shownTables.length} tables</span>
-                                <button type="button" className="button button--small" onClick={copyLink}>
-                                    Copy link
-                                </button>
-                                <Tooltip content={<>Show every table again <kbd>Esc</kbd></>} side="bottom">
-                                    <button type="button" className="button button--small" aria-keyshortcuts="Escape" onClick={endFocus}>
-                                        Leave focus mode
+                                        Keyboard shortcuts
                                     </button>
                                 </Tooltip>
                             </div>
                         )}
-                        <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="right">
-                            <button type="button" className="tour-fab" aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
-                                ?
-                            </button>
-                        </Tooltip>
-                    </div>
-                    {sideBySide && (
-                        <div
-                            className="panel-resizer"
-                            role="separator"
-                            aria-orientation="vertical"
-                            aria-label="Resize the details panel"
-                            aria-valuenow={panelWidth ?? undefined}
-                            tabIndex={0}
-                            onPointerDown={onResizeStart}
-                            onDoubleClick={() => resizePanel(null)}
-                            onKeyDown={(e) => {
-                                const width = panelWidth ?? document.querySelector('.panel')?.getBoundingClientRect().width ?? 360;
-                                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                                    e.preventDefault();
-                                    resizePanel(width + (e.key === 'ArrowLeft' ? 24 : -24));
+                    </header>
+
+                    {!narrow && (
+                        <div className="layers" role="group" aria-label="Show on the diagram" data-tour="layers">
+                            {layerToggles.map((t) => (
+                                <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} hotkey={t.hotkey} divider={t.key === 'framework'} />
+                            ))}
+                            <span className="layers__divider" aria-hidden="true" />
+                            <div className="segmented" role="radiogroup" aria-label="Columns" aria-keyshortcuts="C" data-tour="columns">
+                                <span className="segmented__label">Columns</span>
+                                {FOLDS.map((f) => (
+                                    <Tooltip key={f} content={<>{COLUMN_CHOICES[f].hint} <kbd>C</kbd></>} side="bottom">
+                                        <button type="button" role="radio" aria-checked={columns === f} className="segmented__option" onClick={() => setColumns(f)}>
+                                            {COLUMN_CHOICES[f].label}
+                                        </button>
+                                    </Tooltip>
+                                ))}
+                                <kbd className="kbd-hint">C</kbd>
+                            </div>
+                            <span className="layers__note">
+                                {scopeConnections.length > 1 ? `${scopeConnections.length} connections · ` : ''}
+                                {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'}
+                                {example ? ' · example data' : ''}
+                            </span>
+                        </div>
+                    )}
+
+                    <main
+                        className={`main${sideBySide && panelWidth !== null ? ' has-panel-width' : ''}`}
+                        ref={mainRef}
+                        style={panelWidth !== null ? ({ '--panel-width': `${panelWidth}px` } as CSSProperties) : undefined}
+                    >
+                        <div className="canvas" ref={canvasRef}>
+                            <ReactFlow<AppNode, LinkEdgeType>
+                                nodes={nodes}
+                                edges={edges}
+                                nodeTypes={nodeTypes}
+                                edgeTypes={edgeTypes}
+                                onNodesChange={onNodesChange}
+                                onNodeClick={onNodeClick}
+                                onNodeDoubleClick={(_, node) => {
+                                    if (node.type === 'table') {
+                                        focusOn({ connection: node.data.connection, table: node.data.table.name });
+                                    }
+                                }}
+                                zoomOnDoubleClick={false}
+                                onEdgeMouseEnter={(_, edge) => hover.set(edge.id)}
+                                onEdgeMouseLeave={() => hover.set(null)}
+                                onNodeDragStart={(_, node) => setDragging(node.id)}
+                                onNodeDragStop={() => setDragging(null)}
+                                onlyRenderVisibleElements
+                                onPaneClick={() => setSelected(null)}
+                                onMoveStart={(event) => {
+                                    if (event) {
+                                        userMoved.current = true;
+                                    }
+                                }}
+                                nodesConnectable={false}
+                                edgesFocusable={false}
+                                minZoom={0.08}
+                                maxZoom={2}
+                                proOptions={{ hideAttribution: true }}
+                            >
+                                <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
+                                <Controls showInteractive={false} showZoom={false} showFitView={false}>
+                                    <Tooltip content={<>Zoom in <kbd>+</kbd></>} side="right">
+                                        <ControlButton onClick={() => flow.zoomIn({ duration: 150 })} aria-label="Zoom in" aria-keyshortcuts="+">
+                                            <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                                <path d="M8 3 V13 M3 8 H13" />
+                                            </svg>
+                                        </ControlButton>
+                                    </Tooltip>
+                                    <Tooltip content={<>Zoom out <kbd>−</kbd></>} side="right">
+                                        <ControlButton onClick={() => flow.zoomOut({ duration: 150 })} aria-label="Zoom out" aria-keyshortcuts="-">
+                                            <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                                <path d="M3 8 H13" />
+                                            </svg>
+                                        </ControlButton>
+                                    </Tooltip>
+                                    <Tooltip content={<>Fit the diagram <kbd>F</kbd></>} side="right">
+                                        <ControlButton onClick={() => flow.fitView({ padding: 0.08, duration: 250 })} aria-label="Fit the diagram" aria-keyshortcuts="F">
+                                            <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                                <path d="M2.5 6 V2.5 H6 M10 2.5 H13.5 V6 M13.5 10 V13.5 H10 M6 13.5 H2.5 V10" />
+                                            </svg>
+                                        </ControlButton>
+                                    </Tooltip>
+                                    <Tooltip content={<>Auto layout <kbd>Shift A</kbd></>} side="right">
+                                        <ControlButton onClick={onAutoLayout} aria-label="Arrange tables automatically" aria-keyshortcuts="Shift+A" data-tour="auto-layout">
+                                            <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                                <rect x="1.5" y="2" width="5" height="4" rx="1" />
+                                                <rect x="9.5" y="2" width="5" height="4" rx="1" />
+                                                <rect x="5.5" y="10" width="5" height="4" rx="1" />
+                                                <path d="M4 6 V8 H12 V6 M8 8 V10" />
+                                            </svg>
+                                        </ControlButton>
+                                    </Tooltip>
+                                </Controls>
+                                {/* Below 1100px the diagram needs the room more than an overview does. */}
+                                {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
+                            </ReactFlow>
+                            {focus && (
+                                <div className="focus-bar" role="group" aria-label="Focus mode">
+                                    <span className="focus-bar__label">
+                                        Focus on <code>{scopeConnections.length > 1 ? `${focus.connection}.${focus.table}` : focus.table}</code>
+                                    </span>
+                                    <span className="segmented" role="radiogroup" aria-label="Links away">
+                                        {[1, 2, 3].map((d) => (
+                                            <button key={d} type="button" role="radio" aria-checked={focus.depth === d} className="segmented__option" onClick={() => focusOn(focus, d)}>
+                                                {d} {d === 1 ? 'link' : 'links'}
+                                            </button>
+                                        ))}
+                                    </span>
+                                    <span className="focus-bar__count">{shownTables.length} tables</span>
+                                    <button type="button" className="button button--small" onClick={copyLink}>
+                                        Copy link
+                                    </button>
+                                    <Tooltip content={<>Show every table again <kbd>Esc</kbd></>} side="bottom">
+                                        <button type="button" className="button button--small" aria-keyshortcuts="Escape" onClick={endFocus}>
+                                            Leave focus mode
+                                        </button>
+                                    </Tooltip>
+                                </div>
+                            )}
+                            <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="right">
+                                <button type="button" className="tour-fab" aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
+                                    ?
+                                </button>
+                            </Tooltip>
+                        </div>
+                        {sideBySide && (
+                            <div
+                                className="panel-resizer"
+                                role="separator"
+                                aria-orientation="vertical"
+                                aria-label="Resize the details panel"
+                                aria-valuenow={panelWidth ?? undefined}
+                                tabIndex={0}
+                                onPointerDown={onResizeStart}
+                                onDoubleClick={() => resizePanel(null)}
+                                onKeyDown={(e) => {
+                                    const width = panelWidth ?? document.querySelector('.panel')?.getBoundingClientRect().width ?? 360;
+                                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                                        e.preventDefault();
+                                        resizePanel(width + (e.key === 'ArrowLeft' ? 24 : -24));
+                                    }
+                                }}
+                                title="Drag to resize, double-click to reset"
+                            />
+                        )}
+                        <SidePanel
+                            schema={schema}
+                            editor={editor ?? null}
+                            focused={focus}
+                            onFocus={focusOn}
+                            onLeaveFocus={endFocus}
+                            onCopyLink={copyLink}
+                            connections={scopeConnections}
+                            selected={selected}
+                            tab={tab}
+                            onTab={(t) => {
+                                setTab(t);
+                                setSheetOpen(true);
+                            }}
+                            onOpen={(c, t) => {
+                                open(c, t);
+                                if (narrow) {
+                                    setSheetOpen(false);
                                 }
                             }}
-                            title="Drag to resize, double-click to reset"
+                            sheet={narrow}
+                            sheetOpen={sheetOpen}
+                            onSheet={setSheetOpen}
                         />
+                    </main>
+
+                    <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} keysOn={keysOn} onKeysOn={switchKeys} />
+                    <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
+
+                    {toast && (
+                        <div className="toast" role="status">
+                            {toast}
+                        </div>
                     )}
-                    <SidePanel
-                        schema={schema}
-                        editor={editor ?? null}
-                        focused={focus}
-                        onFocus={focusOn}
-                        onLeaveFocus={endFocus}
-                        onCopyLink={copyLink}
-                        connections={scopeConnections}
-                        selected={selected}
-                        tab={tab}
-                        onTab={(t) => {
-                            setTab(t);
-                            setSheetOpen(true);
-                        }}
-                        onOpen={(c, t) => {
-                            open(c, t);
-                            if (narrow) {
-                                setSheetOpen(false);
-                            }
-                        }}
-                        sheet={narrow}
-                        sheetOpen={sheetOpen}
-                        onSheet={setSheetOpen}
-                    />
-                </main>
-
-                <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} keysOn={keysOn} onKeysOn={switchKeys} />
-                <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
-
-                {toast && (
-                    <div className="toast" role="status">
-                        {toast}
-                    </div>
-                )}
-            </div>
-        </TableActions.Provider>
+                </div>
+            </TableActions.Provider>
+        </EdgeHover.Provider>
     );
 }
 

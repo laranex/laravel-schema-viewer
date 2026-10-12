@@ -3,7 +3,7 @@ import * as MenuPrimitive from '@radix-ui/react-dropdown-menu';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
-import type { ReactNode } from 'react';
+import { cloneElement, useState, type PointerEvent as ReactPointerEvent, type ReactElement, type ReactNode } from 'react';
 
 // The viewer's own controls, built on Radix primitives and styled with the page's tokens.
 
@@ -92,6 +92,21 @@ export function Tooltip({ content, children, side = 'top' }: { content: ReactNod
             </TooltipPrimitive.Portal>
         </TooltipPrimitive.Root>
     );
+}
+
+// A Tooltip that mounts on the first hover: a diagram has thousands of rows and labels with tooltips, and a mounted
+// tooltip costs far more than the element it describes. Radix opens on pointer move, so the first move still opens it.
+export function LazyTooltip(props: { content: ReactNode; children: ReactElement<{ onPointerEnter?: (e: ReactPointerEvent) => void }>; side?: 'top' | 'right' | 'bottom' | 'left' }) {
+    const [armed, setArmed] = useState(false);
+    if (armed) {
+        return <Tooltip {...props} />;
+    }
+    return cloneElement(props.children, {
+        onPointerEnter: (e: ReactPointerEvent) => {
+            props.children.props.onPointerEnter?.(e);
+            setArmed(true);
+        },
+    });
 }
 
 export type MenuItem = { label: string; hint?: string; shortcut?: string; onSelect: () => void; tour?: string };

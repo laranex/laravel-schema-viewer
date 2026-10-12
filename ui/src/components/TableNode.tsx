@@ -2,7 +2,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { createContext, memo, useContext } from 'react';
 import type { Fold } from '../graph';
 import type { Table } from '../types';
-import { Tooltip } from './ui';
+import { LazyTooltip as Tooltip } from './ui';
 
 export type TableNodeData = {
     connection: string;
@@ -19,6 +19,8 @@ export type TableNodeData = {
     fold: Fold;
     // The columns the card shows, in table order.
     shown: string[];
+    // The columns edges can end on, the only ones that get handles.
+    ends: string[];
 };
 
 // What a card's own controls do, provided by the viewer.
@@ -49,6 +51,7 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
     const { table } = data;
     const { setFold } = useContext(TableActions);
     const shown = new Set(data.shown);
+    const ends = new Set(data.ends);
     const folded = table.columns.filter((c) => !shown.has(c.name));
     const next = NEXT_FOLD[data.fold];
     const classes = ['table-node', data.shown.length === 0 ? 'is-folded' : '', selected ? 'is-selected' : '', data.dim ? 'is-dim' : '', data.active ? 'is-active' : '', table.framework ? 'is-framework' : '', data.pivot ? 'is-pivot' : '']
@@ -59,9 +62,11 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
         <div className={classes}>
             <header className="table-node__header">
                 {/* Folded columns keep their edges: they meet the header. */}
-                {folded.map((c) => (
-                    <ColumnHandles key={c.name} column={c.name} />
-                ))}
+                {folded
+                    .filter((c) => ends.has(c.name))
+                    .map((c) => (
+                        <ColumnHandles key={c.name} column={c.name} />
+                    ))}
                 <div className="table-node__title">
                     <span className="table-node__name">{table.name}</span>
                     {data.hintCount > 0 && (
@@ -100,7 +105,7 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
                         const isFk = data.foreign.includes(c.name);
                         return (
                             <li key={c.name} className={data.linked.includes(c.name) ? 'is-linked' : undefined}>
-                                <ColumnHandles column={c.name} />
+                                {ends.has(c.name) && <ColumnHandles column={c.name} />}
                                 <span className="key">{isPk ? 'PK' : isFk ? 'FK' : ''}</span>
                                 <span className="col">
                                     {c.name}
