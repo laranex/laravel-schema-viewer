@@ -804,11 +804,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     }, []);
     const hintCount = scopeConnections.reduce((n, c) => n + schema.hints(c).length, 0);
 
-    const columnsGroup = {
-        label: <span className="ui-menu__heading">Columns</span>,
-        items: FOLDS.map((f) => ({ label: `${COLUMN_CHOICES[f].label}${f === columns ? ' ✓' : ''}`, hint: COLUMN_CHOICES[f].hint, onSelect: () => setColumns(f) })),
-    };
-
     return (
         <TableActions.Provider value={tableActions}>
             <div className={`app${keysOn ? '' : ' keys-off'}`}>
@@ -836,7 +831,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                             }
                             itemsLabel={downloadHeading}
                             items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
-                            groups={[allConnectionsGroup, columnsGroup, { items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
+                            groups={[allConnectionsGroup, { items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
                             open={menuOpen || tourMenu === 'phone'}
                             onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
                             choice={{
@@ -860,6 +855,14 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
                                     hotkey: t.hotkey,
                                 })),
+                            }}
+                            afterToggles={{
+                                label: 'Columns',
+                                value: columns,
+                                options: FOLDS.map((f) => ({ value: f, label: COLUMN_CHOICES[f].label, hint: COLUMN_CHOICES[f].hint })),
+                                onChange: (v) => setColumns(v as Fold),
+                                hint: <kbd className="kbd-hint">C</kbd>,
+                                tour: 'menu-columns',
                             }}
                         />
                     ) : (

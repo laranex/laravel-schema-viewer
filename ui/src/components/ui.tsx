@@ -102,6 +102,34 @@ export type MenuChoice = { label: string; value: string; options: SelectOption[]
 
 export type MenuToggle = { label: string; checked: boolean; onChange: () => void; icon?: ReactNode; hotkey?: string };
 
+// A labeled single choice: the selected option is checked.
+function ChoiceGroup({ choice, tour }: { choice: MenuChoice; tour?: string }) {
+    return (
+        <MenuPrimitive.Group data-tour={tour}>
+            <MenuPrimitive.Label className="ui-menu__label">
+                {choice.label}
+                {choice.hint}
+            </MenuPrimitive.Label>
+            <MenuPrimitive.RadioGroup value={choice.value} onValueChange={choice.onChange}>
+                {choice.options.map((o) => (
+                    <MenuPrimitive.RadioItem key={o.value} value={o.value} className="ui-item ui-item--choice">
+                        <span className="ui-item__check">
+                            <MenuPrimitive.ItemIndicator>
+                                <Check />
+                            </MenuPrimitive.ItemIndicator>
+                        </span>
+                        <span className="ui-item__body">
+                            {o.label}
+                            {o.hint && <span className="ui-item__hint">{o.hint}</span>}
+                        </span>
+                    </MenuPrimitive.RadioItem>
+                ))}
+            </MenuPrimitive.RadioGroup>
+            <MenuPrimitive.Separator className="ui-menu__separator" />
+        </MenuPrimitive.Group>
+    );
+}
+
 export function Menu({
     label,
     trigger,
@@ -113,6 +141,7 @@ export function Menu({
     triggerClass = 'button button--icon',
     itemsLabel,
     groups = [],
+    afterToggles,
 }: {
     triggerClass?: string;
     // A section heading above the items, and more sections after them, each below a divider with its own heading.
@@ -123,6 +152,8 @@ export function Menu({
     items: MenuItem[];
     choice?: MenuChoice;
     toggles?: { label: string; items: MenuToggle[] };
+    // A second single choice, right below the toggles.
+    afterToggles?: MenuChoice & { tour?: string };
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
 }) {
@@ -136,30 +167,7 @@ export function Menu({
             </MenuPrimitive.Trigger>
             <MenuPrimitive.Portal>
                 <MenuPrimitive.Content className="ui-popover ui-menu" align="end" sideOffset={6} collisionPadding={12}>
-                    {choice && (
-                        <MenuPrimitive.Group data-tour="menu-connection">
-                            <MenuPrimitive.Label className="ui-menu__label">
-                                {choice.label}
-                                {choice.hint}
-                            </MenuPrimitive.Label>
-                            <MenuPrimitive.RadioGroup value={choice.value} onValueChange={choice.onChange}>
-                                {choice.options.map((o) => (
-                                    <MenuPrimitive.RadioItem key={o.value} value={o.value} className="ui-item ui-item--choice">
-                                        <span className="ui-item__check">
-                                            <MenuPrimitive.ItemIndicator>
-                                                <Check />
-                                            </MenuPrimitive.ItemIndicator>
-                                        </span>
-                                        <span className="ui-item__body">
-                                            {o.label}
-                                            {o.hint && <span className="ui-item__hint">{o.hint}</span>}
-                                        </span>
-                                    </MenuPrimitive.RadioItem>
-                                ))}
-                            </MenuPrimitive.RadioGroup>
-                            <MenuPrimitive.Separator className="ui-menu__separator" />
-                        </MenuPrimitive.Group>
-                    )}
+                    {choice && <ChoiceGroup choice={choice} tour="menu-connection" />}
                     {toggles && (
                         <MenuPrimitive.Group data-tour="menu-show">
                             <MenuPrimitive.Label className="ui-menu__label">{toggles.label}</MenuPrimitive.Label>
@@ -189,6 +197,7 @@ export function Menu({
                             <MenuPrimitive.Separator className="ui-menu__separator" />
                         </MenuPrimitive.Group>
                     )}
+                    {afterToggles && <ChoiceGroup choice={afterToggles} tour={afterToggles.tour} />}
                     <MenuPrimitive.Group data-tour="menu-actions">
                         {itemsLabel && <MenuPrimitive.Label className="ui-menu__label">{itemsLabel}</MenuPrimitive.Label>}
                         {items.map((item) => (
