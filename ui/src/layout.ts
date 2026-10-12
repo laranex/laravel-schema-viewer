@@ -1,6 +1,7 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { NODE_WIDTH, nodeId, type Schema } from './graph';
 import { GAP } from './routing';
+import type { SchemaDocument } from './types';
 
 export type Positions = Record<string, { x: number; y: number }>;
 
@@ -36,7 +37,13 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
     return positions;
 }
 
+// What the page hands the viewer: the server's URLs, or, in a static export, the schema and every download itself.
 export type ServerConfig = {
-    schemaUrl: string;
-    exportUrl: string;
+    schemaUrl?: string;
+    exportUrl?: string;
+    schema?: SchemaDocument;
+    downloads?: StaticDownloads;
 };
+
+// Each connection's Mermaid, DBML and Markdown files, written by schema-viewer:export --format=html.
+export type StaticDownloads = Record<string, Record<'mermaid' | 'dbml' | 'markdown', string>>;

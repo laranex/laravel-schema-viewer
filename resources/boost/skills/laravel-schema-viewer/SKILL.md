@@ -1,7 +1,7 @@
 ---
 name: laravel-schema-viewer
 description: >
-  Understand a Laravel app's database before changing it, using laranex/laravel-schema-viewer: read every table, column, index and foreign key together with the Eloquent models and relations that use them, find mismatches between the two, and export the schema as Markdown, JSON, Mermaid or DBML.
+  Understand a Laravel app's database before changing it, using laranex/laravel-schema-viewer: read every table, column, index and foreign key together with the Eloquent models and relations that use them, find mismatches between the two, and export the schema as Markdown, JSON, Mermaid, DBML or a standalone HTML viewer.
 license: MIT
 metadata:
   author: Nay Thu Khant
@@ -56,6 +56,14 @@ php artisan schema-viewer:export --format=json
 JSON covers every connection and adds the Laravel side: `models` (table, casts, fillable, hidden, scopes, observers), `relations` (type, keys, pivot, morph columns, constraints, inverse), `links` (one per pair of columns, with `state` `both`, `relation` or `foreign_key`) and `hints`. Use it to answer "which relation uses this column" or "is this relation backed by a foreign key".
 
 `--format=mermaid` and `--format=dbml` produce an ER diagram of one connection's database for a README, a pull request or dbdiagram.io.
+
+### Share the viewer without the app
+
+```bash
+php artisan schema-viewer:export --format=html --output=build/schema-viewer
+```
+
+Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer with the schema and the downloads inlined. It opens from disk or any static host without the Laravel app or its API, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. Host it only where the schema may be seen.
 
 ### Check the schema and the models agree
 

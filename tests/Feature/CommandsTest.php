@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Artisan;
+use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
+use Laranex\LaravelSchemaViewer\SchemaViewer;
 
 function exportAs(string $format): string
 {
@@ -62,6 +64,47 @@ it('writes the export to a file', function (): void {
 
     expect((string) file_get_contents($path))->toStartWith('erDiagram');
     unlink($path);
+});
+
+it('exports the viewer as one standalone HTML file that needs no server', function (): void {
+    $folder = sys_get_temp_dir().'/schema-viewer-'.uniqid();
+
+    $this->artisan('schema-viewer:export', ['--format' => 'html', '--output' => $folder])->assertSuccessful();
+
+    $html = (string) file_get_contents($folder.'/index.html');
+    preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', $html, $match);
+    $config = json_decode($match[1], true);
+
+    expect($html)->toStartWith('<!doctype html>')
+        ->and($html)->toContain('<div id="root"></div>')
+        ->and($html)->toContain('url(data:font/woff2;base64,')
+        ->and($html)->not->toContain('./assets/')
+        ->and(substr_count(strtolower($html), '</script'))->toBe(2)
+        ->and($config)->not->toHaveKey('schemaUrl')
+        ->and($config['schema']['connections'][0]['name'])->toBe('testing')
+        ->and($config['schema']['relations'])->not->toBeEmpty()
+        ->and($config['downloads']['testing']['mermaid'])->toStartWith('erDiagram')
+        ->and($config['downloads']['testing']['dbml'])->toContain('Table posts {')
+        ->and($config['downloads']['testing']['markdown'])->toContain('## posts');
+
+    unlink($folder.'/index.html');
+    rmdir($folder);
+});
+
+it('writes the standalone viewer to a named HTML file', function (): void {
+    $path = sys_get_temp_dir().'/schema-'.uniqid().'.html';
+
+    $this->artisan('schema-viewer:export', ['--format' => 'html', '--output' => $path])
+        ->expectsOutputToContain('Schema exported to')
+        ->assertSuccessful();
+
+    expect((string) file_get_contents($path))->toContain('window.__SCHEMA_VIEWER__');
+    unlink($path);
+});
+
+it('reports a missing viewer asset', function (): void {
+    expect(fn () => (new HtmlExporter(sys_get_temp_dir().'/no-dist-'.uniqid()))->export(app(SchemaViewer::class)->document()))
+        ->toThrow(RuntimeException::class, 'The viewer asset [app.js] is missing');
 });
 
 it('rejects an unknown format or connection', function (): void {

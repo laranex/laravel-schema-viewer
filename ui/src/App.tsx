@@ -22,7 +22,7 @@ import { SidePanel } from './components/SidePanel';
 import { ExternalNodeView, TableNodeView, type ExternalNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass } from './graph';
 import { boxWidth, route, type Box } from './routing';
-import { autoLayout } from './layout';
+import { autoLayout, type StaticDownloads } from './layout';
 import type { SchemaDocument } from './types';
 
 type AppNode = TableNodeType | ExternalNodeType;
@@ -46,17 +46,17 @@ function useMedia(media: string) {
 
 const useNarrow = () => useMedia('(max-width: 760px)');
 
-export default function App({ doc, example = false, exportUrl }: { doc: SchemaDocument; example?: boolean; exportUrl?: string }) {
+export default function App({ doc, example = false, exportUrl, downloads }: { doc: SchemaDocument; example?: boolean; exportUrl?: string; downloads?: StaticDownloads }) {
     return (
         <ReactFlowProvider>
             <TooltipProvider>
-                <Viewer doc={doc} example={example} exportUrl={exportUrl} />
+                <Viewer doc={doc} example={example} exportUrl={exportUrl} downloads={downloads} />
             </TooltipProvider>
         </ReactFlowProvider>
     );
 }
 
-function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boolean; exportUrl?: string }) {
+function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; example: boolean; exportUrl?: string; downloads?: StaticDownloads }) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
 
@@ -430,18 +430,25 @@ function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boo
         setPending(null);
     };
 
-    // The server builds the file, so a large schema never has to fit in the clipboard or the page's memory.
+    // The server builds the file, so a large schema never has to fit in the clipboard or the page's memory. A static
+    // export has no server: it carries the files, and JSON is the connection itself, as the server writes it.
     const download = (format: ExportFormat) => {
+        if (downloads) {
+            const content = format === 'json' ? `${JSON.stringify(doc.connections.find((c) => c.name === connection), null, 4)}\n` : downloads[connection]?.[format];
+            if (content === undefined) {
+                notify('This export has no such file. Export it again to include it.');
+                return;
+            }
+            const url = URL.createObjectURL(new Blob([content], { type: format === 'json' ? 'application/json' : 'text/plain' }));
+            save(url, `schema-${connection.replace(/[^A-Za-z0-9_-]/g, '-')}.${EXTENSIONS[format]}`);
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            return;
+        }
         if (!exportUrl) {
             notify('Downloads are blocked in this preview. In your app the file downloads.');
             return;
         }
-        const link = document.createElement('a');
-        link.href = `${exportUrl}?${new URLSearchParams({ format, connection })}`;
-        link.download = '';
-        document.body.append(link);
-        link.click();
-        link.remove();
+        save(`${exportUrl}?${new URLSearchParams({ format, connection })}`, '');
     };
 
     const onAutoLayout = () => {
@@ -736,6 +743,17 @@ function Viewer({ doc, example, exportUrl }: { doc: SchemaDocument; example: boo
 
 
 type ExportFormat = 'mermaid' | 'dbml' | 'markdown' | 'json';
+
+const EXTENSIONS: Record<ExportFormat, string> = { mermaid: 'mmd', dbml: 'dbml', markdown: 'md', json: 'json' };
+
+function save(href: string, name: string) {
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+}
 
 // The database schema of the current connection (tables, columns, keys, indexes, foreign keys), without the Laravel side.
 const EXPORTS: { format: ExportFormat; label: string; hint: string }[] = [

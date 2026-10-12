@@ -34,6 +34,15 @@ function Root() {
             }
             return;
         }
+        // A static export carries the schema in the page itself.
+        if (server.schema) {
+            setDoc(server.schema);
+            return;
+        }
+        if (!server.schemaUrl) {
+            setError('This page carries no schema. Export it again with php artisan schema-viewer:export --format=html.');
+            return;
+        }
         fetch(server.schemaUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
             .then(async (r) => {
                 if (!r.ok) {
@@ -64,7 +73,7 @@ function Root() {
         );
     }
 
-    return <App doc={doc} example={!server} exportUrl={server?.exportUrl} />;
+    return <App doc={doc} example={!server} exportUrl={server?.exportUrl} downloads={server?.downloads} />;
 }
 
 createRoot(document.getElementById('root')!).render(
