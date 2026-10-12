@@ -10,9 +10,24 @@ use RuntimeException;
 /**
  * The whole viewer as one standalone HTML file: the app, its styles and fonts, the schema and every connection's
  * downloads, inlined. It opens straight from disk or from any static host, without the Laravel app or its API.
+ *
+ * The app and the schema are gzipped and base64 encoded, a tenth of their size for a large schema; a small module
+ * inflates them with the browser's DecompressionStream and starts the app. The viewer's own HTML download builds the
+ * same file (ui/src/standalone.ts), with the same loader.
  */
 final class HtmlExporter
 {
+    /**
+     * Inflates the config and the app, then starts the app. Kept identical to LOADER in ui/src/standalone.ts.
+     */
+    public const LOADER = "const unpack = async (id) => new Response(new Blob([Uint8Array.from(atob(document.getElementById(id).textContent.trim()), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('gzip'))).text();\n"
+        ."try {\n"
+        ."    window.__SCHEMA_VIEWER__ = JSON.parse(await unpack('schema-viewer-config'));\n"
+        ."    await import(URL.createObjectURL(new Blob([await unpack('schema-viewer-app')], { type: 'text/javascript' })));\n"
+        ."} catch (e) {\n"
+        ."    document.getElementById('root').textContent = 'This page needs a current browser (Chrome, Edge, Firefox or Safari 16.4 or later): ' + e.message;\n"
+        .'}';
+
     public function __construct(private readonly string $dist = __DIR__.'/../../dist') {}
 
     /**
@@ -22,11 +37,13 @@ final class HtmlExporter
     {
         $config = json_encode(
             ['schema' => $document, 'downloads' => self::downloads($document), 'defaultConnection' => $defaultConnection],
-            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
         );
 
-        // Nothing inlined may close its own tag early.
-        $js = str_ireplace('</script', '<\/script', $this->read('app.js'));
+        $config = base64_encode((string) gzencode($config, 9));
+        $js = base64_encode((string) gzencode($this->read('app.js'), 9));
+        $loader = self::LOADER;
+        // Nothing inlined may close its own tag early; base64 never can.
         $css = str_ireplace('</style', '<\/style', $this->styles());
 
         return <<<HTML
@@ -38,11 +55,14 @@ final class HtmlExporter
                 <meta name="robots" content="noindex, nofollow">
                 <title>Schema Viewer</title>
                 <style>{$css}</style>
-                <script>window.__SCHEMA_VIEWER__ = {$config};</script>
-                <script type="module">{$js}</script>
+                <script type="module">
+            {$loader}
+                </script>
             </head>
             <body>
                 <div id="root"></div>
+                <script type="application/octet-stream" id="schema-viewer-config">{$config}</script>
+                <script type="application/octet-stream" id="schema-viewer-app">{$js}</script>
             </body>
             </html>
 

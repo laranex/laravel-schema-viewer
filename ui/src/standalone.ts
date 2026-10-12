@@ -3,17 +3,22 @@ import type { SchemaDocument } from './types';
 
 const FORMATS = ['mermaid', 'dbml', 'markdown'] as const;
 
+// Inflates the config and the app, then starts the app. Kept identical to HtmlExporter::LOADER.
+const LOADER = `const unpack = async (id) => new Response(new Blob([Uint8Array.from(atob(document.getElementById(id).textContent.trim()), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+try {
+    window.__SCHEMA_VIEWER__ = JSON.parse(await unpack('schema-viewer-config'));
+    await import(URL.createObjectURL(new Blob([await unpack('schema-viewer-app')], { type: 'text/javascript' })));
+} catch (e) {
+    document.getElementById('root').textContent = 'This page needs a current browser (Chrome, Edge, Firefox or Safari 16.4 or later): ' + e.message;
+}`;
+
 // The whole viewer as one HTML file: the same file `php artisan schema-viewer:export --format=html` writes (see
 // HtmlExporter), built from what this page already has. Its own script and stylesheet with the fonts inlined, the
 // schema it shows, and each connection's downloads, from the export URL or, in a static export, from the page itself.
+// The script and the schema are gzipped and base64 encoded, and the page's loader inflates them.
 export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownloads | undefined, exportUrl: string | undefined, defaultConnection = 'all'): Promise<string> {
     const [css, js, files] = await Promise.all([styles(), script(), downloads ?? fetchDownloads(doc, exportUrl)]);
-    const config = JSON.stringify({ schema: doc, downloads: files, defaultConnection })
-        .replace(/</g, '\\u003c')
-        .replace(/>/g, '\\u003e')
-        .replace(/&/g, '\\u0026')
-        .replace(/\u2028/g, '\\u2028')
-        .replace(/\u2029/g, '\\u2029');
+    const [config, app] = await Promise.all([pack(JSON.stringify({ schema: doc, downloads: files, defaultConnection })), pack(js)]);
 
     return `<!doctype html>
 <html lang="en">
@@ -23,14 +28,33 @@ export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownl
     <meta name="robots" content="noindex, nofollow">
     <title>Schema Viewer</title>
     <style>${css.replace(/<\/style/gi, '<\\/style')}</style>
-    <script>window.__SCHEMA_VIEWER__ = ${config};</script>
-    <script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>
+    <script type="module">
+${LOADER}
+    </script>
 </head>
 <body>
     <div id="root"></div>
+    <script type="application/octet-stream" id="schema-viewer-config">${config}</script>
+    <script type="application/octet-stream" id="schema-viewer-app">${app}</script>
 </body>
 </html>
 `;
+}
+
+// Text gzipped, then base64 encoded.
+async function pack(text: string): Promise<string> {
+    const bytes = new Uint8Array(await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(binary);
+}
+
+// Base64 encoded gzip, back to text.
+async function unpack(data: string): Promise<string> {
+    const bytes = Uint8Array.from(atob(data.trim()), (c) => c.charCodeAt(0));
+    return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
 }
 
 // Every connection's files in one request (format all), so the server reads the schema once for the whole page.
@@ -50,13 +74,17 @@ async function fetchDownloads(doc: SchemaDocument, exportUrl: string | undefined
     return files;
 }
 
-// The app's script: inline in a static export, otherwise loaded from the package's asset route.
+// The app's script: packed in a static export, otherwise loaded from the package's asset route.
 async function script(): Promise<string> {
-    const el = document.querySelector<HTMLScriptElement>('script[type="module"]');
+    const packed = document.getElementById('schema-viewer-app');
+    if (packed) {
+        return unpack(packed.textContent ?? '');
+    }
+    const el = document.querySelector<HTMLScriptElement>('script[type="module"][src]');
     if (!el) {
         throw new Error('The viewer script was not found on this page.');
     }
-    return el.src ? text(el.src) : (el.textContent ?? '');
+    return text(el.src);
 }
 
 // The stylesheet with its WOFF2 fonts embedded and the WOFF fallbacks dropped, as the exporter does.

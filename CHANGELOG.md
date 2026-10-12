@@ -20,7 +20,7 @@ First release.
 - Models and relations open in your editor at the right line, set with `editor` or Laravel's `app.editor`; the schema document records where each model and relation method is declared.
 - A details panel you can widen by dragging its edge.
 - The viewer caches the schema it read until a model file, the config, a connection's migrations or an SQLite file changes (`cache.enabled`, `cache.store`, `cache.ttl`); a refresh button reads it again.
-- Downloads of one connection's database schema as Mermaid, DBML, Markdown or JSON, and of the whole viewer as one standalone HTML file that opens without the app.
+- Downloads of one connection's database schema as Mermaid, DBML, Markdown or JSON, and of the whole viewer as one standalone HTML file that opens without the app, compressed to about a tenth of its size for a large schema.
 - `schema-viewer:export --format=json|mermaid|dbml|markdown|html` and `schema-viewer:check`, which fails when a hint of a chosen kind remains.
 - Access: always in `local`; elsewhere only when the `viewSchema` gate allows. Off outside `local` unless `SCHEMA_VIEWER_ENABLED` is set.
 - Supports PHP 8.1+ and Laravel 10.36 to 13 on MySQL, MariaDB, PostgreSQL, SQLite and SQL Server.

@@ -72,14 +72,15 @@ it('exports the viewer as one standalone HTML file that needs no server', functi
     $this->artisan('schema-viewer:export', ['--format' => 'html', '--output' => $folder])->assertSuccessful();
 
     $html = (string) file_get_contents($folder.'/index.html');
-    preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', $html, $match);
-    $config = json_decode($match[1], true);
+    $config = json_decode(unpackedScript($html, 'schema-viewer-config'), true);
 
     expect($html)->toStartWith('<!doctype html>')
         ->and($html)->toContain('<div id="root"></div>')
         ->and($html)->toContain('url(data:font/woff2;base64,')
         ->and($html)->not->toContain('./assets/')
-        ->and(substr_count(strtolower($html), '</script'))->toBe(2)
+        ->and(substr_count(strtolower($html), '</script'))->toBe(3)
+        ->and($html)->toContain(HtmlExporter::LOADER)
+        ->and(unpackedScript($html, 'schema-viewer-app'))->toBe(file_get_contents(dirname(__DIR__, 2).'/dist/app.js'))
         ->and($config)->not->toHaveKey('schemaUrl')
         ->and($config['defaultConnection'])->toBe('all')
         ->and($config['schema']['connections'][0]['name'])->toBe('testing')
@@ -100,9 +101,17 @@ it('writes the standalone viewer to a named HTML file', function (): void {
         ->expectsOutputToContain('Schema exported to')
         ->assertSuccessful();
 
-    expect((string) file_get_contents($path))->toContain('window.__SCHEMA_VIEWER__')
-        ->toContain('"defaultConnection":"testing"');
+    expect(unpackedScript((string) file_get_contents($path), 'schema-viewer-config'))->toContain('"defaultConnection":"testing"');
     unlink($path);
+});
+
+it('builds the same page as the viewer\'s own HTML download', function (): void {
+    // ui/src/standalone.ts writes the page in the browser; both must start it the same way.
+    $standalone = (string) file_get_contents(dirname(__DIR__, 2).'/ui/src/standalone.ts');
+
+    expect($standalone)->toContain('const LOADER = `'.HtmlExporter::LOADER.'`;')
+        ->and($standalone)->toContain('id="schema-viewer-config"')
+        ->and($standalone)->toContain('id="schema-viewer-app"');
 });
 
 it('reports a missing viewer asset', function (): void {
@@ -135,3 +144,13 @@ it('passes the check when only other kinds remain', function (): void {
         ->expectsOutputToContain('Unknown hints.ignore field [tabel]')
         ->assertExitCode(2);
 });
+
+/**
+ * A packed script of a standalone HTML export: base64 of gzip.
+ */
+function unpackedScript(string $html, string $id): string
+{
+    preg_match('/<script type="application\/octet-stream" id="'.$id.'">([A-Za-z0-9+\/=]+)<\/script>/', $html, $match);
+
+    return (string) gzdecode((string) base64_decode($match[1] ?? '', true));
+}

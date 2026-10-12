@@ -1,21 +1,34 @@
-import ELK from 'elkjs/lib/elk.bundled.js';
+import { elkLayout } from './elk';
 import { NODE_WIDTH, nodeId, type Schema } from './graph';
 import { GAP } from './routing';
 import type { SchemaDocument } from './types';
 
 export type Positions = Record<string, { x: number; y: number }>;
 
-const elk = new ELK();
+// Layouts already worked out, per schema, by the tables and their heights: going back to a view is instant.
+const layouts = new WeakMap<Schema, Map<string, Positions>>();
+const KEEP = 24;
 
 // Layered layout, referenced tables to the left of the tables that point at them.
 export async function autoLayout(schema: Schema, connection: string, visible: Set<string>, sizes: Record<string, number>): Promise<Positions> {
     const ids = [...visible];
+    const key = `${connection}#${ids.map((id) => `${id}:${sizes[id] ?? 120}`).join('|')}`;
+    const cache = layouts.get(schema) ?? new Map<string, Positions>();
+    layouts.set(schema, cache);
+    const known = cache.get(key);
+    if (known) {
+        // Most recently used last, so the oldest is dropped first.
+        cache.delete(key);
+        cache.set(key, known);
+        return known;
+    }
+
     const edges = [
         ...schema.links(connection).map((l) => ({ source: nodeId(l.to.connection, l.to.table), target: nodeId(l.from.connection, l.from.table), id: l.id })),
         ...schema.derived(connection).map((d) => ({ source: nodeId(connection, d.from), target: nodeId(connection, d.to), id: d.id })),
     ].filter((e) => e.source !== e.target && visible.has(e.source) && visible.has(e.target));
 
-    const result = await elk.layout({
+    const result = await elkLayout({
         id: 'root',
         layoutOptions: {
             'elk.algorithm': 'layered',
@@ -34,6 +47,10 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
     result.children?.forEach((c) => {
         positions[c.id] = { x: c.x ?? 0, y: c.y ?? 0 };
     });
+    cache.set(key, positions);
+    if (cache.size > KEEP) {
+        cache.delete(cache.keys().next().value as string);
+    }
     return positions;
 }
 
