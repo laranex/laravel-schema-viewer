@@ -23,24 +23,92 @@ export const relationLabel = (id: string) => {
     return `${shortClass(cls)}::${name}`;
 };
 
-// Lookups over one schema document, built once.
+// Lookups over one schema document: indexes built once, per-table answers cached, so a lookup never scans the document.
 export class Schema {
     readonly doc: SchemaDocument;
     private readonly relationById = new Map<string, Relation>();
     private readonly modelByClass = new Map<string, Model>();
+    private readonly tablesByConnection = new Map<string, Table[]>();
+    private readonly tableByKey = new Map<string, Table>();
+    private readonly modelsByTable = new Map<string, Model[]>();
+    private readonly relationsByTable = new Map<string, Relation[]>();
+    private readonly incomingByTable = new Map<string, Relation[]>();
+    private readonly linksByConnection = new Map<string, Link[]>();
+    private readonly derivedByConnection = new Map<string, DerivedLink[]>();
+    private readonly hintsByConnection = new Map<string, Hint[]>();
+    private readonly hintsByTable = new Map<string, Hint[]>();
+    private readonly linkColumnsByTable = new Map<string, string[]>();
+    private readonly morphTypesByTable = new Map<string, string[]>();
+    private readonly keyCache = new Map<string, Set<string>>();
+    private readonly pivotCache = new Map<string, Set<string>>();
+    private readonly adjacency = new Map<string, Map<string, string[]>>();
+    private readonly haystacks = new Map<string, string[]>();
 
     constructor(doc: SchemaDocument) {
         this.doc = doc;
+        const push = <T>(map: Map<string, T[]>, key: string, value: T) => {
+            const list = map.get(key);
+            if (list) {
+                list.push(value);
+            } else {
+                map.set(key, [value]);
+            }
+        };
+
         doc.relations.forEach((r) => this.relationById.set(r.id, r));
-        doc.models.forEach((m) => this.modelByClass.set(m.class, m));
+        doc.models.forEach((m) => {
+            this.modelByClass.set(m.class, m);
+            push(this.modelsByTable, nodeId(m.connection, m.table), m);
+        });
+        doc.connections.forEach((c) => {
+            this.tablesByConnection.set(c.name, c.tables);
+            c.tables.forEach((t) => {
+                const key = nodeId(c.name, t.name);
+                if (!this.tableByKey.has(key)) {
+                    this.tableByKey.set(key, t);
+                }
+            });
+        });
+
+        const tableOf = (cls: string) => {
+            const m = this.modelByClass.get(cls);
+            return m ? nodeId(m.connection, m.table) : undefined;
+        };
+        doc.relations.forEach((r) => {
+            const own = tableOf(r.model);
+            const related = tableOf(r.related);
+            if (own !== undefined) {
+                push(this.relationsByTable, own, r);
+            }
+            if (related !== undefined && related !== own) {
+                push(this.incomingByTable, related, r);
+            }
+            if (r.morph && r.keys) {
+                push(this.morphTypesByTable, nodeId(r.keys.from.connection, r.keys.from.table), r.morph.type);
+            }
+        });
+
+        doc.links.forEach((l) => {
+            push(this.linksByConnection, l.from.connection, l);
+            if (l.to.connection !== l.from.connection) {
+                push(this.linksByConnection, l.to.connection, l);
+            }
+            l.from.columns.forEach((c) => push(this.linkColumnsByTable, nodeId(l.from.connection, l.from.table), c));
+            l.to.columns.forEach((c) => push(this.linkColumnsByTable, nodeId(l.to.connection, l.to.table), c));
+        });
+        doc.derivedLinks.forEach((d) => push(this.derivedByConnection, d.connection, d));
+        doc.hints.forEach((h) => {
+            push(this.hintsByConnection, h.connection, h);
+            push(this.hintsByTable, nodeId(h.connection, h.table), h);
+        });
     }
 
     tables(connection: string): Table[] {
-        return this.doc.connections.find((c) => c.name === connection)?.tables ?? [];
+        return this.tablesByConnection.get(connection) ?? [];
     }
 
     table(connection: string, name: string): Table | undefined {
-        return this.tables(connection).find((t) => t.name === name);
+        return this.tableByKey.get(nodeId(connection, name));
     }
 
     relation(id: string): Relation | undefined {
@@ -52,7 +120,7 @@ export class Schema {
     }
 
     modelsFor(connection: string, table: string): Model[] {
-        return this.doc.models.filter((m) => m.connection === connection && m.table === table);
+        return this.modelsByTable.get(nodeId(connection, table)) ?? [];
     }
 
     tableOfModel(cls: string): { connection: string; table: string } | undefined {
@@ -61,52 +129,54 @@ export class Schema {
     }
 
     relationsOf(connection: string, table: string): Relation[] {
-        const classes = this.modelsFor(connection, table).map((m) => m.class);
-        return this.doc.relations.filter((r) => classes.includes(r.model));
+        return this.relationsByTable.get(nodeId(connection, table)) ?? [];
     }
 
     // Relations on other tables' models that point at this table.
     incoming(connection: string, table: string): Relation[] {
-        const classes = this.modelsFor(connection, table).map((m) => m.class);
-        return this.doc.relations.filter((r) => classes.includes(r.related) && !classes.includes(r.model));
+        return this.incomingByTable.get(nodeId(connection, table)) ?? [];
     }
 
     links(connection: string): Link[] {
-        return this.doc.links.filter((l) => l.from.connection === connection || l.to.connection === connection);
+        return this.linksByConnection.get(connection) ?? [];
     }
 
     derived(connection: string): DerivedLink[] {
-        return this.doc.derivedLinks.filter((d) => d.connection === connection);
+        return this.derivedByConnection.get(connection) ?? [];
     }
 
     hints(connection: string, table?: string): Hint[] {
-        return this.doc.hints.filter((h) => h.connection === connection && (table === undefined || h.table === table));
+        return (table === undefined ? this.hintsByConnection.get(connection) : this.hintsByTable.get(nodeId(connection, table))) ?? [];
     }
 
     pivotTables(connection: string): Set<string> {
-        const names = new Set<string>();
-        this.doc.relations.forEach((r) => {
-            if (r.pivot && this.model(r.model)?.connection === connection) {
-                names.add(r.pivot.table);
+        let names = this.pivotCache.get(connection);
+        if (!names) {
+            names = new Set<string>();
+            for (const r of this.doc.relations) {
+                if (r.pivot && this.model(r.model)?.connection === connection) {
+                    names.add(r.pivot.table);
+                }
             }
-        });
+            this.pivotCache.set(connection, names);
+        }
         return names;
     }
 
     // The columns a folded card keeps: the primary key, foreign keys and every column a link or relation uses.
     keyColumns(connection: string, table: string): Set<string> {
-        const t = this.table(connection, table);
-        const keys = new Set([...(t?.indexes.find((i) => i.primary)?.columns ?? []), ...(t?.foreignKeys.flatMap((f) => f.columns) ?? [])]);
-        const at = (e: { connection: string; table: string; columns: string[] }) => e.connection === connection && e.table === table && e.columns.forEach((c) => keys.add(c));
-        this.links(connection).forEach((l) => {
-            at(l.from);
-            at(l.to);
-        });
-        this.doc.relations.forEach((r) => {
-            if (r.morph && r.keys?.from.connection === connection && r.keys.from.table === table) {
-                keys.add(r.morph.type);
-            }
-        });
+        const key = nodeId(connection, table);
+        let keys = this.keyCache.get(key);
+        if (!keys) {
+            const t = this.table(connection, table);
+            keys = new Set([
+                ...(t?.indexes.find((i) => i.primary)?.columns ?? []),
+                ...(t?.foreignKeys.flatMap((f) => f.columns) ?? []),
+                ...(this.linkColumnsByTable.get(key) ?? []),
+                ...(this.morphTypesByTable.get(key) ?? []),
+            ]);
+            this.keyCache.set(key, keys);
+        }
         return keys;
     }
 
@@ -118,22 +188,17 @@ export class Schema {
 
     // Tables linked to the start table, up to the given depth.
     neighbors(connection: string, start: string, depth: number): Set<string> {
+        const edges = this.edgesOf(connection);
         const seen = new Set([nodeId(connection, start)]);
         let frontier = [nodeId(connection, start)];
-        const edges = [
-            ...this.links(connection).map((l) => [nodeId(l.from.connection, l.from.table), nodeId(l.to.connection, l.to.table)]),
-            ...this.derived(connection).map((d) => [nodeId(connection, d.from), nodeId(connection, d.to)]),
-        ];
         for (let level = 0; level < depth; level++) {
             const next: string[] = [];
-            for (const [a, b] of edges) {
-                if (frontier.includes(a) && !seen.has(b)) {
-                    seen.add(b);
-                    next.push(b);
-                }
-                if (frontier.includes(b) && !seen.has(a)) {
-                    seen.add(a);
-                    next.push(a);
+            for (const id of frontier) {
+                for (const other of edges.get(id) ?? []) {
+                    if (!seen.has(other)) {
+                        seen.add(other);
+                        next.push(other);
+                    }
                 }
             }
             frontier = next;
@@ -141,18 +206,50 @@ export class Schema {
         return seen;
     }
 
+    // Each table's linked tables, through links and through relations, as seen from one connection.
+    private edgesOf(connection: string): Map<string, string[]> {
+        let edges = this.adjacency.get(connection);
+        if (!edges) {
+            const map = new Map<string, string[]>();
+            const add = (a: string, b: string) => {
+                const list = map.get(a);
+                if (list) {
+                    list.push(b);
+                } else {
+                    map.set(a, [b]);
+                }
+            };
+            const pairs = [
+                ...this.links(connection).map((l) => [nodeId(l.from.connection, l.from.table), nodeId(l.to.connection, l.to.table)]),
+                ...this.derived(connection).map((d) => [nodeId(connection, d.from), nodeId(connection, d.to)]),
+            ];
+            for (const [a, b] of pairs) {
+                add(a, b);
+                add(b, a);
+            }
+            edges = map;
+            this.adjacency.set(connection, edges);
+        }
+        return edges;
+    }
+
     matches(connection: string, table: Table, query: string): boolean {
         const q = query.trim().toLowerCase();
         if (!q) {
             return true;
         }
-        const haystack = [
-            table.name,
-            ...table.columns.map((c) => c.name),
-            ...this.modelsFor(connection, table.name).map((m) => m.class),
-            ...this.relationsOf(connection, table.name).map((r) => r.name),
-        ];
-        return haystack.some((s) => s.toLowerCase().includes(q));
+        const key = nodeId(connection, table.name);
+        let haystack = this.haystacks.get(key);
+        if (!haystack) {
+            haystack = [
+                table.name,
+                ...table.columns.map((c) => c.name),
+                ...this.modelsFor(connection, table.name).map((m) => m.class),
+                ...this.relationsOf(connection, table.name).map((r) => r.name),
+            ].map((s) => s.toLowerCase());
+            this.haystacks.set(key, haystack);
+        }
+        return haystack.some((s) => s.includes(q));
     }
 }
 

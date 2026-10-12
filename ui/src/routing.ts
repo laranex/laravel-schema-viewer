@@ -70,7 +70,12 @@ export function route(boxes: Map<string, Box>, requests: RouteRequest[]): Map<st
     const lanes = new Map<number, Draft[]>();
     for (const d of drafts) {
         const key = Math.round(d.gap / 10);
-        lanes.set(key, [...(lanes.get(key) ?? []), d]);
+        const group = lanes.get(key);
+        if (group) {
+            group.push(d);
+        } else {
+            lanes.set(key, [d]);
+        }
     }
     const offsets = new Map<string, number>();
     for (const group of lanes.values()) {
