@@ -239,7 +239,7 @@ button:disabled {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 8px;
+    gap: 6px 4px;
     padding: 8px 16px;
     background: var(--surface-2);
     border-bottom: 1px solid var(--line);
@@ -307,6 +307,7 @@ button:disabled {
 .layers__divider {
     width: 1px;
     height: 18px;
+    margin: 0 4px;
     background: var(--line);
 }
 
