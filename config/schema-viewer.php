@@ -10,6 +10,10 @@ return [
     | Unset, the viewer is on in the local environment and off everywhere
     | else. Set it to true or false to decide for every environment.
     |
+    | In the local environment there is no gate: anyone who can reach the
+    | app opens the viewer. Keep APP_ENV=local off shared machines, and set
+    | this to false before exposing the app with Herd Share, Expose or ngrok.
+    |
     */
 
     'enabled' => env('SCHEMA_VIEWER_ENABLED'),

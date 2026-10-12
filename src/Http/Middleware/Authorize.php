@@ -12,7 +12,8 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
- * Lets everyone in locally; elsewhere only users the viewSchema gate allows.
+ * Lets everyone in locally, which is anyone who can reach the app (Herd Share and tunnels included); elsewhere only
+ * users the viewSchema gate allows.
  */
 final class Authorize
 {

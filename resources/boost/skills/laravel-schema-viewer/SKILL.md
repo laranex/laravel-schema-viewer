@@ -41,6 +41,8 @@ Outside `local`, the viewer needs a gate:
 Gate::define('viewSchema', fn ($user) => $user->isAdmin());
 ```
 
+In `local` there is no gate: anyone who can reach the app opens the viewer. Set `SCHEMA_VIEWER_ENABLED=false` before sharing a local app with Herd Share, Expose or ngrok.
+
 ## Use
 
 ### Read the schema before changing it
@@ -110,5 +112,6 @@ expect(collect($document->hints)->pluck('kind'))->not->toContain(\Laranex\Larave
 
 - Guessing a table's columns from old migrations: export the schema instead.
 - Enabling the viewer in production without the `viewSchema` gate; schema details help attackers.
+- Sharing a local app (Herd Share, Expose, ngrok) with the viewer on: in `local`, anyone who reaches the app can open it.
 - Ignoring `relation_without_foreign_key` on a regular `belongsTo`: add the foreign key unless the relation crosses connections.
 - Expecting the exports to include data: they describe structure only.
