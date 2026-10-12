@@ -20,18 +20,8 @@ final class HtmlExporter
      */
     public function export(SchemaDocument $document, string $defaultConnection = 'all'): string
     {
-        $downloads = [];
-
-        foreach ($document->connections as $connection) {
-            $downloads[$connection->name] = [
-                'mermaid' => (new MermaidExporter)->export($connection),
-                'dbml' => (new DbmlExporter)->export($connection),
-                'markdown' => (new MarkdownExporter)->export($connection),
-            ];
-        }
-
         $config = json_encode(
-            ['schema' => $document, 'downloads' => $downloads, 'defaultConnection' => $defaultConnection],
+            ['schema' => $document, 'downloads' => self::downloads($document), 'defaultConnection' => $defaultConnection],
             JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
 
@@ -57,6 +47,26 @@ final class HtmlExporter
             </html>
 
             HTML;
+    }
+
+    /**
+     * Every connection's Mermaid, DBML and Markdown files, by connection name.
+     *
+     * @return array<string, array{mermaid: string, dbml: string, markdown: string}>
+     */
+    public static function downloads(SchemaDocument $document): array
+    {
+        $downloads = [];
+
+        foreach ($document->connections as $connection) {
+            $downloads[$connection->name] = [
+                'mermaid' => (new MermaidExporter)->export($connection),
+                'dbml' => (new DbmlExporter)->export($connection),
+                'markdown' => (new MarkdownExporter)->export($connection),
+            ];
+        }
+
+        return $downloads;
     }
 
     /**

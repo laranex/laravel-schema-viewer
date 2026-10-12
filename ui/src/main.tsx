@@ -4,7 +4,7 @@ import '@fontsource/ibm-plex-sans/latin-400.css';
 import '@fontsource/ibm-plex-sans/latin-500.css';
 import '@fontsource/ibm-plex-sans/latin-600.css';
 import '@xyflow/react/dist/style.css';
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import type { ServerConfig } from './layout';
@@ -23,6 +23,18 @@ const server = window.__SCHEMA_VIEWER__;
 function Root() {
     const [doc, setDoc] = useState<SchemaDocument | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    // The server keeps the schema it read; refresh asks it to read the database and models again.
+    const read = useCallback(async (refresh: boolean) => {
+        const url = `${server?.schemaUrl ?? ''}${refresh ? '?refresh=1' : ''}`;
+        const r = await fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+        if (!r.ok) {
+            const body = (await r.json().catch(() => ({}))) as { message?: string };
+            throw new Error(body.message ?? `The schema could not be read (HTTP ${r.status}).`);
+        }
+        setDoc((await r.json()) as SchemaDocument);
+    }, []);
+    const refresh = useCallback(() => read(true), [read]);
 
     useEffect(() => {
         if (!server) {
@@ -43,16 +55,8 @@ function Root() {
             setError('This page carries no schema. Export it again with php artisan schema-viewer:export --format=html.');
             return;
         }
-        fetch(server.schemaUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
-            .then(async (r) => {
-                if (!r.ok) {
-                    const body = (await r.json().catch(() => ({}))) as { message?: string };
-                    throw new Error(body.message ?? `The schema could not be read (HTTP ${r.status}).`);
-                }
-                return r.json() as Promise<SchemaDocument>;
-            })
-            .then(setDoc, (e: Error) => setError(e.message));
-    }, []);
+        read(false).catch((e: Error) => setError(e.message));
+    }, [read]);
 
     if (error) {
         return (
@@ -73,7 +77,7 @@ function Root() {
         );
     }
 
-    return <App doc={doc} example={!server} exportUrl={server?.exportUrl} downloads={server?.downloads} defaultConnection={server?.defaultConnection} editor={server?.editor} />;
+    return <App doc={doc} example={!server} exportUrl={server?.exportUrl} downloads={server?.downloads} defaultConnection={server?.defaultConnection} editor={server?.editor} onRefresh={server?.schemaUrl ? refresh : undefined} />;
 }
 
 createRoot(document.getElementById('root')!).render(

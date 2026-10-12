@@ -33,19 +33,20 @@ export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownl
 `;
 }
 
+// Every connection's files in one request (format all), so the server reads the schema once for the whole page.
 async function fetchDownloads(doc: SchemaDocument, exportUrl: string | undefined): Promise<StaticDownloads> {
     if (!exportUrl) {
         throw new Error('This page has no export URL to read the downloads from.');
     }
+    const all = JSON.parse(await text(`${exportUrl}?format=all`)) as Partial<StaticDownloads>;
     const files: StaticDownloads = {};
-    await Promise.all(
-        doc.connections.flatMap((c) => {
-            files[c.name] = { mermaid: '', dbml: '', markdown: '' };
-            return FORMATS.map(async (format) => {
-                files[c.name][format] = await text(`${exportUrl}?${new URLSearchParams({ format, connection: c.name })}`);
-            });
-        }),
-    );
+    for (const c of doc.connections) {
+        const own = all[c.name];
+        if (!own || FORMATS.some((format) => typeof own[format] !== 'string')) {
+            throw new Error(`The downloads of the ${c.name} connection are missing.`);
+        }
+        files[c.name] = own;
+    }
     return files;
 }
 

@@ -128,7 +128,16 @@ function useMedia(media: string) {
 
 const useNarrow = () => useMedia('(max-width: 760px)');
 
-type ViewerProps = { doc: SchemaDocument; example?: boolean; exportUrl?: string; downloads?: StaticDownloads; defaultConnection?: string; editor?: string | null };
+type ViewerProps = {
+    doc: SchemaDocument;
+    example?: boolean;
+    exportUrl?: string;
+    downloads?: StaticDownloads;
+    defaultConnection?: string;
+    editor?: string | null;
+    // Reads the database and models again; only the app's own page can.
+    onRefresh?: () => Promise<void>;
+};
 
 export default function App(props: ViewerProps) {
     return (
@@ -140,7 +149,7 @@ export default function App(props: ViewerProps) {
     );
 }
 
-function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection, editor }: ViewerProps) {
+function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection, editor, onRefresh }: ViewerProps) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
     const [linked] = useState(() => readHash(doc));
@@ -850,6 +859,20 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         items: [{ label: 'This page as HTML', hint: 'Opens in any browser, offline, with every connection', onSelect: downloadHtml }],
     };
 
+    // The server keeps the schema it read until a model, the config or a migration changes; this reads it again, e.g.
+    // after a table was altered by hand.
+    const refresh = () => {
+        if (!onRefresh) {
+            notify('This page shows the schema as it was exported. Export it again to update it.');
+            return;
+        }
+        notify('Reading the database and models again…');
+        onRefresh().then(
+            () => notify('Schema read again.'),
+            (e: Error) => notify(`The schema could not be read: ${e.message}`),
+        );
+    };
+
     const onAutoLayout = () => {
         setLayoutVersion((v) => v + 1);
         notify('Tables arranged automatically.');
@@ -928,6 +951,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 setSheetOpen(true);
             },
             A: () => onAutoLayout(),
+            R: () => refresh(),
             '[': () => step(-1),
             ']': () => step(1),
         };
@@ -1149,6 +1173,15 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                             </svg>
                                         </ControlButton>
                                     </Tooltip>
+                                    {onRefresh && (
+                                        <Tooltip content={<>Read the schema again <kbd>Shift R</kbd></>} side="right">
+                                            <ControlButton onClick={refresh} aria-label="Read the database and models again" aria-keyshortcuts="Shift+R">
+                                                <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                                    <path d="M13 8 A5 5 0 1 1 11.5 4.4 M13 2.5 V5 H10.5" />
+                                                </svg>
+                                            </ControlButton>
+                                        </Tooltip>
+                                    )}
                                 </Controls>
                                 {/* Below 1100px the diagram needs the room more than an overview does. */}
                                 {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
@@ -1315,6 +1348,7 @@ const SHORTCUTS: [string[], string][] = [
     [['T', 'H'], 'Open the Table or Hints tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
     [['Shift A'], 'Arrange tables automatically'],
+    [['Shift R'], 'Read the database and models again (in your app, not in an exported page)'],
     [['Shift F'], 'Focus on the selected table and its neighbors, or leave focus mode'],
     [['C'], 'Show every column, the key columns only, or the table names only'],
     [['S'], 'Show this list'],

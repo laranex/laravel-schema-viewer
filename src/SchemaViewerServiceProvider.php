@@ -17,6 +17,7 @@ class SchemaViewerServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/schema-viewer.php', 'schema-viewer');
 
         $this->app->singleton(SchemaViewer::class);
+        $this->app->singleton(SchemaCache::class);
     }
 
     /**

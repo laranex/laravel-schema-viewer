@@ -76,6 +76,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Cache
+    |--------------------------------------------------------------------------
+    |
+    | The viewer keeps the schema it read in the cache until a model file,
+    | this config, a connection's migrations or an SQLite database file
+    | changes, or for ttl seconds. Store null uses the default cache store.
+    | The viewer's refresh button (or api/schema?refresh=1) reads it again,
+    | e.g. after altering a table by hand. The artisan commands never cache.
+    |
+    */
+
+    'cache' => [
+        'enabled' => env('SCHEMA_VIEWER_CACHE', true),
+        'store' => env('SCHEMA_VIEWER_CACHE_STORE'),
+        'ttl' => 3600,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Models
     |--------------------------------------------------------------------------
     |
