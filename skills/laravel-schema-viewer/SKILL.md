@@ -31,7 +31,7 @@ Every setting has a default, so most apps configure nothing. Publish `config/sch
 - `default_connection` (`SCHEMA_VIEWER_DEFAULT_CONNECTION`): what the viewer opens on, `all` (every connection on one diagram) or one connection's name.
 - `editor` (`SCHEMA_VIEWER_EDITOR`): `phpstorm`, `vscode`, `cursor`, `zed` or another name Laravel's `app.editor` takes, or `['href' => '…{file}…{line}']`, plus `base_path` when the editor sees the project elsewhere (Docker, WSL); null uses `app.editor`. Models and relations in the viewer then open at their line.
 - `models`: folders scanned for models; null scans `app/Models`.
-- `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed.
+- `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed. `package_tables` (default `true`) adds the tables of installed Passport, spatie/laravel-permission and Filament Breezy.
 - `hints.ignore` (kinds or `kind:table` pairs) and `hints.fail_on` (kinds that fail `schema-viewer:check`).
 
 Outside `local`, the viewer needs a gate:
@@ -81,7 +81,9 @@ Hint kinds:
 - `foreign_key_without_index`: a foreign key column with no index starting with it; add the index.
 - `model_without_table`: a model whose table does not exist on its connection.
 - `morph_without_map`: morph columns store class names; register `Relation::enforceMorphMap()`.
-- `unresolved_relation`: a relation method threw when called; fix the method.
+- `unresolved_relation`: a relation method of the app threw when called on a blank model (no row loaded); fix the method.
+- `unresolved_package_relation` (note): the same for a method inherited from a package, such as Passport's `Token::user()`; usually nothing to do.
+- `custom_relation` (note): a relation without a foreign key that joins other tables or matches a column that is not unique, so its foreign key is not checked.
 
 The command exits non-zero when a hint of a `fail_on` kind remains, so it fits CI.
 

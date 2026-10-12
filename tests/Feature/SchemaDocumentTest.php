@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Schema;
@@ -12,6 +13,7 @@ use Laranex\LaravelSchemaViewer\Schema\LinkState;
 use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\Models;
+use Laranex\LaravelSchemaViewer\Tests\Fixtures\Packages;
 
 function schemaDocument(): SchemaDocument
 {
@@ -111,6 +113,57 @@ it('gives no morph map hint for a framework table or a table that does not exist
         ->toContain('comments');
 });
 
+it('notes relations that join other tables or match a column that is not unique instead of flagging them', function (): void {
+    Models\Tag::resolveRelationUsing('namesakes', fn (Models\Tag $tag) => $tag->hasMany(Models\Category::class, 'name', 'name'));
+    Models\Comment::resolveRelationUsing('countryAuthor', fn (Models\Comment $comment) => $comment->belongsTo(Models\Country::class, 'commentable_type')->join('users', 'users.country_id', '=', 'countries.id'));
+
+    $document = schemaDocument();
+    $custom = array_values(array_filter($document->hints, fn (Hint $hint): bool => $hint->kind === HintKind::CustomRelation));
+
+    expect(hintsOf($document, HintKind::RelationWithoutForeignKey))->toBe(['posts'])
+        ->and(array_map(fn (Hint $hint): string => $hint->message, $custom))->toBe([
+            'Tag::namesakes() matches categories.name to tags.name, which is not a unique key, so no foreign key can back it. Custom keys, foreign key not checked.',
+            'Comment::countryAuthor() joins users, so matching comments.commentable_type to countries.id is only part of the link. Custom query, foreign key not checked.',
+        ]);
+});
+
+it('puts "a" or "an" before a row by how its table sounds', function (): void {
+    $auditLog = new class extends Model
+    {
+        protected $table = 'audit_logs';
+    };
+    Models\Post::resolveRelationUsing('auditLog', fn (Models\Post $post) => $post->belongsTo($auditLog::class, 'category_id'));
+
+    $messages = array_map(fn (Hint $hint): string => $hint->message, schemaDocument()->hints);
+
+    expect($messages)->toContain(
+        'Category::posts() and Post::category() use posts.category_id, which has no foreign key to categories, so rows can point to a category that no longer exists.',
+        'Post::auditLog() uses posts.category_id, which has no foreign key to audit_logs, so rows can point to an audit_log that no longer exists.',
+    );
+});
+
+it('tags the tables of installed packages as framework tables, so they get no hints', function (): void {
+    expect(app(SchemaViewer::class)->frameworkTables())->not->toContain('oauth_*', 'roles');
+
+    if (! class_exists('Laravel\\Passport\\Passport')) {
+        eval('namespace Laravel\\Passport; class Passport {}');
+    }
+
+    if (! class_exists('Spatie\\Permission\\PermissionRegistrar')) {
+        eval('namespace Spatie\\Permission; class PermissionRegistrar {}');
+    }
+
+    config()->set('permission.table_names', ['roles' => 'roles', 'permissions' => 'permissions']);
+
+    expect(app(SchemaViewer::class)->frameworkTables())->toContain('oauth_*', 'roles', 'permissions')
+        ->not->toContain('model_has_roles')
+        ->and(collect(schemaDocument()->connections[0]->tables)->firstWhere('name', 'roles')?->framework)->toBeTrue();
+
+    config()->set('schema-viewer.package_tables', false);
+
+    expect(app(SchemaViewer::class)->frameworkTables())->not->toContain('oauth_*');
+});
+
 it('leaves out ignored hints', function (): void {
     config()->set('schema-viewer.hints.ignore', ['morph_without_map', 'model_without_table:ghosts']);
 
@@ -160,4 +213,17 @@ it('raises no hints on framework tables', function (): void {
 
     expect(hintsOf($document, HintKind::ForeignKeyWithoutRelation))->toBe([])
         ->and(hintsOf($document, HintKind::ForeignKeyWithoutIndex))->not->toContain('role_user');
+});
+
+it('notes an unreadable relation from a package instead of failing on it', function (): void {
+    require_once dirname(__DIR__).'/Fixtures/Packages/vendor/acme/tokens/src/PackageToken.php';
+    app()->setBasePath(dirname(__DIR__).'/Fixtures/Packages');
+    config()->set('schema-viewer.models', [dirname(__DIR__).'/Fixtures/Models', dirname(__DIR__).'/Fixtures/Packages']);
+
+    $document = schemaDocument();
+    $package = array_values(array_filter($document->hints, fn (Hint $hint): bool => $hint->kind === HintKind::UnresolvedPackageRelation));
+
+    expect(hintsOf($document, HintKind::UnresolvedRelation))->toBe(['posts'])
+        ->and($package)->toHaveCount(1)
+        ->and($package[0]->message)->toStartWith(Packages\AppToken::class.'::owner() comes from acme/tokens and could not be read (the viewer calls it on a blank model, with no row loaded)');
 });

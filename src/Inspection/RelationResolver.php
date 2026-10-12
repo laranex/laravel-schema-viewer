@@ -59,13 +59,13 @@ final class RelationResolver
             try {
                 $relation = Relation::noConstraints($call);
             } catch (Throwable $e) {
-                $unresolved[] = new UnresolvedRelation($model::class, $name, $e->getMessage());
+                $unresolved[] = new UnresolvedRelation($model::class, $name, $e->getMessage(), $this->package($model, $name));
 
                 continue;
             }
 
             if (! $relation instanceof Relation) {
-                $unresolved[] = new UnresolvedRelation($model::class, $name, 'It returned '.get_debug_type($relation).' instead of a relation.');
+                $unresolved[] = new UnresolvedRelation($model::class, $name, 'It returned '.get_debug_type($relation).' instead of a relation.', $this->package($model, $name));
 
                 continue;
             }
@@ -107,6 +107,31 @@ final class RelationResolver
         ksort($candidates);
 
         return $candidates;
+    }
+
+    /**
+     * The package that declares an inherited relation method: its Composer name for a file in vendor/, the declaring
+     * class for any other file outside the application, or null for the model's own methods and the application's code.
+     */
+    private function package(Model $model, string $name): ?string
+    {
+        if (! method_exists($model, $name)) {
+            return null;
+        }
+
+        $method = new ReflectionMethod($model, $name);
+
+        if ($method->getDeclaringClass()->getName() === $model::class) {
+            return null;
+        }
+
+        $source = Source::of($method, $this->app->basePath());
+
+        if ($source === null) {
+            return $method->getDeclaringClass()->getName();
+        }
+
+        return preg_match('#^vendor/([^/]+/[^/]+)/#', $source->file, $match) === 1 ? $match[1] : null;
     }
 
     private function returnsRelation(ReflectionMethod $method): bool
@@ -227,7 +252,7 @@ final class RelationResolver
     }
 
     /**
-     * Conditions the method adds, read from the relation's query with Laravel's own key constraints left out.
+     * Conditions and joins the method adds, read from the relation's query with Laravel's own key constraints left out.
      *
      * @return list<string>
      */
@@ -248,6 +273,10 @@ final class RelationResolver
 
         foreach ($wheres as $where) {
             $constraints[] = $this->where($where);
+        }
+
+        foreach ($relation->getQuery()->getQuery()->joins ?? [] as $join) {
+            $constraints[] = 'join '.(is_string($join->table) ? $join->table : 'expression');
         }
 
         return $constraints;

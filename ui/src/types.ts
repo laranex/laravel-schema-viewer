@@ -123,7 +123,9 @@ export type Hint = {
         | 'foreign_key_without_index'
         | 'model_without_table'
         | 'morph_without_map'
-        | 'unresolved_relation';
+        | 'unresolved_relation'
+        | 'unresolved_package_relation'
+        | 'custom_relation';
     severity: 'warning' | 'info';
     connection: string;
     table: string;

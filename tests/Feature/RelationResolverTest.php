@@ -8,6 +8,7 @@ use Laranex\LaravelSchemaViewer\Inspection\RelationResolver;
 use Laranex\LaravelSchemaViewer\Schema\RelationInfo;
 use Laranex\LaravelSchemaViewer\Schema\UnresolvedRelation;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\Models;
+use Laranex\LaravelSchemaViewer\Tests\Fixtures\Packages;
 
 /**
  * @return array{relations: array<string, RelationInfo>, unresolved: list<UnresolvedRelation>}
@@ -116,6 +117,28 @@ it('reports a relation that cannot be read instead of failing', function (): voi
         ->and($found['unresolved'])->toHaveCount(1)
         ->and($found['unresolved'][0]->method)->toBe('broken')
         ->and($found['unresolved'][0]->reason)->toContain('Missing');
+});
+
+it('names the package an unreadable inherited relation comes from', function (): void {
+    require_once dirname(__DIR__).'/Fixtures/Packages/vendor/acme/tokens/src/PackageToken.php';
+
+    app()->setBasePath(dirname(__DIR__).'/Fixtures/Packages');
+    $inVendor = resolveRelations(new Packages\AppToken)['unresolved'];
+
+    app()->setBasePath(dirname(__DIR__).'/Fixtures/Packages/app');
+    $outside = resolveRelations(new Packages\AppToken)['unresolved'];
+
+    expect($inVendor)->toHaveCount(1)
+        ->and($inVendor[0]->method)->toBe('owner')
+        ->and($inVendor[0]->package)->toBe('acme/tokens')
+        ->and($outside[0]->package)->toBe('Acme\\Tokens\\PackageToken')
+        ->and(resolveRelations(new Models\Post)['unresolved'][0]->package)->toBeNull();
+});
+
+it('lists the joins a relation adds among its constraints', function (): void {
+    Models\Post::resolveRelationUsing('countryAuthors', fn (Models\Post $post) => $post->belongsTo(Models\User::class, 'user_id')->join('countries', 'countries.id', '=', 'users.country_id'));
+
+    expect(resolveRelations(new Models\Post)['relations']['countryAuthors']->constraints)->toBe(['join countries']);
 });
 
 it('never calls methods that are not relations and runs no query', function (): void {

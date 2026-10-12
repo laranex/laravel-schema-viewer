@@ -89,6 +89,9 @@ return [
     | so the viewer can hide them with one toggle, and get no hints since you
     | do not own their schema. Both accept wildcards.
     |
+    | Package tables adds the tables of installed packages that own their
+    | schema: Passport (oauth_*), spatie/laravel-permission and Breezy.
+    |
     */
 
     'exclude_tables' => [],
@@ -98,6 +101,8 @@ return [
         'sessions', 'password_reset_tokens', 'personal_access_tokens', 'notifications',
         'telescope_*', 'pulse_*',
     ],
+
+    'package_tables' => true,
 
     /*
     |--------------------------------------------------------------------------
@@ -109,7 +114,7 @@ return [
     |
     | Kinds: relation_without_foreign_key, foreign_key_without_relation,
     | foreign_key_without_index, model_without_table, morph_without_map,
-    | unresolved_relation.
+    | unresolved_relation, unresolved_package_relation, custom_relation.
     |
     */
 

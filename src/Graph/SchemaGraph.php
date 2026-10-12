@@ -223,8 +223,8 @@ final class SchemaGraph
                 foreach ($table->foreignKeys as $fk) {
                     if (! $table->framework && ! $table->isIndexed($fk->columns)) {
                         $hints[] = new Hint(HintKind::ForeignKeyWithoutIndex, $connection->name, $table->name, sprintf(
-                            '%s.%s has a foreign key but no index that starts with it, so deleting or updating a %s row scans the whole table.',
-                            $table->name, implode(', ', $fk->columns), Str::singular($fk->foreignTable),
+                            '%s.%s has a foreign key but no index that starts with it, so deleting or updating %s row scans the whole table.',
+                            $table->name, implode(', ', $fk->columns), $this->article(Str::singular($fk->foreignTable)),
                         ));
                     }
                 }
@@ -234,13 +234,10 @@ final class SchemaGraph
         foreach ($links as $link) {
             $crossesConnections = $link->from->connection !== $link->to->connection;
 
-            if ($link->state() === LinkState::RelationOnly && ! $link->morph && ! $crossesConnections && isset($inspected[$link->from->connection])) {
-                $hints[] = new Hint(HintKind::RelationWithoutForeignKey, $link->from->connection, $link->from->table, sprintf(
-                    '%s %s %s.%s, which has no foreign key to %s, so rows can point to a %s that no longer exists.',
-                    implode(' and ', array_map($this->label(...), $link->relations)),
-                    count($link->relations) > 1 ? 'use' : 'uses',
-                    $link->from->table, implode(', ', $link->from->columns), $link->to->table, Str::singular($link->to->table),
-                ));
+            $fromTable = ($inspected[$link->from->connection] ?? null)?->table($link->from->table);
+
+            if ($link->state() === LinkState::RelationOnly && ! $link->morph && ! $crossesConnections && isset($inspected[$link->from->connection]) && ! $fromTable?->framework) {
+                $hints[] = $this->relationWithoutForeignKey($link, $relations, $inspected[$link->to->connection] ?? null);
             }
 
             if ($link->state() === LinkState::ForeignKeyOnly && ! ($inspected[$link->from->connection] ?? null)?->table($link->from->table)?->framework) {
@@ -287,13 +284,76 @@ final class SchemaGraph
 
         foreach ($unresolved as $failure) {
             $model = $this->model($models, $failure->model);
-            $hints[] = new Hint(HintKind::UnresolvedRelation, $model->connection ?? '', $model->table ?? '', sprintf(
-                '%s::%s() could not be read: %s',
-                $failure->model, $failure->method, $failure->reason,
-            ));
+            $hints[] = $failure->package === null
+                ? new Hint(HintKind::UnresolvedRelation, $model->connection ?? '', $model->table ?? '', sprintf(
+                    '%s::%s() could not be read (the viewer calls it on a blank model, with no row loaded): %s',
+                    $failure->model, $failure->method, $failure->reason,
+                ))
+                : new Hint(HintKind::UnresolvedPackageRelation, $model->connection ?? '', $model->table ?? '', sprintf(
+                    '%s::%s() comes from %s and could not be read (the viewer calls it on a blank model, with no row loaded), which is common for package relations that need one: %s',
+                    $failure->model, $failure->method, $failure->package, $failure->reason,
+                ));
         }
 
         return $hints;
+    }
+
+    /**
+     * A relation-only link. Relations that join other tables, or that match a column that is not a unique key, are not
+     * the whole link, so their foreign key is noted rather than flagged.
+     *
+     * @param  list<RelationInfo>  $relations
+     */
+    private function relationWithoutForeignKey(Link $link, array $relations, ?ConnectionSchema $connection): Hint
+    {
+        $used = array_values(array_filter($relations, fn (RelationInfo $relation): bool => in_array($relation->id(), $link->relations, true)));
+        $labels = implode(' and ', array_map($this->label(...), $link->relations));
+        $target = $connection?->table($link->to->table);
+        $columns = sprintf('%s.%s to %s.%s', $link->from->table, implode(', ', $link->from->columns), $link->to->table, implode(', ', $link->to->columns));
+
+        $joins = [];
+
+        foreach ($used as $relation) {
+            $joined = array_values(array_filter($relation->constraints, fn (string $constraint): bool => str_starts_with($constraint, 'join ')));
+
+            if ($joined === []) {
+                $joins = [];
+
+                break;
+            }
+
+            array_push($joins, ...array_map(fn (string $constraint): string => substr($constraint, 5), $joined));
+        }
+
+        if ($joins !== []) {
+            return new Hint(HintKind::CustomRelation, $link->from->connection, $link->from->table, sprintf(
+                '%s %s %s, so matching %s is only part of the link. Custom query, foreign key not checked.',
+                $labels, count($link->relations) > 1 ? 'join' : 'joins', implode(', ', array_unique($joins)), $columns,
+            ));
+        }
+
+        if ($target !== null && ! $target->isUnique($link->to->columns)) {
+            return new Hint(HintKind::CustomRelation, $link->from->connection, $link->from->table, sprintf(
+                '%s %s %s, which is not a unique key, so no foreign key can back it. Custom keys, foreign key not checked.',
+                $labels, count($link->relations) > 1 ? 'match' : 'matches', $columns,
+            ));
+        }
+
+        return new Hint(HintKind::RelationWithoutForeignKey, $link->from->connection, $link->from->table, sprintf(
+            '%s %s %s.%s, which has no foreign key to %s, so rows can point to %s that no longer exists.',
+            $labels, count($link->relations) > 1 ? 'use' : 'uses',
+            $link->from->table, implode(', ', $link->from->columns), $link->to->table, $this->article(Str::singular($link->to->table)),
+        ));
+    }
+
+    /**
+     * A word with "a" or "an" before it, by its sound for the common cases: an asn, an oauth_client, an upload, a user.
+     */
+    private function article(string $word): string
+    {
+        $vowelSound = preg_match('/^([aeio]|u[^aeiou][^aeiou]|u$)/i', $word) === 1;
+
+        return ($vowelSound ? 'an ' : 'a ').$word;
     }
 
     /**

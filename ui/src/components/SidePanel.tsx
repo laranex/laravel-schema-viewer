@@ -57,6 +57,8 @@ const HINT_TITLE: Record<Hint['kind'], string> = {
     model_without_table: 'Model without a table',
     morph_without_map: 'Morph map not enforced',
     unresolved_relation: 'Relation could not be resolved',
+    unresolved_package_relation: 'Package relation could not be resolved',
+    custom_relation: 'Custom relation, foreign key not checked',
 };
 
 export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, onCopyLink }: Props) {

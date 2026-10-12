@@ -61,7 +61,7 @@ final class Table implements JsonSerializable
     public function isUnique(array $columns): bool
     {
         foreach ($this->indexes as $index) {
-            if ($index->unique && $index->columns === $columns) {
+            if (($index->unique || $index->primary) && $index->columns === $columns) {
                 return true;
             }
         }

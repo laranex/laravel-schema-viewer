@@ -15,11 +15,13 @@ enum HintKind: string
     case ModelWithoutTable = 'model_without_table';
     case MorphWithoutMap = 'morph_without_map';
     case UnresolvedRelation = 'unresolved_relation';
+    case UnresolvedPackageRelation = 'unresolved_package_relation';
+    case CustomRelation = 'custom_relation';
 
     public function severity(): string
     {
         return match ($this) {
-            self::ForeignKeyWithoutRelation, self::MorphWithoutMap => 'info',
+            self::ForeignKeyWithoutRelation, self::MorphWithoutMap, self::UnresolvedPackageRelation, self::CustomRelation => 'info',
             default => 'warning',
         };
     }

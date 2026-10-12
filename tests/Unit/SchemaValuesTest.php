@@ -29,5 +29,7 @@ it('names a link\'s state from what backs it', function (): void {
 it('gives each hint kind a severity', function (): void {
     expect(HintKind::ForeignKeyWithoutIndex->severity())->toBe('warning')
         ->and(HintKind::MorphWithoutMap->severity())->toBe('info')
-        ->and(HintKind::ForeignKeyWithoutRelation->severity())->toBe('info');
+        ->and(HintKind::ForeignKeyWithoutRelation->severity())->toBe('info')
+        ->and(HintKind::UnresolvedPackageRelation->severity())->toBe('info')
+        ->and(HintKind::CustomRelation->severity())->toBe('info');
 });

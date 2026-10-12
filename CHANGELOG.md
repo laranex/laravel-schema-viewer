@@ -11,7 +11,7 @@ First release.
 - All connections on one diagram, each in its own labeled region, with relations across connections drawn as lines; the viewer opens there unless `default_connection` names one connection.
 - Tables come from the database (`Schema::getTables()`, `getColumns()`, `getIndexes()`, `getForeignKeys()`, no doctrine/dbal); relations are read from the objects the model methods return, without running a query. Every built-in relation type, dynamic relations and relations without a return type are covered.
 - Foreign keys and relations on the same columns become one link, marked as backed by both, by the relation only or by the foreign key only.
-- Hints: relations without a foreign key, foreign keys without a relation or an index, models without a table, morph columns that store class names, and relation methods that cannot be read. Framework tables get none.
+- Hints: relations without a foreign key, foreign keys without a relation or an index, models without a table, morph columns that store class names, and relation methods that cannot be read. Framework tables get none, and neither do the tables of installed Passport, spatie/laravel-permission and Filament Breezy. Relations inherited from a package that cannot be read, and relations that join other tables or match a column that is not unique, are notes rather than warnings.
 - Folding: each table card folds to its key columns or to its name, and every card at once from the Columns choice; edges of folded columns meet the card's header.
 - Focus mode: one table and its neighbors, one to three links away.
 - Links that open the same view: the URL keeps the connection, the selected table and focus mode, also in a static export.

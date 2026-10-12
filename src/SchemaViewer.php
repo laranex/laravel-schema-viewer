@@ -49,6 +49,16 @@ class SchemaViewer
         'zed' => 'zed://file/{file}:{line}',
     ];
 
+    /**
+     * Tables that well-known packages create and own, keyed by a class each package ships. Tagged as framework tables
+     * while the package is installed, so their by-design gaps (Passport's tokens have no foreign keys) give no hints.
+     */
+    private const PACKAGE_TABLES = [
+        'Laravel\\Passport\\Passport' => ['oauth_*'],
+        'Spatie\\Permission\\PermissionRegistrar' => ['permissions', 'roles', 'model_has_permissions', 'model_has_roles', 'role_has_permissions'],
+        'Jeffgreco13\\FilamentBreezy\\FilamentBreezyServiceProvider' => ['breezy_*'],
+    ];
+
     public function __construct(
         private readonly Application $app,
         private readonly Config $config,
@@ -76,7 +86,7 @@ class SchemaViewer
         }
 
         $connections = array_map(
-            fn (string $name) => $this->database->inspect($name, $this->strings('schema-viewer.exclude_tables'), $this->strings('schema-viewer.framework_tables')),
+            fn (string $name) => $this->database->inspect($name, $this->strings('schema-viewer.exclude_tables'), $this->frameworkTables()),
             $this->connectionNames($models),
         );
 
@@ -146,6 +156,42 @@ class SchemaViewer
         }
 
         return array_values(array_unique($names));
+    }
+
+    /**
+     * The configured framework tables, plus the tables of the installed packages unless package_tables is false.
+     *
+     * @return list<string>
+     */
+    public function frameworkTables(): array
+    {
+        $tables = $this->strings('schema-viewer.framework_tables');
+
+        if ($this->config->get('schema-viewer.package_tables', true) === false) {
+            return $tables;
+        }
+
+        foreach (self::PACKAGE_TABLES as $class => $names) {
+            if (! $this->installed($class)) {
+                continue;
+            }
+
+            // spatie/laravel-permission lets the application rename its tables.
+            $renamed = $class === 'Spatie\\Permission\\PermissionRegistrar' ? $this->config->get('permission.table_names') : null;
+            $names = is_array($renamed) && $renamed !== [] ? array_values(array_map('strval', $renamed)) : $names;
+
+            array_push($tables, ...$names);
+        }
+
+        return array_values(array_unique($tables));
+    }
+
+    /**
+     * Whether a package is installed, by a class it ships.
+     */
+    private function installed(string $class): bool
+    {
+        return class_exists($class);
     }
 
     /**

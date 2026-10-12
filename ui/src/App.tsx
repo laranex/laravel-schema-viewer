@@ -1021,9 +1021,9 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 <button type="button" className="button button--small" onClick={copyLink}>
                                     Copy link
                                 </button>
-                                <Tooltip content={<>Leave focus mode <kbd>Esc</kbd></>} side="bottom">
-                                    <button type="button" className="button button--small" onClick={endFocus}>
-                                        Show all
+                                <Tooltip content={<>Show every table again <kbd>Esc</kbd></>} side="bottom">
+                                    <button type="button" className="button button--small" aria-keyshortcuts="Escape" onClick={endFocus}>
+                                        Leave focus mode
                                     </button>
                                 </Tooltip>
                             </div>
