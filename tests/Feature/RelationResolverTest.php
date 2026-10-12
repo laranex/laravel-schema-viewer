@@ -87,7 +87,7 @@ it('lists the conditions a relation adds', function (): void {
     $post = resolveRelations(new Models\Post)['relations'];
     $user = resolveRelations(new Models\User)['relations'];
 
-    expect($post['approvedComments']->constraints)->toBe(['approved = true'])
+    expect($post['approvedComments']->constraints)->toBe(['approved = ?'])
         ->and($post['comments']->constraints)->toBe([])
         ->and($user['latestPost']->constraints)->toContain('one of many');
 });
@@ -203,4 +203,38 @@ it('pretends on every open connection, not only the model\'s own', function (): 
 
     expect($pretended)->toBeTrue()
         ->and($side->pretending())->toBeFalse();
+});
+
+it('shows bound values in constraints as placeholders', function (): void {
+    Models\Post::resolveRelationUsing('secretComments', fn (Models\Post $post) => $post->morphMany(Models\Comment::class, 'commentable')
+        ->where('body', 'like', '%s3cret%')
+        ->whereIn('approved', [1, 2])
+        ->whereNotIn('id', [7])
+        ->whereNull('deleted_at')
+        ->whereColumn('commentable_id', '>', 'id'));
+
+    expect(resolveRelations(new Models\Post)['relations']['secretComments']->constraints)->toBe([
+        'body like ?',
+        'approved in (?, ?)',
+        'id not in (?)',
+        'deleted_at is null',
+        'commentable_id > id',
+    ]);
+});
+
+it('keeps unresolved reasons short and free of paths, connection details and credentials', function (): void {
+    app()->setBasePath('/srv/app');
+    $fail = fn (string $message) => fn (Models\Post $post) => throw new RuntimeException($message);
+    Models\Post::resolveRelationUsing('a', $fail('Cannot open /srv/app/storage/x.sqlite or /etc/secrets/db.ini'));
+    Models\Post::resolveRelationUsing('b', $fail('SQLSTATE[HY000] mysql:host=db.internal;dbname=shop failed for \'root\'@\'10.0.0.5\' (using password: [hidden])'));
+    Models\Post::resolveRelationUsing('c', $fail("Failed with password=hunter2 at https://admin:pw@db.example.com/x\nStack trace here"));
+    Models\Post::resolveRelationUsing('d', $fail(str_repeat('x', 500)));
+
+    $reasons = collect(resolveRelations(new Models\Post)['unresolved'])->pluck('reason', 'method');
+
+    expect($reasons['a'])->toBe('RuntimeException: Cannot open storage/x.sqlite or [path]')
+        ->and($reasons['b'])->toBe('RuntimeException: SQLSTATE[HY000] [dsn] failed for [user] (using password: [hidden])')
+        ->and($reasons['c'])->toBe('RuntimeException: Failed with password=[hidden] at [url]')
+        ->and(mb_strlen($reasons['d']))->toBeLessThanOrEqual(203)
+        ->and($reasons['broken'])->toStartWith('Error: Class ');
 });

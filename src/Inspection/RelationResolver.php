@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Laranex\LaravelSchemaViewer\Schema\Endpoint;
 use Laranex\LaravelSchemaViewer\Schema\Morph;
@@ -71,12 +72,35 @@ final class RelationResolver
 
                     $relations[] = $this->describe($model, $name, $relation);
                 } catch (Throwable $e) {
-                    $unresolved[] = new UnresolvedRelation($model::class, $name, $e->getMessage(), $this->package($model, $name));
+                    $unresolved[] = new UnresolvedRelation($model::class, $name, $this->reason($e), $this->package($model, $name));
                 }
             }
         });
 
         return ['relations' => $relations, 'unresolved' => $unresolved];
+    }
+
+    /**
+     * Why a method could not be read, safe to show: the exception's short class and the first line of its message, cut
+     * to 200 characters, with paths made relative to the application and connection details or credentials left out.
+     */
+    private function reason(Throwable $e): string
+    {
+        $message = explode("\n", str_replace("\r", "\n", trim($e->getMessage())))[0];
+        $root = rtrim(str_replace('\\', '/', $this->app->basePath()), '/').'/';
+        $message = str_replace([$root, str_replace('/', '\\', $root)], '', $message);
+
+        $message = (string) preg_replace([
+            '#\b[A-Za-z][A-Za-z0-9+.-]*://[^\s\'"]*#',                                                   // URLs, which may carry credentials
+            '#\b(?:mysql|mariadb|pgsql|sqlsrv|sqlite|odbc|dblib|oci):[^\s\'"]*#i',                       // PDO DSNs
+            '#\b(password|passwd|pwd|secret|token|api[_-]?key)\b(\s*[=:]\s*)[^\s,;)]+#i',              // key=value secrets
+            "#'[^'\s]*'@'[^'\s]*'#",                                                                    // 'user'@'host'
+            '#(?<![\w.])(?:[A-Za-z]:[\\\\/]|/)(?:[^\s\'"():,\\\\/]+[\\\\/])+[^\s\'"():,]*#',              // absolute paths
+        ], ['[url]', '[dsn]', '$1$2[hidden]', '[user]', '[path]'], $message);
+
+        $reason = (new ReflectionClass($e))->getShortName().($message !== '' ? ': '.$message : '');
+
+        return Str::limit($reason, 200);
     }
 
     /**
@@ -334,6 +358,8 @@ final class RelationResolver
     }
 
     /**
+     * One condition, with its bound values as ? so no literal from the code reaches the page.
+     *
      * @param  array<string, mixed>  $where
      */
     private function where(array $where): string
@@ -342,24 +368,13 @@ final class RelationResolver
         $not = str_starts_with((string) ($where['type'] ?? ''), 'Not');
 
         return match ($where['type'] ?? null) {
-            'Basic' => trim($column.' '.(is_string($where['operator'] ?? null) ? $where['operator'] : '=').' '.$this->value($where['value'] ?? null)),
+            'Basic' => trim($column.' '.(is_string($where['operator'] ?? null) ? $where['operator'] : '=').' ?'),
             'Null' => $column.' is null',
             'NotNull' => $column.' is not null',
-            'In', 'NotIn' => $column.($not ? ' not in (' : ' in (').implode(', ', array_map($this->value(...), is_array($where['values'] ?? null) ? $where['values'] : [])).')',
-            'Column' => $column.' '.(is_string($where['operator'] ?? null) ? $where['operator'] : '=').' '.(is_string($where['second'] ?? null) ? $this->column($where['second']) : ''),
+            'In', 'NotIn' => $column.($not ? ' not in (' : ' in (').implode(', ', array_fill(0, max(1, is_array($where['values'] ?? null) ? count($where['values']) : 0), '?')).')',
+            'Column' => (is_string($where['first'] ?? null) ? $this->column($where['first']) : $column).' '.(is_string($where['operator'] ?? null) ? $where['operator'] : '=').' '.(is_string($where['second'] ?? null) ? $this->column($where['second']) : ''),
             'raw' => is_string($where['sql'] ?? null) ? $where['sql'] : 'raw condition',
             default => strtolower((string) ($where['type'] ?? 'condition')).($column !== '' ? ' on '.$column : ''),
-        };
-    }
-
-    private function value(mixed $value): string
-    {
-        return match (true) {
-            is_bool($value) => $value ? 'true' : 'false',
-            $value === null => 'null',
-            is_string($value) => "'".$value."'",
-            is_scalar($value) => (string) $value,
-            default => '?',
         };
     }
 

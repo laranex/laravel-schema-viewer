@@ -253,7 +253,7 @@ const relations: Relation[] = [
     rel('Post', 'author', 'BelongsTo', 'User', { keys: { from: ep('posts', ['user_id']), to: ep('users', ['id']) }, inverse: 'App\\Models\\User::posts' }),
     rel('Post', 'category', 'BelongsTo', 'Category', { keys: { from: ep('posts', ['category_id']), to: ep('categories', ['id']) }, inverse: 'App\\Models\\Category::posts' }),
     rel('Post', 'comments', 'MorphMany', 'Comment', { morph: { type: 'commentable_type', id: 'commentable_id' }, keys: { from: ep('comments', ['commentable_id']), to: ep('posts', ['id']) }, inverse: 'App\\Models\\Comment::commentable' }),
-    rel('Post', 'approvedComments', 'MorphMany', 'Comment', { morph: { type: 'commentable_type', id: 'commentable_id' }, keys: { from: ep('comments', ['commentable_id']), to: ep('posts', ['id']) }, constraints: ['approved = true'] }),
+    rel('Post', 'approvedComments', 'MorphMany', 'Comment', { morph: { type: 'commentable_type', id: 'commentable_id' }, keys: { from: ep('comments', ['commentable_id']), to: ep('posts', ['id']) }, constraints: ['approved = ?'] }),
     rel('Post', 'tags', 'MorphToMany', 'Tag', {
         morph: { type: 'taggable_type', id: 'taggable_id' },
         pivot: { table: 'taggables', foreignPivotKey: 'taggable_id', relatedPivotKey: 'tag_id', columns: [], using: null, accessor: 'pivot' },
