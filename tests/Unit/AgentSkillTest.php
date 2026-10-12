@@ -33,6 +33,7 @@ it('keeps the usage-only structure', function (): void {
             '## Configure',
             '## Use',
             '### Read the schema before changing it',
+            '### Share the viewer without the app',
             '### Check the schema and the models agree',
             '### Open the viewer',
             '## Test your app',
