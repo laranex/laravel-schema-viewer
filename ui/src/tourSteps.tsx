@@ -128,8 +128,9 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
+        target: ['[data-tour="download-menu"]', '[data-tour="menu-actions"]'],
         menu: 'phone',
+        opens: 'download',
         title: 'Download',
         body: (
             <p>

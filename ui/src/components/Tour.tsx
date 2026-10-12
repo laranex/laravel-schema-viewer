@@ -9,6 +9,8 @@ export type TourStep = {
     // The step explains something inside the ⋯ menu, which the tour opens for it: on every screen, or only on phones
     // (where the toolbar's controls move into the menu).
     menu?: 'always' | 'phone';
+    // A toolbar menu the tour opens for this step on wider screens, so the step can show what is inside it.
+    opens?: 'download';
 };
 
 type Target = string | (() => Element | null);
@@ -63,6 +65,17 @@ const rectOf = (el: Element): Rect => {
     return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 };
 
+// Rendered, though maybe scrolled out of view inside a menu: what reveal() brings into view.
+const findRendered = (target: TourStep['target']): Element | null => {
+    for (const t of target === undefined ? [] : Array.isArray(target) ? target : [target]) {
+        const el = typeof t === 'string' ? document.querySelector(t) : t();
+        if (el && el.getClientRects().length > 0) {
+            return el;
+        }
+    }
+    return null;
+};
+
 // Inside a menu or panel that scrolls, bring the element into view. Never inside the diagram: its container's
 // overflow is hidden, and scrolling it shifts the drawing.
 const reveal = (el: Element | null) => {
@@ -108,7 +121,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
     // Menu steps count when the menu exists (phones): their targets only appear once the tour opens it.
     // Steps that pick their element when shown (a table, a label) always count, so the total never depends on timing.
     const available = useMemo(
-        () => (open ? steps.filter((s) => !s.target || typeof s.target === 'function' || find(s.target) || s.menu === 'always' || (s.menu === 'phone' && menuSteps)) : []),
+        () => (open ? steps.filter((s) => !s.target || typeof s.target === 'function' || find(s.target) || s.menu === 'always' || (s.menu === 'phone' && menuSteps) || (s.opens !== undefined && !menuSteps)) : []),
         [open, steps, menuSteps],
     );
     const [index, setIndex] = useState(0);
@@ -139,7 +152,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
         // A menu opened for this step renders a frame later, so look for the element again briefly.
         let tries = 0;
         const revealSoon = () => {
-            const el = find(step.target);
+            const el = find(step.target) ?? findRendered(step.target);
             if (el) {
                 reveal(el);
             } else if (tries++ < 10) {

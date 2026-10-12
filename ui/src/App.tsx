@@ -185,7 +185,13 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const [menuOpen, setMenuOpen] = useState(false);
     // While a tour step explains part of the phone menu, the tour keeps the menu open.
     const [tourMenu, setTourMenu] = useState<TourStep['menu']>(undefined);
-    const onTourStep = useCallback((step: TourStep | null) => setTourMenu(step?.menu), []);
+    // A wider screen's toolbar menu the tour holds open for its step (Download).
+    const [tourOpens, setTourOpens] = useState<TourStep['opens']>(undefined);
+    const [downloadOpen, setDownloadOpen] = useState(false);
+    const onTourStep = useCallback((step: TourStep | null) => {
+        setTourMenu(step?.menu);
+        setTourOpens(step?.opens);
+    }, []);
     const endTour = useCallback(() => setTourOpen(false), []);
     const toastTimer = useRef<number | undefined>(undefined);
     const initialized = useNodesInitialized();
@@ -904,6 +910,9 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                             Download
                                         </>
                                     }
+                                    open={downloadOpen || (!narrow && tourOpens === 'download')}
+                                    onOpenChange={(o) => !tourOpens && setDownloadOpen(o)}
+                                    tour="download-menu"
                                     itemsLabel={downloadHeading}
                                     items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
                                     groups={[allConnectionsGroup]}

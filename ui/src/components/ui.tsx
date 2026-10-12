@@ -142,7 +142,10 @@ export function Menu({
     itemsLabel,
     groups = [],
     afterToggles,
+    tour,
 }: {
+    // Marks the open menu for the guided tour.
+    tour?: string;
     triggerClass?: string;
     // A section heading above the items, and more sections after them, each below a divider with its own heading.
     itemsLabel?: ReactNode;
@@ -166,7 +169,7 @@ export function Menu({
                 </button>
             </MenuPrimitive.Trigger>
             <MenuPrimitive.Portal>
-                <MenuPrimitive.Content className="ui-popover ui-menu" align="end" sideOffset={6} collisionPadding={12}>
+                <MenuPrimitive.Content className="ui-popover ui-menu" align="end" sideOffset={6} collisionPadding={12} data-tour={tour}>
                     {choice && <ChoiceGroup choice={choice} tour="menu-connection" />}
                     {toggles && (
                         <MenuPrimitive.Group data-tour="menu-show">
