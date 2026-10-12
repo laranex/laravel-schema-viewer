@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Vite;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 
 beforeEach(function (): void {
@@ -156,4 +157,20 @@ it('downloads the database schema as Mermaid, DBML, Markdown or JSON', function 
         ->assertJsonMissingPath('models');
     $this->get('/schema-viewer/api/export?format=png')->assertStatus(422);
     $this->get('/schema-viewer/api/export?format=dbml&connection=nope')->assertNotFound();
+});
+
+it('rejects a format or connection given as a list', function (): void {
+    $this->getJson('/schema-viewer/api/export?format[]=dbml')->assertStatus(422)->assertJsonPath('message', 'Use format mermaid, dbml, markdown or json.');
+    $this->getJson('/schema-viewer/api/export?format=dbml&connection[]=testing')->assertStatus(422)->assertJsonPath('message', 'Name one connection.');
+});
+
+it('gives its scripts the CSP nonce the application set for Vite', function (): void {
+    expect($this->get('/schema-viewer')->getContent())->not->toContain('nonce=');
+
+    Vite::useCspNonce('n0nce-"x');
+
+    $html = (string) $this->get('/schema-viewer')->getContent();
+
+    expect(substr_count($html, 'nonce="n0nce-&quot;x"'))->toBe(3)
+        ->and($html)->toContain('<script nonce="n0nce-&quot;x">window.__SCHEMA_VIEWER__');
 });
