@@ -269,7 +269,10 @@ final class SchemaGraph
                 $table = $relation->pivot->table ?? $relation->from->table ?? null;
                 $model = $this->model($models, $relation->model);
 
-                if ($table !== null && $model !== null) {
+                // Like the other hints, none for a framework table or a table that is not there.
+                $inspectedTable = $table !== null && $model !== null ? ($inspected[$model->connection] ?? null)?->table($table) : null;
+
+                if ($inspectedTable !== null && ! $inspectedTable->framework) {
                     $morphTables[$model->connection.'|'.$table] ??= [$model->connection, $table, $relation->morph->type, $relation->morph->class];
                 }
             }

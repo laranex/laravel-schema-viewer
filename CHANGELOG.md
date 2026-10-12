@@ -7,6 +7,9 @@ All notable changes to `laravel-schema-viewer` will be documented in this file.
 ### Added
 - `php artisan schema-viewer:export --format=html` writes the whole viewer as one standalone HTML file, with the schema, fonts and every connection's Mermaid, DBML, Markdown and JSON downloads inlined. It opens from disk or any static host, without the Laravel app or its API. `--output` takes a `.html` file or a folder (default `schema-viewer`, written as `index.html`).
 
+### Fixed
+- No `morph_without_map` hint for a framework table, such as `notifications` from the `Notifiable` trait, or for a table that does not exist.
+
 ## v1.0.0-alpha.1 - 2026-10-12
 
 First release.

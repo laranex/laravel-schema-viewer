@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Facades\Schema;
 use Laranex\LaravelSchemaViewer\Schema\Hint;
 use Laranex\LaravelSchemaViewer\Schema\HintKind;
 use Laranex\LaravelSchemaViewer\Schema\Link;
@@ -92,6 +95,20 @@ it('raises each kind of hint where it applies', function (): void {
         ->and(hintsOf($document, HintKind::ModelWithoutTable))->toBe(['ghosts'])
         ->and(hintsOf($document, HintKind::MorphWithoutMap))->toContain('comments', 'taggables')
         ->and(hintsOf($document, HintKind::UnresolvedRelation))->toBe(['posts']);
+});
+
+it('gives no morph map hint for a framework table or a table that does not exist', function (): void {
+    Models\User::resolveRelationUsing('alerts', fn (Models\User $user) => $user->morphMany(DatabaseNotification::class, 'notifiable'));
+
+    expect(hintsOf(schemaDocument(), HintKind::MorphWithoutMap))->not->toContain('notifications');
+
+    Schema::create('notifications', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->morphs('notifiable');
+    });
+
+    expect(hintsOf(schemaDocument(), HintKind::MorphWithoutMap))->not->toContain('notifications')
+        ->toContain('comments');
 });
 
 it('leaves out ignored hints', function (): void {
