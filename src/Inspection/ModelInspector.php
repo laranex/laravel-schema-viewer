@@ -122,12 +122,9 @@ final class ModelInspector
         /** @var array<string, array<int, mixed>> $listeners */
         $listeners = $this->rawListeners($this->events);
 
-        foreach ($listeners as $event => $handlers) {
-            if (! str_starts_with($event, 'eloquent.') || ! str_ends_with($event, ': '.$model::class)) {
-                continue;
-            }
-
-            foreach ($handlers as $handler) {
+        // Observers listen to the model's observable events, so look those up instead of scanning every listener.
+        foreach ($model->getObservableEvents() as $event) {
+            foreach ($listeners['eloquent.'.$event.': '.$model::class] ?? [] as $handler) {
                 if (is_string($handler) && str_contains($handler, '@')) {
                     $observers[] = explode('@', $handler)[0];
                 }

@@ -27,7 +27,6 @@ use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionProperty;
-use SplFileObject;
 use Throwable;
 
 /**
@@ -45,6 +44,13 @@ final class RelationResolver
         'hasOneDeep', 'hasManyDeep', 'belongsToThrough',
     ];
 
+    /**
+     * The lines of the files read for one model, by path.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private array $lines = [];
+
     public function __construct(
         private readonly ModelInspector $models,
         private readonly Application $app,
@@ -58,6 +64,7 @@ final class RelationResolver
     {
         $relations = [];
         $unresolved = [];
+        $this->lines = [];
 
         $this->pretending($this->reachable($model), function () use ($model, &$relations, &$unresolved): void {
             foreach ($this->candidates($model) as $name => $call) {
@@ -76,6 +83,8 @@ final class RelationResolver
                 }
             }
         });
+
+        $this->lines = [];
 
         return ['relations' => $relations, 'unresolved' => $unresolved];
     }
@@ -221,15 +230,8 @@ final class RelationResolver
             return false;
         }
 
-        $source = new SplFileObject($file);
-        $source->seek((int) $method->getStartLine() - 1);
-        $code = '';
-
-        while ($source->key() < $method->getEndLine() && ! $source->eof()) {
-            $line = $source->current();
-            $code .= is_string($line) ? $line : '';
-            $source->next();
-        }
+        $this->lines[$file] ??= ($lines = @file($file)) !== false ? $lines : [];
+        $code = implode('', array_slice($this->lines[$file], (int) $method->getStartLine() - 1, (int) $method->getEndLine() - (int) $method->getStartLine() + 1));
 
         foreach (self::BUILDERS as $builder) {
             if (str_contains($code, '$this->'.$builder.'(')) {

@@ -20,15 +20,24 @@ final class ConnectionSchema implements JsonSerializable
         public readonly array $tables,
     ) {}
 
+    /**
+     * The tables by name, built on first lookup.
+     *
+     * @var array<string, Table>|null
+     */
+    private ?array $byName = null;
+
     public function table(string $name): ?Table
     {
-        foreach ($this->tables as $table) {
-            if ($table->name === $name) {
-                return $table;
+        if ($this->byName === null) {
+            $this->byName = [];
+
+            foreach ($this->tables as $table) {
+                $this->byName[$table->name] ??= $table;
             }
         }
 
-        return null;
+        return $this->byName[$name] ?? null;
     }
 
     /**

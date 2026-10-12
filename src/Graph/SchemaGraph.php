@@ -24,6 +24,21 @@ use Laranex\LaravelSchemaViewer\Schema\UnresolvedRelation;
 final class SchemaGraph
 {
     /**
+     * The models of the document being built, by class.
+     *
+     * @var array<string, ModelInfo>
+     */
+    private array $models = [];
+
+    /**
+     * The morphOne / morphMany relations of the document being built, by their columns and morph type: the targets of
+     * a morphTo on the same columns.
+     *
+     * @var array<string, list<RelationInfo>>
+     */
+    private array $morphTargets = [];
+
+    /**
      * @param  list<ConnectionSchema>  $connections
      * @param  list<ModelInfo>  $models
      * @param  list<RelationInfo>  $relations
@@ -31,6 +46,36 @@ final class SchemaGraph
      * @param  list<IgnoreRule>  $ignore  Hints to leave out.
      */
     public function build(array $connections, array $models, array $relations, array $unresolved, array $ignore = [], ?string $generatedAt = null): SchemaDocument
+    {
+        $this->models = [];
+
+        foreach ($models as $model) {
+            $this->models[$model->class] ??= $model;
+        }
+
+        $this->morphTargets = [];
+
+        foreach ($relations as $other) {
+            if ($other->from !== null && $other->to !== null && $other->morph !== null && $other->type !== 'MorphTo') {
+                $this->morphTargets[$other->from->key().'|'.$other->morph->type][] = $other;
+            }
+        }
+
+        try {
+            return $this->document($connections, $models, $relations, $unresolved, $ignore, $generatedAt);
+        } finally {
+            $this->models = $this->morphTargets = [];
+        }
+    }
+
+    /**
+     * @param  list<ConnectionSchema>  $connections
+     * @param  list<ModelInfo>  $models
+     * @param  list<RelationInfo>  $relations
+     * @param  list<UnresolvedRelation>  $unresolved
+     * @param  list<IgnoreRule>  $ignore  Hints to leave out.
+     */
+    private function document(array $connections, array $models, array $relations, array $unresolved, array $ignore, ?string $generatedAt): SchemaDocument
     {
         $this->pairInverses($relations);
 
@@ -64,12 +109,12 @@ final class SchemaGraph
         $derived = [];
 
         foreach ($relations as $relation) {
-            foreach ($this->endpointsOf($relation, $relations, $models) as [$from, $to, $morph]) {
+            foreach ($this->endpointsOf($relation) as [$from, $to, $morph]) {
                 $add($from, $to, null, $relation->id(), $morph);
             }
 
             if ($relation->through !== null && count($relation->through) >= 2) {
-                $model = $this->model($models, $relation->model);
+                $model = $this->model($relation->model);
                 $derived[] = new DerivedLink(
                     id: 'd'.substr(hash('sha256', $relation->id()), 0, 10),
                     connection: $model->connection ?? '',
@@ -120,17 +165,15 @@ final class SchemaGraph
     /**
      * The column pairs a relation uses, as [from, to, morph] triples.
      *
-     * @param  list<RelationInfo>  $relations
-     * @param  list<ModelInfo>  $models
      * @return list<array{Endpoint, Endpoint, bool}>
      */
-    private function endpointsOf(RelationInfo $relation, array $relations, array $models): array
+    private function endpointsOf(RelationInfo $relation): array
     {
         $morph = $relation->morph !== null;
 
         if ($relation->pivot !== null) {
-            $parent = $this->model($models, $relation->model);
-            $related = $this->model($models, $relation->related);
+            $parent = $this->model($relation->model);
+            $related = $this->model($relation->related);
 
             if ($parent === null || $related === null) {
                 return [];
@@ -149,9 +192,8 @@ final class SchemaGraph
             // A morphTo names no target: every morphOne / morphMany pointing back at its columns is one.
             $targets = [];
 
-            foreach ($relations as $other) {
-                if ($other->from !== null && $other->to !== null && $other->morph !== null && $other->type !== 'MorphTo'
-                    && $other->from->key() === $relation->from->key() && $other->morph->type === $relation->morph->type) {
+            foreach ($this->morphTargets[$relation->from->key().'|'.$relation->morph->type] ?? [] as $other) {
+                if ($other->to !== null) {
                     $targets[$other->to->key()] = [$relation->from, $other->to, true];
                 }
             }
@@ -170,11 +212,33 @@ final class SchemaGraph
      */
     private function pairInverses(array $relations): void
     {
+        // Only relations on the same pivot columns, or from the same columns, can pair: bucket them by those.
+        $byPivot = [];
+        $byFrom = [];
+
+        foreach ($relations as $i => $relation) {
+            if ($relation->pivot !== null) {
+                $byPivot[$relation->pivot->table.'|'.$relation->pivot->relatedPivotKey][] = $i;
+            }
+
+            if ($relation->from !== null) {
+                $byFrom[$relation->from->key()][] = $i;
+            }
+        }
+
         foreach ($relations as $a) {
             $best = null;
             $bestScore = -1;
+            $candidates = [
+                ...($a->pivot !== null ? $byPivot[$a->pivot->table.'|'.$a->pivot->foreignPivotKey] ?? [] : []),
+                ...($a->from !== null ? $byFrom[$a->from->key()] ?? [] : []),
+            ];
+            $candidates = array_unique($candidates);
+            sort($candidates);
 
-            foreach ($relations as $b) {
+            foreach ($candidates as $i) {
+                $b = $relations[$i];
+
                 // A morphTo names no related model (it reports its own class), so only the other side is checked.
                 $modelsMatch = ($a->type === 'MorphTo' || $a->related === $b->model) && ($b->type === 'MorphTo' || $b->related === $a->model);
 
@@ -223,6 +287,11 @@ final class SchemaGraph
     {
         $hints = [];
         $inspected = [];
+        $byId = [];
+
+        foreach ($relations as $i => $relation) {
+            $byId[$relation->id()] ??= [$i, $relation];
+        }
 
         foreach ($connections as $connection) {
             $inspected[$connection->name] = $connection;
@@ -245,7 +314,7 @@ final class SchemaGraph
             $fromTable = ($inspected[$link->from->connection] ?? null)?->table($link->from->table);
 
             if ($link->state() === LinkState::RelationOnly && ! $link->morph && ! $crossesConnections && isset($inspected[$link->from->connection]) && ! $fromTable?->framework) {
-                $hints[] = $this->relationWithoutForeignKey($link, $relations, $inspected[$link->to->connection] ?? null);
+                $hints[] = $this->relationWithoutForeignKey($link, $byId, $inspected[$link->to->connection] ?? null);
             }
 
             if ($link->state() === LinkState::ForeignKeyOnly && ! ($inspected[$link->from->connection] ?? null)?->table($link->from->table)?->framework) {
@@ -272,7 +341,7 @@ final class SchemaGraph
         foreach ($relations as $relation) {
             if ($relation->morph?->class !== null && str_contains($relation->morph->class, '\\')) {
                 $table = $relation->pivot->table ?? $relation->from->table ?? null;
-                $model = $this->model($models, $relation->model);
+                $model = $this->model($relation->model);
 
                 // Like the other hints, none for a framework table or a table that is not there.
                 $inspectedTable = $table !== null && $model !== null ? ($inspected[$model->connection] ?? null)?->table($table) : null;
@@ -291,7 +360,7 @@ final class SchemaGraph
         }
 
         foreach ($unresolved as $failure) {
-            $model = $this->model($models, $failure->model);
+            $model = $this->model($failure->model);
             $hints[] = $failure->package === null
                 ? new Hint(HintKind::UnresolvedRelation, $model->connection ?? '', $model->table ?? '', sprintf(
                     '%s::%s() could not be read (the viewer calls it on a blank model, with no row loaded): %s',
@@ -310,11 +379,19 @@ final class SchemaGraph
      * A relation-only link. Relations that join other tables, or that match a column that is not a unique key, are not
      * the whole link, so their foreign key is noted rather than flagged.
      *
-     * @param  list<RelationInfo>  $relations
+     * @param  array<string, array{int, RelationInfo}>  $relations  The relations by id, with their position.
      */
     private function relationWithoutForeignKey(Link $link, array $relations, ?ConnectionSchema $connection): Hint
     {
-        $used = array_values(array_filter($relations, fn (RelationInfo $relation): bool => in_array($relation->id(), $link->relations, true)));
+        $used = [];
+
+        foreach ($link->relations as $id) {
+            if (isset($relations[$id])) {
+                $used[$relations[$id][0]] = $relations[$id][1];
+            }
+        }
+
+        ksort($used);
         $labels = implode(' and ', array_map($this->label(...), $link->relations));
         $target = $connection?->table($link->to->table);
         $columns = sprintf('%s.%s to %s.%s', $link->from->table, implode(', ', $link->from->columns), $link->to->table, implode(', ', $link->to->columns));
@@ -364,18 +441,9 @@ final class SchemaGraph
         return ($vowelSound ? 'an ' : 'a ').$word;
     }
 
-    /**
-     * @param  list<ModelInfo>  $models
-     */
-    private function model(array $models, string $class): ?ModelInfo
+    private function model(string $class): ?ModelInfo
     {
-        foreach ($models as $model) {
-            if ($model->class === $class) {
-                return $model;
-            }
-        }
-
-        return null;
+        return $this->models[$class] ?? null;
     }
 
     private function label(string $relationId): string
