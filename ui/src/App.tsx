@@ -972,7 +972,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     return (
         <EdgeHover.Provider value={hover}>
             <TableActions.Provider value={tableActions}>
-                <div className={`app${keysOn ? '' : ' keys-off'}`}>
+                <div className={`app${keysOn ? '' : ' keys-off'}${onRefresh ? ' has-refresh' : ''}`}>
                     <EdgeMarkers />
                     <header className="toolbar">
                         <div className="toolbar__brand">

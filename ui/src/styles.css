@@ -1675,7 +1675,8 @@ kbd {
 .tour-fab {
     position: absolute;
     left: 14px;
-    bottom: calc(15px + 104px + 14px);
+    /* Above the zoom controls: four buttons, five with the refresh button. */
+    bottom: calc(15px + var(--controls-height, 104px) + 14px);
     z-index: 8;
     display: grid;
     place-items: center;
@@ -1720,7 +1721,7 @@ kbd {
         width: 30px;
         height: 30px;
         left: 13px;
-        bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 104px + 14px);
+        bottom: calc(72px + env(safe-area-inset-bottom, 0px) + var(--controls-height, 104px) + 14px);
     }
 }
 
@@ -2369,4 +2370,8 @@ a.source--link:focus-visible .ui-icon {
     border: 1px solid var(--line);
     font-size: var(--text-xs);
     overflow-wrap: anywhere;
+}
+
+.app.has-refresh {
+    --controls-height: 130px;
 }

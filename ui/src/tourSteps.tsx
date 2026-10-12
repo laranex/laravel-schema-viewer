@@ -72,7 +72,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Zoom and arrange',
         body: (
             <p>
-                Zoom in and out, fit the whole diagram on screen, and arrange the tables automatically with the last button (<kbd>Shift A</kbd>).
+                Zoom in and out, fit the whole diagram on screen, and arrange the tables automatically (<kbd>Shift A</kbd>). In your app, the last button reads the database and models again (<kbd>Shift R</kbd>).
             </p>
         ),
     },
