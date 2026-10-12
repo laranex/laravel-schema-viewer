@@ -6,7 +6,15 @@ export const ROW_HEIGHT = 26;
 
 export const nodeId = (connection: string, table: string) => `${connection}.${table}`;
 
-export const nodeHeight = (table: Table) => HEADER_HEIGHT + table.columns.length * ROW_HEIGHT + 8;
+// How much of a table card shows: every column, only the key columns, or the header alone.
+export type Fold = 'all' | 'keys' | 'none';
+
+// The rows a card shows: its columns, and with some folded away a last row counting them.
+export const shownColumns = (table: Table, fold: Fold, keys: Set<string>) =>
+    fold === 'all' ? table.columns.map((c) => c.name) : fold === 'keys' ? table.columns.filter((c) => keys.has(c.name)).map((c) => c.name) : [];
+
+export const nodeHeight = (table: Table, shown = table.columns.length) =>
+    shown === 0 && table.columns.length > 0 ? HEADER_HEIGHT + 2 : HEADER_HEIGHT + (shown + (shown < table.columns.length ? 1 : 0)) * ROW_HEIGHT + 8;
 
 export const shortClass = (cls: string) => cls.split('\\').pop() ?? cls;
 
@@ -83,6 +91,23 @@ export class Schema {
             }
         });
         return names;
+    }
+
+    // The columns a folded card keeps: the primary key, foreign keys and every column a link or relation uses.
+    keyColumns(connection: string, table: string): Set<string> {
+        const t = this.table(connection, table);
+        const keys = new Set([...(t?.indexes.find((i) => i.primary)?.columns ?? []), ...(t?.foreignKeys.flatMap((f) => f.columns) ?? [])]);
+        const at = (e: { connection: string; table: string; columns: string[] }) => e.connection === connection && e.table === table && e.columns.forEach((c) => keys.add(c));
+        this.links(connection).forEach((l) => {
+            at(l.from);
+            at(l.to);
+        });
+        this.doc.relations.forEach((r) => {
+            if (r.morph && r.keys?.from.connection === connection && r.keys.from.table === table) {
+                keys.add(r.morph.type);
+            }
+        });
+        return keys;
     }
 
     // Foreign key columns with a unique index are one-to-one.

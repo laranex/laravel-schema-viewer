@@ -134,6 +134,16 @@ it('describes the models', function (): void {
         ->and($user->scopes)->toBe(['verified']);
 });
 
+it('points each model at its file, only inside the application', function (): void {
+    $outside = collect(schemaDocument()->models)->keyBy('class')[Models\Post::class];
+
+    app()->setBasePath(dirname(__DIR__, 2));
+    $inside = collect(schemaDocument()->models)->keyBy('class')[Models\Post::class];
+
+    expect($outside->source)->toBeNull()
+        ->and($inside->source?->jsonSerialize())->toBe(['file' => 'tests/Fixtures/Models/Post.php', 'line' => 14]);
+});
+
 it('serializes the whole document for the viewer', function (): void {
     $json = json_decode((string) json_encode(schemaDocument()), true);
 

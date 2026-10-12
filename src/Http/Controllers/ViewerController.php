@@ -22,6 +22,7 @@ final class ViewerController
             'schemaUrl' => $url->route('schema-viewer.schema'),
             'exportUrl' => $url->route('schema-viewer.export'),
             'defaultConnection' => $viewer->defaultConnection(),
+            'editor' => $viewer->editorHref(),
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
 
         $css = htmlspecialchars($asset('app.css'), ENT_QUOTES);

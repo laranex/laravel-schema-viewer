@@ -106,6 +106,8 @@ export type ServerConfig = {
     downloads?: StaticDownloads;
     // What the viewer opens on: 'all' or one connection's name (config schema-viewer.default_connection).
     defaultConnection?: string;
+    // Opens a file in the developer's editor: {file} (relative to the app's root) and {line}. Never in a static export.
+    editor?: string | null;
 };
 
 // Each connection's Mermaid, DBML and Markdown files, written by schema-viewer:export --format=html.

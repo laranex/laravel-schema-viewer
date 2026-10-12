@@ -56,6 +56,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Editor
+    |--------------------------------------------------------------------------
+    |
+    | Models and relations in the viewer open in this editor: phpstorm, vscode,
+    | cursor, zed, sublime and the other names Laravel's app.editor takes, or
+    | ['href' => 'myeditor://open?file={file}&line={line}']. Add 'base_path'
+    | when the editor sees the project at another path (Docker, Sail, WSL).
+    | Null uses app.editor; without either, the viewer shows no editor links.
+    |
+    */
+
+    'editor' => env('SCHEMA_VIEWER_EDITOR'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Models
     |--------------------------------------------------------------------------
     |

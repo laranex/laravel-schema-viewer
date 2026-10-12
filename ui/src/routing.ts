@@ -6,7 +6,9 @@ export const LABEL_WIDTH = GAP - 28;
 const LABEL_HEIGHT = 24;
 const LANE_STEP = 8;
 
-export type Box = { id: string; x: number; y: number; width: number; height: number; rows: string[] };
+// rows: the column rows the card shows, top to bottom. With folded: true, a column not among them is folded away and
+// its edges meet the card's header.
+export type Box = { id: string; x: number; y: number; width: number; height: number; rows: string[]; folded?: boolean };
 
 export type RouteRequest = {
     id: string;
@@ -26,6 +28,9 @@ export type Route = {
 };
 
 const rowY = (box: Box, column: string) => {
+    if (box.folded && !box.rows.includes(column)) {
+        return box.y + 1 + HEADER_HEIGHT / 2;
+    }
     const index = Math.max(0, box.rows.indexOf(column));
     return box.y + 1 + HEADER_HEIGHT + 4 + index * ROW_HEIGHT + ROW_HEIGHT / 2;
 };

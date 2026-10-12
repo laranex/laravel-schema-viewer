@@ -29,6 +29,7 @@ Every setting has a default, so most apps configure nothing. Publish `config/sch
 - `path` (`SCHEMA_VIEWER_PATH`, default `schema-viewer`), `domain`, `middleware` (default `['web']`).
 - `connections`: null reads the default connection plus every connection a model uses; a list reads exactly those.
 - `default_connection` (`SCHEMA_VIEWER_DEFAULT_CONNECTION`): what the viewer opens on, `all` (every connection on one diagram) or one connection's name.
+- `editor` (`SCHEMA_VIEWER_EDITOR`): `phpstorm`, `vscode`, `cursor`, `zed` or another name Laravel's `app.editor` takes, or `['href' => '…{file}…{line}']`, plus `base_path` when the editor sees the project elsewhere (Docker, WSL); null uses `app.editor`. Models and relations in the viewer then open at their line.
 - `models`: folders scanned for models; null scans `app/Models`.
 - `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed.
 - `hints.ignore` (kinds or `kind:table` pairs) and `hints.fail_on` (kinds that fail `schema-viewer:check`).
@@ -87,6 +88,10 @@ The command exits non-zero when a hint of a `fail_on` kind remains, so it fits C
 ### Open the viewer
 
 Visit `/schema-viewer` in the local environment: every table of the connection, the models on them, and each relation drawn as an edge with its methods and kind (one-to-many, many-to-many, polymorphic, has-many-through).
+
+To point someone at one table, link to it: `/schema-viewer#connection=all&table=mysql:orders&focus=1` opens every connection with the `orders` table of the `mysql` connection selected and focus mode on it and its direct neighbors (`focus` takes 1 to 3 links; leave it out to show the whole diagram). The same hash works on a static HTML export.
+
+JSON exports record where each model class and relation method is declared (`source`: a file relative to the app's root and a line); use it to find the code behind a relation.
 
 ## Test your app
 

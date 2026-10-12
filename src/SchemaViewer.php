@@ -20,6 +20,35 @@ use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
  */
 class SchemaViewer
 {
+    /**
+     * Link formats of common editors, as Laravel's app.editor knows them.
+     */
+    private const EDITORS = [
+        'antigravity' => 'antigravity://file/{file}:{line}',
+        'atom' => 'atom://core/open/file?filename={file}&line={line}',
+        'cursor' => 'cursor://file/{file}:{line}',
+        'emacs' => 'emacs://open?url=file://{file}&line={line}',
+        'fleet' => 'fleet://open?file={file}&line={line}',
+        'idea' => 'idea://open?file={file}&line={line}',
+        'kiro' => 'kiro://file/{file}:{line}',
+        'macvim' => 'mvim://open/?url=file://{file}&line={line}',
+        'neovim' => 'nvim://open?url=file://{file}&line={line}',
+        'netbeans' => 'netbeans://open/?f={file}:{line}',
+        'nova' => 'nova://core/open/file?filename={file}&line={line}',
+        'phpstorm' => 'phpstorm://open?file={file}&line={line}',
+        'sublime' => 'subl://open?url=file://{file}&line={line}',
+        'textmate' => 'txmt://open?url=file://{file}&line={line}',
+        'trae' => 'trae://file/{file}:{line}',
+        'vscode' => 'vscode://file/{file}:{line}',
+        'vscode-insiders' => 'vscode-insiders://file/{file}:{line}',
+        'vscode-insiders-remote' => 'vscode-insiders://vscode-remote/{file}:{line}',
+        'vscode-remote' => 'vscode://vscode-remote/{file}:{line}',
+        'vscodium' => 'vscodium://file/{file}:{line}',
+        'windsurf' => 'windsurf://file/{file}:{line}',
+        'xdebug' => 'xdebug://{file}@{line}',
+        'zed' => 'zed://file/{file}:{line}',
+    ];
+
     public function __construct(
         private readonly Application $app,
         private readonly Config $config,
@@ -62,6 +91,28 @@ class SchemaViewer
         $value = $this->config->get('schema-viewer.default_connection');
 
         return is_string($value) && $value !== '' ? $value : 'all';
+    }
+
+    /**
+     * The link that opens a file in the developer's editor, with {file} (relative to the application's root) and {line}
+     * left in; null when no editor is configured.
+     */
+    public function editorHref(): ?string
+    {
+        $editor = $this->config->get('schema-viewer.editor') ?? $this->config->get('app.editor');
+        $name = is_array($editor) ? ($editor['name'] ?? null) : $editor;
+
+        if (is_array($editor) && is_string($editor['href'] ?? null)) {
+            $href = $editor['href'];
+        } elseif (is_string($name) && $name !== '') {
+            $href = self::EDITORS[$name] ?? $name.'://open?file={file}&line={line}';
+        } else {
+            return null;
+        }
+
+        $root = is_array($editor) && is_string($editor['base_path'] ?? null) ? $editor['base_path'] : $this->app->basePath();
+
+        return str_replace('{file}', rtrim(str_replace('\\', '/', $root), '/').'/{file}', $href);
     }
 
     /**

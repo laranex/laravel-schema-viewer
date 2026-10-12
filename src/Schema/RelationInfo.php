@@ -19,6 +19,7 @@ final class RelationInfo implements JsonSerializable
      * @param  Endpoint|null  $to  The side the key points at.
      * @param  list<string>|null  $through  Tables from the parent to the related table, for through relations.
      * @param  list<string>  $constraints  Conditions added inside the relation method, e.g. "status = active".
+     * @param  Source|null  $source  The relation method; null for dynamic relations.
      */
     public function __construct(
         public readonly string $model,
@@ -32,6 +33,7 @@ final class RelationInfo implements JsonSerializable
         public readonly ?array $through,
         public readonly array $constraints,
         public ?string $inverse = null,
+        public readonly ?Source $source = null,
     ) {}
 
     public function id(): string
@@ -56,6 +58,7 @@ final class RelationInfo implements JsonSerializable
             'through' => $this->through,
             'constraints' => $this->constraints,
             'inverse' => $this->inverse,
+            'source' => $this->source,
         ];
     }
 }

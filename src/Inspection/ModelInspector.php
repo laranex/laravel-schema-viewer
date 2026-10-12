@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Inspection;
 
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Laranex\LaravelSchemaViewer\Schema\ModelInfo;
+use Laranex\LaravelSchemaViewer\Schema\Source;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -22,6 +24,7 @@ final class ModelInspector
     public function __construct(
         private readonly ConnectionResolverInterface $connections,
         private readonly Dispatcher $events,
+        private readonly Application $app,
     ) {}
 
     public function inspect(Model $model): ModelInfo
@@ -43,6 +46,7 @@ final class ModelInspector
             scopes: $this->scopes($model),
             globalScopes: $this->strings(array_keys($model->getGlobalScopes())),
             observers: $this->observers($model),
+            source: Source::of(new ReflectionClass($model), $this->app->basePath()),
         );
     }
 

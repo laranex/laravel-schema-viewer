@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react';
 import { relationKind, relationLabel, shortClass, type Schema } from '../graph';
 import { Tab, TabList, TabPanel, Tabs, Tooltip } from './ui';
-import type { Hint, Relation } from '../types';
+import type { Hint, Relation, Source } from '../types';
 
 type Props = {
     schema: Schema;
@@ -13,7 +14,41 @@ type Props = {
     sheet: boolean;
     sheetOpen: boolean;
     onSheet: (open: boolean) => void;
+    // The editor link format, with {file} and {line}; null when no editor is configured.
+    editor: string | null;
+    // The table focus mode is on, if any.
+    focused: { connection: string; table: string } | null;
+    onFocus: (table: { connection: string; table: string }) => void;
+    onCopyLink: () => void;
 };
+
+type TableProps = Pick<Props, 'schema' | 'onOpen' | 'editor' | 'focused' | 'onFocus' | 'onCopyLink'> & { connection: string; name: string };
+
+// Where a model or relation is declared: a link that opens the editor, or the path to copy when there is none.
+function SourceLink({ source, editor, children }: { source: Source | null | undefined; editor: string | null; children: ReactNode }) {
+    if (!source) {
+        return <>{children}</>;
+    }
+    const where = `${source.file}:${source.line}`;
+    if (!editor) {
+        return (
+            <Tooltip content={<code>{where}</code>}>
+                <span className="source">{children}</span>
+            </Tooltip>
+        );
+    }
+    const href = editor.replace('{file}', source.file).replace('{line}', String(source.line));
+    return (
+        <Tooltip content={<>Open <code>{where}</code> in your editor</>}>
+            <a className="source source--link" href={href}>
+                {children}
+                <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className="ui-icon">
+                    <path d="M9.5 2.5 H13.5 V6.5 M13.5 2.5 L7.5 8.5 M11.5 9.5 V13.5 H2.5 V4.5 H6.5" />
+                </svg>
+            </a>
+        </Tooltip>
+    );
+}
 
 const HINT_TITLE: Record<Hint['kind'], string> = {
     relation_without_foreign_key: 'Relation without a foreign key',
@@ -24,7 +59,7 @@ const HINT_TITLE: Record<Hint['kind'], string> = {
     unresolved_relation: 'Relation could not be resolved',
 };
 
-export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet }: Props) {
+export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, onCopyLink }: Props) {
     const hints = connections.flatMap((c) => schema.hints(c));
     const models = selected ? schema.modelsFor(selected.connection, selected.table) : [];
 
@@ -63,7 +98,16 @@ export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, s
                 </TabList>
                 <TabPanel value="table" className="panel__body">
                     {selected ? (
-                        <TableDetails schema={schema} connection={selected.connection} name={selected.table} onOpen={onOpen} />
+                        <TableDetails
+                            schema={schema}
+                            connection={selected.connection}
+                            name={selected.table}
+                            onOpen={onOpen}
+                            editor={editor}
+                            focused={focused}
+                            onFocus={onFocus}
+                            onCopyLink={onCopyLink}
+                        />
                     ) : (
                         <p className="panel__empty">Select a table to see its columns, relations, indexes and model.</p>
                     )}
@@ -98,7 +142,7 @@ function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean;
     );
 }
 
-function TableDetails({ schema, connection, name, onOpen }: { schema: Schema; connection: string; name: string; onOpen: (connection: string, table: string) => void }) {
+function TableDetails({ schema, connection, name, onOpen, editor, focused, onFocus, onCopyLink }: TableProps) {
     const table = schema.table(connection, name);
     if (!table) {
         return null;
@@ -128,7 +172,31 @@ function TableDetails({ schema, connection, name, onOpen }: { schema: Schema; co
                 </p>
                 {table.comment && <p className="details__comment">{table.comment}</p>}
                 <div className="chips">
-                    {models.length ? models.map((m) => <code key={m.class} className="chip chip--model">{m.class}</code>) : <span className="chip chip--none">No Eloquent model uses this table</span>}
+                    {models.length ? (
+                        models.map((m) => (
+                            <SourceLink key={m.class} source={m.source} editor={editor}>
+                                <code className="chip chip--model">{m.class}</code>
+                            </SourceLink>
+                        ))
+                    ) : (
+                        <span className="chip chip--none">No Eloquent model uses this table</span>
+                    )}
+                </div>
+                <div className="details__actions">
+                    {focused?.connection === connection && focused.table === name ? (
+                        <span className="badge badge--focus">In focus</span>
+                    ) : (
+                        <Tooltip content={<>Show only this table and its neighbors <kbd>Shift F</kbd></>}>
+                            <button type="button" className="button button--small" onClick={() => onFocus({ connection, table: name })}>
+                                Focus
+                            </button>
+                        </Tooltip>
+                    )}
+                    <Tooltip content="A link that opens this table, on any machine that opens this viewer">
+                        <button type="button" className="button button--small" onClick={onCopyLink}>
+                            Copy link
+                        </button>
+                    </Tooltip>
                 </div>
             </header>
 
@@ -198,7 +266,9 @@ function TableDetails({ schema, connection, name, onOpen }: { schema: Schema; co
                         {relations.map((r) => (
                             <li key={r.id}>
                                 <div className="relation__head">
-                                    <code>{r.name}()</code>
+                                    <SourceLink source={r.source} editor={editor}>
+                                        <code>{r.name}()</code>
+                                    </SourceLink>
                                     <span className="relation__type">
                                         {r.type} · {relationKind(r.type)}
                                     </span>
@@ -220,7 +290,9 @@ function TableDetails({ schema, connection, name, onOpen }: { schema: Schema; co
                         {incoming.map((r) => (
                             <li key={r.id}>
                                 <div className="relation__head">
-                                    <code>{relationLabel(r.id)}()</code>
+                                    <SourceLink source={r.source} editor={editor}>
+                                        <code>{relationLabel(r.id)}()</code>
+                                    </SourceLink>
                                     <span className="relation__type">
                                         {r.type} · {relationKind(r.type)}
                                     </span>
@@ -248,7 +320,11 @@ function TableDetails({ schema, connection, name, onOpen }: { schema: Schema; co
 
             {models.map((m) => (
                 <section key={m.class}>
-                    <h3>{shortClass(m.class)} model</h3>
+                    <h3>
+                        <SourceLink source={m.source} editor={editor}>
+                            {shortClass(m.class)} model
+                        </SourceLink>
+                    </h3>
                     <dl className="facts">
                         <dt>Key</dt>
                         <dd>

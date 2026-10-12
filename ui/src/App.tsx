@@ -12,15 +12,15 @@ import {
     type Node,
     type NodeMouseHandler,
 } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { EdgeMarkers, LinkEdgeView, type EdgeKind, type LinkEdgeData, type LinkEdgeType } from './components/LinkEdge';
 import { SearchBox } from './components/SearchBox';
 import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
 import { Dialog, Menu, Select, Tooltip, TooltipProvider } from './components/ui';
 import { SidePanel } from './components/SidePanel';
-import { ExternalNodeView, RegionNodeView, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
-import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass } from './graph';
+import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
+import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
 import { boxWidth, route, type Box } from './routing';
 import { layoutConnections, type StaticDownloads } from './layout';
 import { standaloneHtml } from './standalone';
@@ -40,6 +40,61 @@ const nodeTypes = { table: TableNodeView, external: ExternalNodeView, region: Re
 const edgeTypes = { link: LinkEdgeView };
 
 const EXTERNAL_HEIGHT = 76;
+
+// Remembered per browser; storage can be blocked, and then nothing is remembered.
+function stored<T>(key: string, fallback: T, valid: (value: unknown) => boolean): T {
+    try {
+        const value: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
+        return valid(value) ? (value as T) : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function store(key: string, value: unknown) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+        // Storage blocked: the choice lasts until reload.
+    }
+}
+
+const FOLDS: Fold[] = ['all', 'keys', 'none'];
+const isFold = (v: unknown): v is Fold => FOLDS.includes(v as Fold);
+
+// What a link to the viewer opens on, kept in the URL's hash so it works from a static export too:
+// #connection=all&table=billing:invoices&focus=2
+type LinkState = { scope?: string; table?: TableRef; focus?: number };
+
+function readHash(doc: SchemaDocument): LinkState {
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const scope = params.get('connection');
+    const table = params.get('table');
+    const at = table?.indexOf(':') ?? -1;
+    const ref = table && at > 0 ? { connection: table.slice(0, at), table: table.slice(at + 1) } : undefined;
+    const focus = Number(params.get('focus'));
+    return {
+        scope: scope === 'all' && doc.connections.length > 1 ? ALL : doc.connections.some((c) => c.name === scope) ? (scope as string) : undefined,
+        table: ref && doc.connections.find((c) => c.name === ref.connection)?.tables.some((t) => t.name === ref.table) ? ref : undefined,
+        focus: focus >= 1 && focus <= 3 ? focus : undefined,
+    };
+}
+
+function writeHash(scope: string, table: TableRef | null, focus: number | null) {
+    const params = new URLSearchParams();
+    params.set('connection', scope === ALL ? 'all' : scope);
+    if (table) {
+        params.set('table', `${table.connection}:${table.table}`);
+    }
+    if (table && focus) {
+        params.set('focus', String(focus));
+    }
+    const hash = `#${params.toString().replace(/%3A/g, ':')}`;
+    if (hash !== window.location.hash) {
+        window.history.replaceState(window.history.state, '', hash);
+    }
+}
+
 function useMedia(media: string) {
     const [matches, setMatches] = useState(() => window.matchMedia(media).matches);
     useEffect(() => {
@@ -53,27 +108,44 @@ function useMedia(media: string) {
 
 const useNarrow = () => useMedia('(max-width: 760px)');
 
-export default function App({ doc, example = false, exportUrl, downloads, defaultConnection }: { doc: SchemaDocument; example?: boolean; exportUrl?: string; downloads?: StaticDownloads; defaultConnection?: string }) {
+type ViewerProps = { doc: SchemaDocument; example?: boolean; exportUrl?: string; downloads?: StaticDownloads; defaultConnection?: string; editor?: string | null };
+
+export default function App(props: ViewerProps) {
     return (
         <ReactFlowProvider>
             <TooltipProvider>
-                <Viewer doc={doc} example={example} exportUrl={exportUrl} downloads={downloads} defaultConnection={defaultConnection} />
+                <Viewer {...props} />
             </TooltipProvider>
         </ReactFlowProvider>
     );
 }
 
-function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc: SchemaDocument; example: boolean; exportUrl?: string; downloads?: StaticDownloads; defaultConnection?: string }) {
+function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection, editor }: ViewerProps) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
+    const [linked] = useState(() => readHash(doc));
 
-    // One connection, or ALL to put every connection on the diagram. It opens on the configured connection when the
-    // schema has it; otherwise on every connection, or the only one.
-    const [scope, setScope] = useState(() =>
-        doc.connections.some((c) => c.name === defaultConnection) ? (defaultConnection as string) : doc.connections.length > 1 ? ALL : doc.connections[0].name,
-    );
+    // One connection, or ALL to put every connection on the diagram. It opens on the link's connection, else the
+    // configured one when the schema has it; otherwise on every connection, or the only one.
+    const [scope, setScope] = useState(() => {
+        const opening =
+            linked.scope ??
+            (doc.connections.some((c) => c.name === defaultConnection) ? (defaultConnection as string) : doc.connections.length > 1 ? ALL : doc.connections[0].name);
+        // The linked table's connection wins over a single other connection.
+        return linked.table && opening !== ALL && opening !== linked.table.connection ? linked.table.connection : opening;
+    });
     const [selected, setSelected] = useState<TableRef | null>(null);
-    const [pending, setPending] = useState<TableRef | null>(null);
+    // A table to select and center once the diagram has placed it.
+    const [pending, setPending] = useState<TableRef | null>(() => linked.table ?? null);
+    // Focus mode: only a table and the tables within `depth` links of it.
+    const [focus, setFocus] = useState<(TableRef & { depth: number }) | null>(() => (linked.table && linked.focus ? { ...linked.table, depth: linked.focus } : null));
+    // How much of each card shows: one choice for every table, and the tables folded or unfolded one by one.
+    const [columns, setColumnsState] = useState<Fold>(() => stored('schema-viewer.columns', 'all', isFold));
+    const [folds, setFolds] = useState<Record<string, Fold>>(() =>
+        stored('schema-viewer.folds', {}, (v) => typeof v === 'object' && v !== null && Object.values(v).every(isFold)),
+    );
+    // The details panel's width, dragged by its edge; null keeps the default.
+    const [panelWidth, setPanelWidth] = useState<number | null>(() => stored('schema-viewer.panel-width', null, (v) => typeof v === 'number' && v >= 280));
     const scopeConnections = useMemo(() => (scope === ALL ? doc.connections.map((c) => c.name) : [scope]), [doc, scope]);
     const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
     // The connection the panel and the per-connection downloads talk about: the selected table's, else the one in view.
@@ -88,6 +160,8 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
     const [sheetOpen, setSheetOpen] = useState(false);
     const narrow = useNarrow();
     const roomy = useMedia('(min-width: 1100px)');
+    // The panel sits beside the diagram, so its width can be dragged.
+    const sideBySide = useMedia('(min-width: 961px)');
     const [hovered, setHovered] = useState<string | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const [helpOpen, setHelpOpen] = useState(false);
@@ -166,6 +240,19 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
     );
     const tablesById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), e])), [visibleTables]);
 
+    // In focus mode the diagram holds only the focused table and its neighbors; search still finds every table.
+    const focusSet = useMemo(() => (focus ? schema.neighbors(focus.connection, focus.table, focus.depth) : null), [schema, focus]);
+    const shownTables = useMemo(() => (focusSet ? visibleTables.filter((e) => focusSet.has(nodeId(e.connection, e.table.name))) : visibleTables), [visibleTables, focusSet]);
+
+    // The columns each card shows.
+    const keysById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), schema.keyColumns(e.connection, e.table.name)])), [schema, visibleTables]);
+    const shownOf = useCallback(
+        (id: string, table: Table) => shownColumns(table, folds[id] ?? columns, keysById.get(id) ?? new Set()),
+        [folds, columns, keysById],
+    );
+    const shownOfRef = useRef(shownOf);
+    shownOfRef.current = shownOf;
+
     // The links and through links in view: each once, even when it joins two connections in view.
     const links = useMemo(() => [...new Map(scopeConnections.flatMap((c) => schema.links(c)).map((l) => [l.id, l])).values()], [schema, scopeConnections]);
     const derived = useMemo(() => scopeConnections.flatMap((c) => schema.derived(c)), [schema, scopeConnections]);
@@ -174,19 +261,23 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
     const externals = useMemo(() => {
         const out = new Map<string, TableRef>();
         links.forEach((l) => {
-            if (!scopeConnections.includes(l.to.connection)) {
-                out.set(nodeId(l.to.connection, l.to.table), { connection: l.to.connection, table: l.to.table });
+            const id = nodeId(l.to.connection, l.to.table);
+            if (!scopeConnections.includes(l.to.connection) && (!focusSet || focusSet.has(id))) {
+                out.set(id, { connection: l.to.connection, table: l.to.table });
             }
         });
         return out;
-    }, [links, scopeConnections]);
+    }, [links, scopeConnections, focusSet]);
 
     // Place the nodes automatically; with every connection in view, each connection gets its own region.
     useEffect(() => {
         let cancelled = false;
-        const ids = new Set([...tablesById.keys(), ...externals.keys()]);
+        const ids = new Set([...shownTables.map((e) => nodeId(e.connection, e.table.name)), ...externals.keys()]);
         const sizes: Record<string, number> = {};
-        tablesById.forEach((e, id) => (sizes[id] = nodeHeight(e.table)));
+        shownTables.forEach((e) => {
+            const id = nodeId(e.connection, e.table.name);
+            sizes[id] = nodeHeight(e.table, shownOfRef.current(id, e.table).length);
+        });
         externals.forEach((_, id) => (sizes[id] = EXTERNAL_HEIGHT));
 
         const place = async () => {
@@ -209,17 +300,17 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
                         data: {
                             connection: r.connection,
                             driver: doc.connections.find((c) => c.name === r.connection)?.driver ?? '',
-                            tables: visibleTables.filter((e) => e.connection === r.connection).length,
+                            tables: shownTables.filter((e) => e.connection === r.connection).length,
                             hints: schema.hints(r.connection).length,
                         },
                     }),
                 ),
-                ...visibleTables.map(
+                ...shownTables.map(
                     ({ connection: c, table: t }): TableNodeType => ({
                         id: nodeId(c, t.name),
                         type: 'table',
                         position: positions[nodeId(c, t.name)] ?? { x: 0, y: 0 },
-                        data: { connection: c, table: t, models: [], pivot: false, hintCount: 0, dim: false, active: false, primary: [], foreign: [], linked: [], casts: {} },
+                        data: { connection: c, table: t, models: [], pivot: false, hintCount: 0, dim: false, active: false, primary: [], foreign: [], linked: [], casts: {}, fold: 'all', shown: [] },
                         width: NODE_WIDTH,
                     }),
                 ),
@@ -241,7 +332,7 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [schema, scopeConnections, visibleTables, tablesById, externals, layoutVersion]);
+    }, [schema, scopeConnections, shownTables, externals, layoutVersion]);
 
     const neighbors = useMemo(() => (selected ? schema.neighbors(selected.connection, selected.table, 1) : null), [schema, selected]);
     const pivots = useMemo(() => new Set(scopeConnections.flatMap((c) => [...schema.pivotTables(c)].map((t) => nodeId(c, t)))), [schema, scopeConnections]);
@@ -284,10 +375,12 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
                     foreign: t.foreignKeys.flatMap((f) => f.columns),
                     linked,
                     casts: Object.assign({}, ...models.map((m) => m.casts)),
+                    fold: folds[n.id] ?? columns,
+                    shown: shownOf(n.id, t),
                 },
             };
         },
-        [schema, selected, selectedId, neighbors, pivots, isDim],
+        [schema, selected, selectedId, neighbors, pivots, isDim, folds, columns, shownOf],
     );
     const decorateRef = useRef(decorate);
     decorateRef.current = decorate;
@@ -377,8 +470,9 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
                 x: n.position.x,
                 y: n.position.y,
                 width: n.measured?.width ?? boxWidth(n.type),
-                height: n.measured?.height ?? (n.type === 'table' ? nodeHeight(n.data.table) : EXTERNAL_HEIGHT),
-                rows: n.type === 'table' ? n.data.table.columns.map((c) => c.name) : ['id'],
+                height: n.measured?.height ?? (n.type === 'table' ? nodeHeight(n.data.table, n.data.shown.length) : EXTERNAL_HEIGHT),
+                rows: n.type === 'table' ? n.data.shown : ['id'],
+                folded: n.type === 'table',
             });
         });
         const routes = route(
@@ -431,6 +525,14 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
             setTab('table');
             if (!scopeConnections.includes(conn)) {
                 setScope(conn);
+                setFocus(null);
+                setSelected(null);
+                setPending({ connection: conn, table });
+                return;
+            }
+            // A table outside the focus ends focus mode; it is selected once the whole diagram is back.
+            if (focusSet && !focusSet.has(nodeId(conn, table))) {
+                setFocus(null);
                 setSelected(null);
                 setPending({ connection: conn, table });
                 return;
@@ -438,8 +540,106 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
             setSelected({ connection: conn, table });
             centerOn(nodeId(conn, table));
         },
-        [scopeConnections, centerOn],
+        [scopeConnections, focusSet, centerOn],
     );
+
+    // Focus mode on a table, keeping the depth already chosen.
+    const focusOn = useCallback((ref: TableRef, depth?: number) => {
+        setSelected(ref);
+        setTab('table');
+        setFocus((f) => ({ ...ref, depth: depth ?? f?.depth ?? 1 }));
+    }, []);
+
+    const endFocus = useCallback(() => {
+        setFocus(null);
+        if (selected) {
+            setPending(selected);
+        }
+    }, [selected]);
+
+    // One card folded or unfolded; the rest stay where they are.
+    const setFold = useCallback(
+        (id: string, fold: Fold) => {
+            setFolds((current) => {
+                const next = { ...current };
+                if (fold === columns) {
+                    delete next[id];
+                } else {
+                    next[id] = fold;
+                }
+                store('schema-viewer.folds', next);
+                return next;
+            });
+        },
+        [columns],
+    );
+    const tableActions = useMemo(() => ({ setFold }), [setFold]);
+
+    // Every card at once, then the diagram is arranged again around the new sizes.
+    const setColumns = (fold: Fold) => {
+        setColumnsState(fold);
+        setFolds({});
+        store('schema-viewer.columns', fold);
+        store('schema-viewer.folds', {});
+        setLayoutVersion((v) => v + 1);
+        notify(fold === 'all' ? 'Every column shown.' : fold === 'keys' ? 'Tables folded to their key columns.' : 'Tables folded to their headers.');
+    };
+
+    // The URL always opens what is on screen: the connection, the selected table and focus mode.
+    useEffect(() => {
+        if (!pending) {
+            writeHash(scope, focus ?? selected, focus?.depth ?? null);
+        }
+    }, [scope, selected, focus, pending]);
+
+    // A link pasted into the same tab.
+    useEffect(() => {
+        const onHash = () => {
+            const next = readHash(doc);
+            if (next.scope) {
+                setScope(next.scope);
+            }
+            setFocus(next.table && next.focus ? { ...next.table, depth: next.focus } : null);
+            setSelected(null);
+            setPending(next.table ?? null);
+        };
+        window.addEventListener('hashchange', onHash);
+        return () => window.removeEventListener('hashchange', onHash);
+    }, [doc]);
+
+    const copyLink = () => {
+        const done = () => notify('Link copied. It opens this connection, table and focus.');
+        navigator.clipboard?.writeText(window.location.href).then(done, () => notify('The link could not be copied. Copy it from the address bar.'));
+    };
+
+    // Dragging the panel's edge sets its width, kept between the panel's minimum and room for the diagram.
+    const mainRef = useRef<HTMLElement>(null);
+    const resizePanel = (width: number | null) => {
+        const room = mainRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+        const next = width === null ? null : Math.round(Math.min(Math.max(width, 280), room - 360));
+        setPanelWidth(next);
+        store('schema-viewer.panel-width', next);
+    };
+    const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
+        const main = mainRef.current;
+        if (!main) {
+            return;
+        }
+        e.preventDefault();
+        userMoved.current = true;
+        const handle = e.currentTarget;
+        handle.setPointerCapture(e.pointerId);
+        const right = main.getBoundingClientRect().right;
+        const move = (ev: PointerEvent) => resizePanel(right - ev.clientX);
+        const up = () => {
+            handle.removeEventListener('pointermove', move);
+            handle.removeEventListener('pointerup', up);
+            handle.removeEventListener('pointercancel', up);
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', up);
+        handle.addEventListener('pointercancel', up);
+    };
 
     const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
         (_, node: Node) => {
@@ -460,6 +660,7 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
 
     const switchConnection = (name: string) => {
         setScope(name);
+        setFocus(null);
         setSelected(null);
         setPending(null);
     };
@@ -561,8 +762,15 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
             Escape: () => {
                 if (helpOpen) setHelpOpen(false);
                 else if (sheetOpen) setSheetOpen(false);
+                else if (focus) endFocus();
                 else setSelected(null);
             },
+            F: () => {
+                if (focus) endFocus();
+                else if (selected) focusOn(selected);
+                else notify('Select a table first, then press Shift F to focus on it.');
+            },
+            c: () => setColumns(FOLDS[(FOLDS.indexOf(columns) + 1) % FOLDS.length]),
             f: () => flow.fitView({ padding: 0.08, duration: 250 }),
             '+': () => flow.zoomIn({ duration: 150 }),
             '=': () => flow.zoomIn({ duration: 150 }),
@@ -596,213 +804,288 @@ function Viewer({ doc, example, exportUrl, downloads, defaultConnection }: { doc
     }, []);
     const hintCount = scopeConnections.reduce((n, c) => n + schema.hints(c).length, 0);
 
+    const columnsGroup = {
+        label: <span className="ui-menu__heading">Columns</span>,
+        items: FOLDS.map((f) => ({ label: `${COLUMN_CHOICES[f].label}${f === columns ? ' ✓' : ''}`, hint: COLUMN_CHOICES[f].hint, onSelect: () => setColumns(f) })),
+    };
+
     return (
-        <div className={`app${keysOn ? '' : ' keys-off'}`}>
-            <EdgeMarkers />
-            <header className="toolbar">
-                <div className="toolbar__brand">
-                    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className="brand-mark">
-                        <rect x="2.5" y="3.5" width="8" height="7" rx="1.5" />
-                        <rect x="13.5" y="13.5" width="8" height="7" rx="1.5" />
-                        <path d="M10.5 7 H14 a2 2 0 0 1 2 2 V13.5" />
-                    </svg>
-                    <span>Schema Viewer</span>
-                </div>
-                <SearchBox schema={schema} tables={visibleTables} multiple={scopeConnections.length > 1} query={query} onQuery={setQuery} onPick={open} inputRef={searchRef} />
-                <div className="toolbar__spacer" />
-                {narrow ? (
-                    <Menu
-                        label="More actions"
-                        trigger={
-                            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" className="icon-fill">
-                                <circle cx="5" cy="12" r="1.8" />
-                                <circle cx="12" cy="12" r="1.8" />
-                                <circle cx="19" cy="12" r="1.8" />
-                            </svg>
-                        }
-                        itemsLabel={downloadHeading}
-                        items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
-                        groups={[allConnectionsGroup, { items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
-                        open={menuOpen || tourMenu === 'phone'}
-                        onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
-                        choice={{
-                            label: 'Connection',
-                            value: scope,
-                            options: connectionOptions,
-                            onChange: switchConnection,
-                            hint: (
-                                <span className="ui-menu__keys">
-                                    <kbd className="kbd-hint">[</kbd>
-                                    <kbd className="kbd-hint">]</kbd>
-                                </span>
-                            ),
-                        }}
-                        toggles={{
-                            label: 'Show',
-                            items: LAYER_TOGGLES.map((t) => ({
-                                label: t.label,
-                                checked: layers[t.key],
-                                onChange: () => toggle(t.key),
-                                icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
-                                hotkey: t.hotkey,
-                            })),
-                        }}
-                    />
-                ) : (
-                    <div className="toolbar__group" role="group" aria-label="Connection and export">
-                        <Select
-                            id="connection"
-                            label="Connection"
-                            value={scope}
-                            onChange={switchConnection}
-                            options={connectionOptions}
-                            hint={
-                                <>
-                                    <kbd className="kbd-hint">[</kbd>
-                                    <kbd className="kbd-hint">]</kbd>
-                                </>
+        <TableActions.Provider value={tableActions}>
+            <div className={`app${keysOn ? '' : ' keys-off'}`}>
+                <EdgeMarkers />
+                <header className="toolbar">
+                    <div className="toolbar__brand">
+                        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className="brand-mark">
+                            <rect x="2.5" y="3.5" width="8" height="7" rx="1.5" />
+                            <rect x="13.5" y="13.5" width="8" height="7" rx="1.5" />
+                            <path d="M10.5 7 H14 a2 2 0 0 1 2 2 V13.5" />
+                        </svg>
+                        <span>Schema Viewer</span>
+                    </div>
+                    <SearchBox schema={schema} tables={visibleTables} multiple={scopeConnections.length > 1} query={query} onQuery={setQuery} onPick={open} inputRef={searchRef} />
+                    <div className="toolbar__spacer" />
+                    {narrow ? (
+                        <Menu
+                            label="More actions"
+                            trigger={
+                                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" className="icon-fill">
+                                    <circle cx="5" cy="12" r="1.8" />
+                                    <circle cx="12" cy="12" r="1.8" />
+                                    <circle cx="19" cy="12" r="1.8" />
+                                </svg>
                             }
+                            itemsLabel={downloadHeading}
+                            items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
+                            groups={[allConnectionsGroup, columnsGroup, { items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
+                            open={menuOpen || tourMenu === 'phone'}
+                            onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
+                            choice={{
+                                label: 'Connection',
+                                value: scope,
+                                options: connectionOptions,
+                                onChange: switchConnection,
+                                hint: (
+                                    <span className="ui-menu__keys">
+                                        <kbd className="kbd-hint">[</kbd>
+                                        <kbd className="kbd-hint">]</kbd>
+                                    </span>
+                                ),
+                            }}
+                            toggles={{
+                                label: 'Show',
+                                items: LAYER_TOGGLES.map((t) => ({
+                                    label: t.label,
+                                    checked: layers[t.key],
+                                    onChange: () => toggle(t.key),
+                                    icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
+                                    hotkey: t.hotkey,
+                                })),
+                            }}
                         />
-                        <div className="toolbar__group" data-tour="actions">
-                            <Menu
-                                label="Download"
-                                triggerClass="button button--with-icon"
-                                trigger={
+                    ) : (
+                        <div className="toolbar__group" role="group" aria-label="Connection and export">
+                            <Select
+                                id="connection"
+                                label="Connection"
+                                value={scope}
+                                onChange={switchConnection}
+                                options={connectionOptions}
+                                hint={
                                     <>
-                                        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
-                                            <path d="M8 2.5 V10 M4.5 6.5 L8 10 L11.5 6.5 M2.5 13.5 H13.5" />
-                                        </svg>
-                                        Download
+                                        <kbd className="kbd-hint">[</kbd>
+                                        <kbd className="kbd-hint">]</kbd>
                                     </>
                                 }
-                                itemsLabel={downloadHeading}
-                                items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
-                                groups={[allConnectionsGroup]}
                             />
+                            <div className="toolbar__group" data-tour="actions">
+                                <Menu
+                                    label="Download"
+                                    triggerClass="button button--with-icon"
+                                    trigger={
+                                        <>
+                                            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
+                                                <path d="M8 2.5 V10 M4.5 6.5 L8 10 L11.5 6.5 M2.5 13.5 H13.5" />
+                                            </svg>
+                                            Download
+                                        </>
+                                    }
+                                    itemsLabel={downloadHeading}
+                                    items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
+                                    groups={[allConnectionsGroup]}
+                                />
+                            </div>
+                            <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
+                                <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
+                                    <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
+                                        <rect x="1.5" y="2" width="17" height="12" rx="2" />
+                                        <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
+                                    </svg>
+                                    Keyboard shortcuts
+                                </button>
+                            </Tooltip>
                         </div>
-                        <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
-                            <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
-                                <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
-                                    <rect x="1.5" y="2" width="17" height="12" rx="2" />
-                                    <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
-                                </svg>
-                                Keyboard shortcuts
+                    )}
+                </header>
+
+                {!narrow && (
+                    <div className="layers" role="group" aria-label="Show on the diagram" data-tour="layers">
+                        {LAYER_TOGGLES.map((t) => (
+                            <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} hotkey={t.hotkey} divider={t.key === 'framework'} />
+                        ))}
+                        <span className="layers__divider" aria-hidden="true" />
+                        <div className="segmented" role="radiogroup" aria-label="Columns" aria-keyshortcuts="C" data-tour="columns">
+                            <span className="segmented__label">Columns</span>
+                            {FOLDS.map((f) => (
+                                <Tooltip key={f} content={<>{COLUMN_CHOICES[f].hint} <kbd>C</kbd></>} side="bottom">
+                                    <button type="button" role="radio" aria-checked={columns === f} className="segmented__option" onClick={() => setColumns(f)}>
+                                        {COLUMN_CHOICES[f].label}
+                                    </button>
+                                </Tooltip>
+                            ))}
+                            <kbd className="kbd-hint">C</kbd>
+                        </div>
+                        <span className="layers__note">
+                            {scopeConnections.length > 1 ? `${scopeConnections.length} connections · ` : ''}
+                            {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'}
+                            {example ? ' · example data' : ''}
+                        </span>
+                    </div>
+                )}
+
+                <main
+                    className={`main${sideBySide && panelWidth !== null ? ' has-panel-width' : ''}`}
+                    ref={mainRef}
+                    style={panelWidth !== null ? ({ '--panel-width': `${panelWidth}px` } as CSSProperties) : undefined}
+                >
+                    <div className="canvas" ref={canvasRef}>
+                        <ReactFlow<AppNode, LinkEdgeType>
+                            nodes={nodes}
+                            edges={edges}
+                            nodeTypes={nodeTypes}
+                            edgeTypes={edgeTypes}
+                            onNodesChange={onNodesChange}
+                            onNodeClick={onNodeClick}
+                            onNodeDoubleClick={(_, node) => {
+                                if (node.type === 'table') {
+                                    focusOn({ connection: node.data.connection, table: node.data.table.name });
+                                }
+                            }}
+                            zoomOnDoubleClick={false}
+                            onEdgeMouseEnter={(_, edge) => setHovered(edge.id)}
+                            onEdgeMouseLeave={() => setHovered(null)}
+                            onPaneClick={() => setSelected(null)}
+                            onMoveStart={(event) => {
+                                if (event) {
+                                    userMoved.current = true;
+                                }
+                            }}
+                            nodesConnectable={false}
+                            edgesFocusable={false}
+                            minZoom={0.08}
+                            maxZoom={2}
+                            proOptions={{ hideAttribution: true }}
+                        >
+                            <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
+                            <Controls showInteractive={false} showZoom={false} showFitView={false}>
+                                <Tooltip content={<>Zoom in <kbd>+</kbd></>} side="right">
+                                    <ControlButton onClick={() => flow.zoomIn({ duration: 150 })} aria-label="Zoom in" aria-keyshortcuts="+">
+                                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                            <path d="M8 3 V13 M3 8 H13" />
+                                        </svg>
+                                    </ControlButton>
+                                </Tooltip>
+                                <Tooltip content={<>Zoom out <kbd>−</kbd></>} side="right">
+                                    <ControlButton onClick={() => flow.zoomOut({ duration: 150 })} aria-label="Zoom out" aria-keyshortcuts="-">
+                                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                            <path d="M3 8 H13" />
+                                        </svg>
+                                    </ControlButton>
+                                </Tooltip>
+                                <Tooltip content={<>Fit the diagram <kbd>F</kbd></>} side="right">
+                                    <ControlButton onClick={() => flow.fitView({ padding: 0.08, duration: 250 })} aria-label="Fit the diagram" aria-keyshortcuts="F">
+                                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                            <path d="M2.5 6 V2.5 H6 M10 2.5 H13.5 V6 M13.5 10 V13.5 H10 M6 13.5 H2.5 V10" />
+                                        </svg>
+                                    </ControlButton>
+                                </Tooltip>
+                                <Tooltip content={<>Auto layout <kbd>Shift A</kbd></>} side="right">
+                                    <ControlButton onClick={onAutoLayout} aria-label="Arrange tables automatically" aria-keyshortcuts="Shift+A" data-tour="auto-layout">
+                                        <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
+                                            <rect x="1.5" y="2" width="5" height="4" rx="1" />
+                                            <rect x="9.5" y="2" width="5" height="4" rx="1" />
+                                            <rect x="5.5" y="10" width="5" height="4" rx="1" />
+                                            <path d="M4 6 V8 H12 V6 M8 8 V10" />
+                                        </svg>
+                                    </ControlButton>
+                                </Tooltip>
+                            </Controls>
+                            {/* Below 1100px the diagram needs the room more than an overview does. */}
+                            {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
+                        </ReactFlow>
+                        {focus && (
+                            <div className="focus-bar" role="group" aria-label="Focus mode">
+                                <span className="focus-bar__label">
+                                    Focus on <code>{scopeConnections.length > 1 ? `${focus.connection}.${focus.table}` : focus.table}</code>
+                                </span>
+                                <span className="segmented" role="radiogroup" aria-label="Links away">
+                                    {[1, 2, 3].map((d) => (
+                                        <button key={d} type="button" role="radio" aria-checked={focus.depth === d} className="segmented__option" onClick={() => focusOn(focus, d)}>
+                                            {d} {d === 1 ? 'link' : 'links'}
+                                        </button>
+                                    ))}
+                                </span>
+                                <span className="focus-bar__count">{shownTables.length} tables</span>
+                                <button type="button" className="button button--small" onClick={copyLink}>
+                                    Copy link
+                                </button>
+                                <Tooltip content={<>Leave focus mode <kbd>Esc</kbd></>} side="bottom">
+                                    <button type="button" className="button button--small" onClick={endFocus}>
+                                        Show all
+                                    </button>
+                                </Tooltip>
+                            </div>
+                        )}
+                        <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="right">
+                            <button type="button" className="tour-fab" aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
+                                ?
                             </button>
                         </Tooltip>
                     </div>
-                )}
-            </header>
-
-            {!narrow && (
-                <div className="layers" role="group" aria-label="Show on the diagram" data-tour="layers">
-                    {LAYER_TOGGLES.map((t) => (
-                        <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} hotkey={t.hotkey} divider={t.key === 'framework'} />
-                    ))}
-                    <span className="layers__note">
-                        {scopeConnections.length > 1 ? `${scopeConnections.length} connections · ` : ''}
-                        {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'}
-                        {example ? ' · example data' : ''}
-                    </span>
-                </div>
-            )}
-
-            <main className="main">
-                <div className="canvas" ref={canvasRef}>
-                    <ReactFlow<AppNode, LinkEdgeType>
-                        nodes={nodes}
-                        edges={edges}
-                        nodeTypes={nodeTypes}
-                        edgeTypes={edgeTypes}
-                        onNodesChange={onNodesChange}
-                        onNodeClick={onNodeClick}
-                        onEdgeMouseEnter={(_, edge) => setHovered(edge.id)}
-                        onEdgeMouseLeave={() => setHovered(null)}
-                        onPaneClick={() => setSelected(null)}
-                        onMoveStart={(event) => {
-                            if (event) {
-                                userMoved.current = true;
+                    {sideBySide && (
+                        <div
+                            className="panel-resizer"
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label="Resize the details panel"
+                            aria-valuenow={panelWidth ?? undefined}
+                            tabIndex={0}
+                            onPointerDown={onResizeStart}
+                            onDoubleClick={() => resizePanel(null)}
+                            onKeyDown={(e) => {
+                                const width = panelWidth ?? document.querySelector('.panel')?.getBoundingClientRect().width ?? 360;
+                                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                                    e.preventDefault();
+                                    resizePanel(width + (e.key === 'ArrowLeft' ? 24 : -24));
+                                }
+                            }}
+                            title="Drag to resize, double-click to reset"
+                        />
+                    )}
+                    <SidePanel
+                        schema={schema}
+                        editor={editor ?? null}
+                        focused={focus}
+                        onFocus={focusOn}
+                        onCopyLink={copyLink}
+                        connections={scopeConnections}
+                        selected={selected}
+                        tab={tab}
+                        onTab={(t) => {
+                            setTab(t);
+                            setSheetOpen(true);
+                        }}
+                        onOpen={(c, t) => {
+                            open(c, t);
+                            if (narrow) {
+                                setSheetOpen(false);
                             }
                         }}
-                        nodesConnectable={false}
-                        edgesFocusable={false}
-                        minZoom={0.08}
-                        maxZoom={2}
-                        proOptions={{ hideAttribution: true }}
-                    >
-                        <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-                        <Controls showInteractive={false} showZoom={false} showFitView={false}>
-                            <Tooltip content={<>Zoom in <kbd>+</kbd></>} side="right">
-                                <ControlButton onClick={() => flow.zoomIn({ duration: 150 })} aria-label="Zoom in" aria-keyshortcuts="+">
-                                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                        <path d="M8 3 V13 M3 8 H13" />
-                                    </svg>
-                                </ControlButton>
-                            </Tooltip>
-                            <Tooltip content={<>Zoom out <kbd>−</kbd></>} side="right">
-                                <ControlButton onClick={() => flow.zoomOut({ duration: 150 })} aria-label="Zoom out" aria-keyshortcuts="-">
-                                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                        <path d="M3 8 H13" />
-                                    </svg>
-                                </ControlButton>
-                            </Tooltip>
-                            <Tooltip content={<>Fit the diagram <kbd>F</kbd></>} side="right">
-                                <ControlButton onClick={() => flow.fitView({ padding: 0.08, duration: 250 })} aria-label="Fit the diagram" aria-keyshortcuts="F">
-                                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                        <path d="M2.5 6 V2.5 H6 M10 2.5 H13.5 V6 M13.5 10 V13.5 H10 M6 13.5 H2.5 V10" />
-                                    </svg>
-                                </ControlButton>
-                            </Tooltip>
-                            <Tooltip content={<>Auto layout <kbd>Shift A</kbd></>} side="right">
-                                <ControlButton onClick={onAutoLayout} aria-label="Arrange tables automatically" aria-keyshortcuts="Shift+A" data-tour="auto-layout">
-                                    <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                        <rect x="1.5" y="2" width="5" height="4" rx="1" />
-                                        <rect x="9.5" y="2" width="5" height="4" rx="1" />
-                                        <rect x="5.5" y="10" width="5" height="4" rx="1" />
-                                        <path d="M4 6 V8 H12 V6 M8 8 V10" />
-                                    </svg>
-                                </ControlButton>
-                            </Tooltip>
-                        </Controls>
-                        {/* Below 1100px the diagram needs the room more than an overview does. */}
-                        {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
-                    </ReactFlow>
-                    <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="right">
-                        <button type="button" className="tour-fab" aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
-                            ?
-                        </button>
-                    </Tooltip>
-                </div>
-                <SidePanel
-                    schema={schema}
-                    connections={scopeConnections}
-                    selected={selected}
-                    tab={tab}
-                    onTab={(t) => {
-                        setTab(t);
-                        setSheetOpen(true);
-                    }}
-                    onOpen={(c, t) => {
-                        open(c, t);
-                        if (narrow) {
-                            setSheetOpen(false);
-                        }
-                    }}
-                    sheet={narrow}
-                    sheetOpen={sheetOpen}
-                    onSheet={setSheetOpen}
-                />
-            </main>
+                        sheet={narrow}
+                        sheetOpen={sheetOpen}
+                        onSheet={setSheetOpen}
+                    />
+                </main>
 
-            <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} keysOn={keysOn} onKeysOn={switchKeys} />
-            <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
+                <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} keysOn={keysOn} onKeysOn={switchKeys} />
+                <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
 
-            {toast && (
-                <div className="toast" role="status">
-                    {toast}
-                </div>
-            )}
-
-        </div>
+                {toast && (
+                    <div className="toast" role="status">
+                        {toast}
+                    </div>
+                )}
+            </div>
+        </TableActions.Provider>
     );
 }
 
@@ -827,6 +1110,12 @@ const EXPORTS: { format: ExportFormat; label: string; hint: string }[] = [
     { format: 'markdown', label: 'Markdown', hint: 'A readable reference of every table' },
     { format: 'json', label: 'JSON', hint: 'The tables as data, for scripts and tools' },
 ];
+
+const COLUMN_CHOICES: Record<Fold, { label: string; hint: string }> = {
+    all: { label: 'All', hint: 'Every column of every table' },
+    keys: { label: 'Keys', hint: 'Only keys and the columns relations use' },
+    none: { label: 'Names', hint: 'Only table names, for the big picture' },
+};
 
 const LAYER_TOGGLES: { key: keyof Layers; label: string; swatch?: EdgeKind; hotkey: string }[] = [
     { key: 'both', label: 'FK + relation', swatch: 'both', hotkey: '1' },
@@ -871,6 +1160,8 @@ const SHORTCUTS: [string[], string][] = [
     [['T', 'H'], 'Open the Table or Hints tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
     [['Shift A'], 'Arrange tables automatically'],
+    [['Shift F'], 'Focus on the selected table and its neighbors, or leave focus mode'],
+    [['C'], 'Show every column, the key columns only, or the table names only'],
     [['S'], 'Show this list'],
     [['?'], 'Take the tour'],
 ];

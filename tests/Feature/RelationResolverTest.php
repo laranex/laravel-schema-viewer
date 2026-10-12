@@ -99,6 +99,16 @@ it('finds relations without a return type and dynamic relations', function (): v
         ->and($relations['writer']->type)->toBe('BelongsTo');
 });
 
+it('points each relation at the method that declares it', function (): void {
+    app()->setBasePath(dirname(__DIR__, 2));
+    Models\Post::resolveRelationUsing('reviewer', fn (Models\Post $post) => $post->belongsTo(Models\User::class, 'user_id'));
+
+    $relations = resolveRelations(new Models\Post)['relations'];
+
+    expect($relations['author']->source?->jsonSerialize())->toBe(['file' => 'tests/Fixtures/Models/Post.php', 'line' => 20])
+        ->and($relations['reviewer']->source)->toBeNull();
+});
+
 it('reports a relation that cannot be read instead of failing', function (): void {
     $found = resolveRelations(new Models\Post);
 

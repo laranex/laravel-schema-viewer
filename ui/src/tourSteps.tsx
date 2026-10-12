@@ -48,6 +48,12 @@ export const TOUR_STEPS: TourStep[] = [
                 </li>
                 <li>The right column shows the type, or the cast when the model casts it.</li>
                 <li>An amber number counts the hints for this table. Click the card to see everything about it.</li>
+                <li>
+                    The arrow folds the card to its key columns, then to its name. <b>Columns</b> above the diagram does it for every table (<kbd>C</kbd>).
+                </li>
+                <li>
+                    Double-click a card to focus on it: only the table and its neighbors stay, one to three links away (<kbd>Shift F</kbd>).
+                </li>
             </ul>
         ),
     },
@@ -78,7 +84,12 @@ export const TOUR_STEPS: TourStep[] = [
     {
         target: ['.ui-tabs', '.sheet-bar__main'],
         title: 'Details',
-        body: <p>The selected table's columns, relations, the relations that point at it, indexes and model settings: casts, fillable, hidden, scopes and observers.</p>,
+        body: (
+            <p>
+                The selected table's columns, relations, the relations that point at it, indexes and model settings: casts, fillable, hidden, scopes and observers. With an editor set in the config, model and relation names open in it, and{' '}
+                <b>Copy link</b> shares exactly this view. Drag the panel's edge to make it wider.
+            </p>
+        ),
     },
     {
         target: ['.ui-tabs .ui-tab:nth-child(2)', '.sheet-bar__hints'],

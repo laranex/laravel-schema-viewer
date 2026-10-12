@@ -39,6 +39,7 @@ final class ModelInfo implements JsonSerializable
         public readonly array $scopes,
         public readonly array $globalScopes,
         public readonly array $observers,
+        public readonly ?Source $source = null,
     ) {}
 
     /**
@@ -63,6 +64,7 @@ final class ModelInfo implements JsonSerializable
             'scopes' => $this->scopes,
             'globalScopes' => $this->globalScopes,
             'observers' => $this->observers,
+            'source' => $this->source,
         ];
     }
 }

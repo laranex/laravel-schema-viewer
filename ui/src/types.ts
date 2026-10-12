@@ -41,6 +41,9 @@ export type Connection = {
     tables: Table[];
 };
 
+// Where a model class or relation method is declared, relative to the application's root.
+export type Source = { file: string; line: number };
+
 export type Model = {
     class: string;
     connection: string;
@@ -58,6 +61,7 @@ export type Model = {
     scopes: string[];
     globalScopes: string[];
     observers: string[];
+    source?: Source | null;
 };
 
 export type Endpoint = {
@@ -85,6 +89,8 @@ export type Relation = {
     through: string[] | null;
     constraints: string[];
     inverse: string | null;
+    // The relation method; null for dynamic relations.
+    source?: Source | null;
 };
 
 export type LinkState = 'both' | 'relation' | 'foreign_key';

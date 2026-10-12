@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Inspection;
 
 use Closure;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -18,6 +19,7 @@ use Laranex\LaravelSchemaViewer\Schema\Endpoint;
 use Laranex\LaravelSchemaViewer\Schema\Morph;
 use Laranex\LaravelSchemaViewer\Schema\Pivot;
 use Laranex\LaravelSchemaViewer\Schema\RelationInfo;
+use Laranex\LaravelSchemaViewer\Schema\Source;
 use Laranex\LaravelSchemaViewer\Schema\UnresolvedRelation;
 use ReflectionClass;
 use ReflectionMethod;
@@ -40,7 +42,10 @@ final class RelationResolver
         'hasOneDeep', 'hasManyDeep', 'belongsToThrough',
     ];
 
-    public function __construct(private readonly ModelInspector $models) {}
+    public function __construct(
+        private readonly ModelInspector $models,
+        private readonly Application $app,
+    ) {}
 
     /**
      * @return array{relations: list<RelationInfo>, unresolved: list<UnresolvedRelation>}
@@ -217,6 +222,7 @@ final class RelationResolver
             morph: $morph,
             through: $through,
             constraints: $constraints,
+            source: method_exists($model, $name) ? Source::of(new ReflectionMethod($model, $name), $this->app->basePath()) : null,
         );
     }
 

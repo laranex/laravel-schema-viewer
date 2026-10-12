@@ -33,6 +33,29 @@ it('tells the page which connection to open on', function (): void {
     expect($config()['defaultConnection'])->toBe('all');
 });
 
+it('tells the page how to open files in the editor', function (): void {
+    $editor = function (): mixed {
+        preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', (string) $this->get('/schema-viewer')->getContent(), $match);
+
+        return json_decode($match[1], true)['editor'];
+    };
+    $root = rtrim(str_replace('\\', '/', base_path()), '/');
+
+    expect($editor())->toBeNull();
+
+    config()->set('app.editor', 'phpstorm');
+    expect($editor())->toBe("phpstorm://open?file={$root}/{file}&line={line}");
+
+    config()->set('schema-viewer.editor', ['name' => 'vscode', 'base_path' => '/var/www/html/']);
+    expect($editor())->toBe('vscode://file//var/www/html/{file}:{line}');
+
+    config()->set('schema-viewer.editor', ['href' => 'myeditor://{file}#{line}']);
+    expect($editor())->toBe("myeditor://{$root}/{file}#{line}");
+
+    config()->set('schema-viewer.editor', 'nano');
+    expect($editor())->toBe("nano://open?file={$root}/{file}&line={line}");
+});
+
 it('is off outside the local environment unless enabled', function (): void {
     $this->rebootWith('production');
 
