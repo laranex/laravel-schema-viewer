@@ -4,8 +4,9 @@ import type { Hint, Relation } from '../types';
 
 type Props = {
     schema: Schema;
-    connection: string;
-    selected: string | null;
+    // The connections in view: their hints are listed.
+    connections: string[];
+    selected: { connection: string; table: string } | null;
     tab: 'table' | 'hints';
     onTab: (tab: 'table' | 'hints') => void;
     onOpen: (connection: string, table: string) => void;
@@ -23,9 +24,9 @@ const HINT_TITLE: Record<Hint['kind'], string> = {
     unresolved_relation: 'Relation could not be resolved',
 };
 
-export function SidePanel({ schema, connection, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet }: Props) {
-    const hints = schema.hints(connection);
-    const models = selected ? schema.modelsFor(connection, selected) : [];
+export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet }: Props) {
+    const hints = connections.flatMap((c) => schema.hints(c));
+    const models = selected ? schema.modelsFor(selected.connection, selected.table) : [];
 
     return (
         <aside className={`panel${sheet ? ' panel--sheet' : ''}${sheet && sheetOpen ? ' is-open' : ''}`} aria-label="Details">
@@ -34,7 +35,7 @@ export function SidePanel({ schema, connection, selected, tab, onTab, onOpen, sh
                     <span className="sheet-bar__grip" aria-hidden="true" />
                     <button type="button" className="sheet-bar__main" aria-expanded={sheetOpen} onClick={() => onSheet(!sheetOpen)}>
                         <span className="sheet-bar__title">
-                            {selected ? <code>{selected}</code> : <span>Tap a table for details</span>}
+                            {selected ? <code>{selected.table}</code> : <span>Tap a table for details</span>}
                             {selected && models.length > 0 && <span className="muted">{models.map((m) => shortClass(m.class)).join(', ')}</span>}
                         </span>
                     </button>
@@ -62,22 +63,22 @@ export function SidePanel({ schema, connection, selected, tab, onTab, onOpen, sh
                 </TabList>
                 <TabPanel value="table" className="panel__body">
                     {selected ? (
-                        <TableDetails schema={schema} connection={connection} name={selected} onOpen={onOpen} />
+                        <TableDetails schema={schema} connection={selected.connection} name={selected.table} onOpen={onOpen} />
                     ) : (
                         <p className="panel__empty">Select a table to see its columns, relations, indexes and model.</p>
                     )}
                 </TabPanel>
                 <TabPanel value="hints" className="panel__body">
-                    <HintList hints={hints} onOpen={(t) => onOpen(connection, t)} />
+                    <HintList hints={hints} several={connections.length > 1} onOpen={onOpen} />
                 </TabPanel>
             </Tabs>
         </aside>
     );
 }
 
-function HintList({ hints, onOpen }: { hints: Hint[]; onOpen: (table: string) => void }) {
+function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean; onOpen: (connection: string, table: string) => void }) {
     if (!hints.length) {
-        return <p className="panel__empty">No hints on this connection.</p>;
+        return <p className="panel__empty">{several ? 'No hints on any connection.' : 'No hints on this connection.'}</p>;
     }
     return (
         <ul className="hints">
@@ -88,8 +89,8 @@ function HintList({ hints, onOpen }: { hints: Hint[]; onOpen: (table: string) =>
                         <span className="hint__title">{HINT_TITLE[h.kind]}</span>
                     </div>
                     <p>{h.message}</p>
-                    <button type="button" className="link-button" onClick={() => onOpen(h.table)}>
-                        Show {h.table}
+                    <button type="button" className="link-button" onClick={() => onOpen(h.connection, h.table)}>
+                        Show {several ? `${h.connection}.${h.table}` : h.table}
                     </button>
                 </li>
             ))}

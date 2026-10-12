@@ -37,6 +37,67 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
     return positions;
 }
 
+export type Region = { connection: string; x: number; y: number; width: number; height: number };
+
+// Room around a connection's tables, its label above them, and the space between two connections.
+const REGION_PAD = 60;
+const REGION_HEAD = 70;
+const REGION_GAP = 160;
+
+// Every connection laid out on its own inside a labeled region; the regions are then packed in rows, left to right,
+// wrapping so the whole diagram stays closer to a screen's shape than one tall column would.
+export async function layoutConnections(
+    schema: Schema,
+    connections: string[],
+    ids: Set<string>,
+    sizes: Record<string, number>,
+): Promise<{ positions: Positions; regions: Region[] }> {
+    if (connections.length === 1) {
+        return { positions: await autoLayout(schema, connections[0], ids, sizes), regions: [] };
+    }
+    const blocks: { connection: string; placed: Positions; width: number; height: number }[] = [];
+    for (const connection of connections) {
+        const own = new Set(schema.tables(connection).map((t) => nodeId(connection, t.name)).filter((id) => ids.has(id)));
+        if (own.size === 0) {
+            continue;
+        }
+        const raw = await autoLayout(schema, connection, own, sizes);
+        const boxes = Object.entries(raw).map(([id, p]) => ({ id, ...p, bottom: p.y + (sizes[id] ?? 120) }));
+        const minX = Math.min(...boxes.map((b) => b.x));
+        const minY = Math.min(...boxes.map((b) => b.y));
+        const placed: Positions = {};
+        boxes.forEach((b) => (placed[b.id] = { x: b.x - minX + REGION_PAD, y: b.y - minY + REGION_HEAD + REGION_PAD }));
+        blocks.push({
+            connection,
+            placed,
+            width: Math.max(...boxes.map((b) => b.x + NODE_WIDTH)) - minX + REGION_PAD * 2,
+            height: Math.max(...boxes.map((b) => b.bottom)) - minY + REGION_HEAD + REGION_PAD * 2,
+        });
+    }
+
+    const area = blocks.reduce((sum, b) => sum + b.width * b.height, 0);
+    const rowLimit = Math.max(...blocks.map((b) => b.width), Math.sqrt(area) * 1.7);
+    const positions: Positions = {};
+    const regions: Region[] = [];
+    let x = 0;
+    let y = 0;
+    let rowHeight = 0;
+    for (const block of blocks) {
+        if (x > 0 && x + block.width > rowLimit) {
+            x = 0;
+            y += rowHeight + REGION_GAP;
+            rowHeight = 0;
+        }
+        for (const [id, p] of Object.entries(block.placed)) {
+            positions[id] = { x: p.x + x, y: p.y + y };
+        }
+        regions.push({ connection: block.connection, x, y, width: block.width, height: block.height });
+        x += block.width + REGION_GAP;
+        rowHeight = Math.max(rowHeight, block.height);
+    }
+    return { positions, regions };
+}
+
 // What the page hands the viewer: the server's URLs, or, in a static export, the schema and every download itself.
 export type ServerConfig = {
     schemaUrl?: string;

@@ -4,20 +4,21 @@ import type { Table } from '../types';
 
 type Props = {
     schema: Schema;
-    connection: string;
-    tables: Table[];
+    // The tables in view, each with its connection; with several connections, results name theirs.
+    tables: { connection: string; table: Table }[];
+    multiple: boolean;
     query: string;
     onQuery: (query: string) => void;
-    onPick: (table: string) => void;
+    onPick: (connection: string, table: string) => void;
     inputRef?: RefObject<HTMLInputElement | null>;
 };
 
-type Result = { table: Table; models: string[]; reason: string | null };
+type Result = { connection: string; table: Table; models: string[]; reason: string | null };
 
 const LIMIT = 8;
 
 // Search field with a list of matching tables; picking one goes to it on the diagram.
-export function SearchBox({ schema, connection, tables, query, onQuery, onPick, inputRef }: Props) {
+export function SearchBox({ schema, tables, multiple, query, onQuery, onPick, inputRef }: Props) {
     const listId = useId();
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(0);
@@ -28,19 +29,19 @@ export function SearchBox({ schema, connection, tables, query, onQuery, onPick, 
             return [];
         }
         const ranked = tables
-            .filter((t) => schema.matches(connection, t, q))
-            .map((t) => {
+            .filter(({ connection, table: t }) => schema.matches(connection, t, q))
+            .map(({ connection, table: t }) => {
                 const models = schema.modelsFor(connection, t.name).map((m) => shortClass(m.class));
                 const name = t.name.toLowerCase();
                 const rank = name === q ? 0 : name.startsWith(q) ? 1 : name.includes(q) ? 2 : 3;
-                return { table: t, models, rank, reason: rank < 3 ? null : reasonFor(schema, connection, t, q) };
+                return { connection, table: t, models, rank, reason: rank < 3 ? null : reasonFor(schema, connection, t, q) };
             })
             .sort((a, b) => a.rank - b.rank || a.table.name.localeCompare(b.table.name));
         return ranked.slice(0, LIMIT);
-    }, [schema, connection, tables, query]);
+    }, [schema, tables, query]);
 
     const pick = (r: Result) => {
-        onPick(r.table.name);
+        onPick(r.connection, r.table.name);
         onQuery('');
         setOpen(false);
     };
@@ -111,7 +112,7 @@ export function SearchBox({ schema, connection, tables, query, onQuery, onPick, 
                     {results.length === 0 && <li className="search__empty">No table matches “{query.trim()}”.</li>}
                     {results.map((r, i) => (
                         <li
-                            key={r.table.name}
+                            key={`${r.connection}.${r.table.name}`}
                             id={`${listId}-${i}`}
                             role="option"
                             aria-selected={i === active}
@@ -123,6 +124,7 @@ export function SearchBox({ schema, connection, tables, query, onQuery, onPick, 
                         >
                             <span className="search__name">{r.table.name}</span>
                             <span className="search__meta">
+                                {multiple && `${r.connection} · `}
                                 {r.models.length ? r.models.join(', ') : r.table.framework ? 'framework table' : 'no model'}
                                 {r.reason && <span className="search__reason"> · {r.reason}</span>}
                             </span>

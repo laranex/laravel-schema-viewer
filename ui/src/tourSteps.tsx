@@ -110,7 +110,11 @@ export const TOUR_STEPS: TourStep[] = [
         target: ['#connection', '[data-tour="menu-connection"]'],
         menu: 'phone',
         title: 'Connections',
-        body: <p>Each database connection your app and its models use has its own diagram. A relation to a table on another connection shows as a dashed card you can click.</p>,
+        body: (
+            <p>
+                Each database connection your app and its models use has its own diagram, and <b>All connections</b> puts them side by side. On one connection, a relation to a table on another shows as a dashed card you can click.
+            </p>
+        ),
     },
     {
         target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
@@ -118,7 +122,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Download',
         body: (
             <p>
-                Download this connection's database schema (tables, columns, keys, indexes and foreign keys) as a <b>Mermaid</b> diagram for a README, <b>DBML</b> for dbdiagram.io, <b>Markdown</b> to read, or <b>JSON</b> for scripts.
+                Download this connection's database schema (tables, columns, keys, indexes and foreign keys) as a <b>Mermaid</b> diagram for a README, <b>DBML</b> for dbdiagram.io, <b>Markdown</b> to read, or <b>JSON</b> for scripts. Or the whole viewer as one <b>HTML</b> file that opens anywhere, without your app.
             </p>
         ),
     },

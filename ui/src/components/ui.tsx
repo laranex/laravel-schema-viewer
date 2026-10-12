@@ -204,7 +204,10 @@ export function Menu({
                             <MenuPrimitive.Separator className="ui-menu__separator" />
                             {extraItems.map((item) => (
                                 <MenuPrimitive.Item key={item.label} className="ui-item" onSelect={item.onSelect} data-tour={item.tour}>
-                                    <span className="ui-item__body">{item.label}</span>
+                                    <span className="ui-item__body">
+                                        {item.label}
+                                        {item.hint && <span className="ui-item__hint">{item.hint}</span>}
+                                    </span>
                                 </MenuPrimitive.Item>
                             ))}
                         </>

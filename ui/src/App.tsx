@@ -19,17 +19,24 @@ import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
 import { Dialog, Menu, Select, Tooltip, TooltipProvider } from './components/ui';
 import { SidePanel } from './components/SidePanel';
-import { ExternalNodeView, TableNodeView, type ExternalNodeType, type TableNodeType } from './components/TableNode';
+import { ExternalNodeView, RegionNodeView, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass } from './graph';
 import { boxWidth, route, type Box } from './routing';
-import { autoLayout, type StaticDownloads } from './layout';
-import type { SchemaDocument } from './types';
+import { layoutConnections, type StaticDownloads } from './layout';
+import { standaloneHtml } from './standalone';
+import type { SchemaDocument, Table } from './types';
 
-type AppNode = TableNodeType | ExternalNodeType;
+type AppNode = TableNodeType | ExternalNodeType | RegionNodeType;
+
+// A table on the diagram: which connection it is on, and its name.
+type TableRef = { connection: string; table: string };
+
+// The connection picker's value for every connection at once.
+const ALL = '*';
 
 type Layers = Record<EdgeKind, boolean> & { framework: boolean; allLabels: boolean };
 
-const nodeTypes = { table: TableNodeView, external: ExternalNodeView };
+const nodeTypes = { table: TableNodeView, external: ExternalNodeView, region: RegionNodeView };
 const edgeTypes = { link: LinkEdgeView };
 
 const EXTERNAL_HEIGHT = 76;
@@ -60,9 +67,14 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
 
-    const [connection, setConnection] = useState(doc.connections[0].name);
-    const [selected, setSelected] = useState<string | null>(null);
-    const [pending, setPending] = useState<string | null>(null);
+    // One connection, or ALL to put every connection on the diagram.
+    const [scope, setScope] = useState(doc.connections[0].name);
+    const [selected, setSelected] = useState<TableRef | null>(null);
+    const [pending, setPending] = useState<TableRef | null>(null);
+    const scopeConnections = useMemo(() => (scope === ALL ? doc.connections.map((c) => c.name) : [scope]), [doc, scope]);
+    const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
+    // The connection the panel and the per-connection downloads talk about: the selected table's, else the one in view.
+    const connection = selected?.connection ?? scopeConnections[0];
     const [tab, setTab] = useState<'table' | 'hints'>('table');
     const [query, setQuery] = useState('');
     const [layers, setLayers] = useState<Layers>({ both: true, relation: true, foreign_key: true, through: true, framework: true, allLabels: true });
@@ -128,7 +140,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
     // Phones start on the selected table at a readable size; larger screens see the whole diagram.
     const fitRef = useRef(() => undefined as unknown);
     fitRef.current = () => {
-        const target = narrow && selected ? [{ id: nodeId(connection, selected) }] : undefined;
+        const target = narrow && selectedId ? [{ id: selectedId }] : undefined;
         return flow.fitView({ padding: narrow ? 0.25 : 0.08, nodes: target, maxZoom: narrow ? 1.1 : 1 });
     };
 
@@ -159,40 +171,67 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
         toastTimer.current = window.setTimeout(() => setToast(null), 2600);
     }, []);
 
-    const tables = schema.tables(connection);
-    const visibleTables = useMemo(() => tables.filter((t) => layers.framework || !t.framework), [tables, layers.framework]);
+    // Every table in view, with its connection.
+    const visibleTables = useMemo(
+        () => scopeConnections.flatMap((c) => schema.tables(c).filter((t) => layers.framework || !t.framework).map((table) => ({ connection: c, table }))),
+        [schema, scopeConnections, layers.framework],
+    );
+    const tablesById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), e])), [visibleTables]);
 
-    // Tables on another connection that this connection's relations point at.
+    // The links and through links in view: each once, even when it joins two connections in view.
+    const links = useMemo(() => [...new Map(scopeConnections.flatMap((c) => schema.links(c)).map((l) => [l.id, l])).values()], [schema, scopeConnections]);
+    const derived = useMemo(() => scopeConnections.flatMap((c) => schema.derived(c)), [schema, scopeConnections]);
+
+    // Tables on a connection out of view that the relations in view point at.
     const externals = useMemo(() => {
-        const out = new Map<string, { connection: string; table: string }>();
-        schema.links(connection).forEach((l) => {
-            if (l.to.connection !== connection) {
+        const out = new Map<string, TableRef>();
+        links.forEach((l) => {
+            if (!scopeConnections.includes(l.to.connection)) {
                 out.set(nodeId(l.to.connection, l.to.table), { connection: l.to.connection, table: l.to.table });
             }
         });
         return out;
-    }, [schema, connection]);
+    }, [links, scopeConnections]);
 
-    // Place the nodes: the saved layout when there is one, else an automatic layout.
+    // Place the nodes automatically; with every connection in view, each connection gets its own region.
     useEffect(() => {
         let cancelled = false;
-        const ids = new Set([...visibleTables.map((t) => nodeId(connection, t.name)), ...externals.keys()]);
+        const ids = new Set([...tablesById.keys(), ...externals.keys()]);
         const sizes: Record<string, number> = {};
-        visibleTables.forEach((t) => (sizes[nodeId(connection, t.name)] = nodeHeight(t)));
+        tablesById.forEach((e, id) => (sizes[id] = nodeHeight(e.table)));
         externals.forEach((_, id) => (sizes[id] = EXTERNAL_HEIGHT));
 
         const place = async () => {
-            const positions = await autoLayout(schema, connection, ids, sizes);
+            const { positions, regions } = await layoutConnections(schema, scopeConnections, ids, sizes);
             if (cancelled) {
                 return;
             }
             const next: AppNode[] = [
+                ...regions.map(
+                    (r): RegionNodeType => ({
+                        id: `region:${r.connection}`,
+                        type: 'region',
+                        position: { x: r.x, y: r.y },
+                        width: r.width,
+                        height: r.height,
+                        zIndex: -1,
+                        draggable: false,
+                        selectable: false,
+                        focusable: false,
+                        data: {
+                            connection: r.connection,
+                            driver: doc.connections.find((c) => c.name === r.connection)?.driver ?? '',
+                            tables: visibleTables.filter((e) => e.connection === r.connection).length,
+                            hints: schema.hints(r.connection).length,
+                        },
+                    }),
+                ),
                 ...visibleTables.map(
-                    (t): TableNodeType => ({
-                        id: nodeId(connection, t.name),
+                    ({ connection: c, table: t }): TableNodeType => ({
+                        id: nodeId(c, t.name),
                         type: 'table',
-                        position: positions[nodeId(connection, t.name)] ?? { x: 0, y: 0 },
-                        data: { table: t, models: [], pivot: false, hintCount: 0, dim: false, active: false, primary: [], foreign: [], linked: [], casts: {} },
+                        position: positions[nodeId(c, t.name)] ?? { x: 0, y: 0 },
+                        data: { connection: c, table: t, models: [], pivot: false, hintCount: 0, dim: false, active: false, primary: [], foreign: [], linked: [], casts: {} },
                         width: NODE_WIDTH,
                     }),
                 ),
@@ -214,42 +253,45 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [schema, connection, visibleTables, externals, layoutVersion]);
+    }, [schema, scopeConnections, visibleTables, tablesById, externals, layoutVersion]);
 
-    const neighbors = useMemo(() => (selected ? schema.neighbors(connection, selected, 1) : null), [schema, connection, selected]);
-    const pivots = useMemo(() => schema.pivotTables(connection), [schema, connection]);
+    const neighbors = useMemo(() => (selected ? schema.neighbors(selected.connection, selected.table, 1) : null), [schema, selected]);
+    const pivots = useMemo(() => new Set(scopeConnections.flatMap((c) => [...schema.pivotTables(c)].map((t) => nodeId(c, t)))), [schema, scopeConnections]);
 
     const isDim = useCallback(
         (id: string) => {
-            const name = id.startsWith(`${connection}.`) ? id.slice(connection.length + 1) : null;
-            const table = name ? schema.table(connection, name) : undefined;
-            return query.trim() !== '' && (!table || !schema.matches(connection, table, query));
+            const entry = tablesById.get(id);
+            return query.trim() !== '' && (!entry || !schema.matches(entry.connection, entry.table, query));
         },
-        [schema, connection, query],
+        [schema, tablesById, query],
     );
 
     // What each node shows for the current selection and search.
     const decorate = useCallback(
         (n: AppNode): AppNode => {
+            if (n.type === 'region') {
+                return n;
+            }
             if (n.type === 'external') {
                 return { ...n, data: { ...n.data, dim: isDim(n.id) } };
             }
             const t = n.data.table;
-            const models = schema.modelsFor(connection, t.name);
-            const touching = schema
-                .links(connection)
-                .filter((l) => selected && ((l.from.connection === connection && l.from.table === selected) || (l.to.connection === connection && l.to.table === selected)));
-            const linked = touching.flatMap((l) => [...(l.from.table === t.name ? l.from.columns : []), ...(l.to.table === t.name ? l.to.columns : [])]);
+            const c = n.data.connection;
+            const models = schema.modelsFor(c, t.name);
+            const at = (end: { connection: string; table: string }, ref: TableRef | null) => ref !== null && end.connection === ref.connection && end.table === ref.table;
+            const touching = selected ? schema.links(selected.connection).filter((l) => at(l.from, selected) || at(l.to, selected)) : [];
+            const self = { connection: c, table: t.name };
+            const linked = touching.flatMap((l) => [...(at(l.from, self) ? l.from.columns : []), ...(at(l.to, self) ? l.to.columns : [])]);
             return {
                 ...n,
-                selected: t.name === selected,
+                selected: n.id === selectedId,
                 data: {
                     ...n.data,
                     models: models.map((m) => shortClass(m.class)),
-                    pivot: pivots.has(t.name),
-                    hintCount: schema.hints(connection, t.name).length,
+                    pivot: pivots.has(n.id),
+                    hintCount: schema.hints(c, t.name).length,
                     dim: isDim(n.id),
-                    active: neighbors !== null && neighbors.has(n.id) && t.name !== selected,
+                    active: neighbors !== null && neighbors.has(n.id) && n.id !== selectedId,
                     primary: t.indexes.find((i) => i.primary)?.columns ?? [],
                     foreign: t.foreignKeys.flatMap((f) => f.columns),
                     linked,
@@ -257,7 +299,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                 },
             };
         },
-        [schema, connection, selected, neighbors, pivots, isDim],
+        [schema, selected, selectedId, neighbors, pivots, isDim],
     );
     const decorateRef = useRef(decorate);
     decorateRef.current = decorate;
@@ -273,13 +315,13 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
             const n = positionOf(id);
             return n && !n.hidden ? n : undefined;
         };
-        const touches = (a: string, b: string) => selected !== null && (a === nodeId(connection, selected) || b === nodeId(connection, selected));
-        const firstColumn = (name: string) => schema.table(connection, name)?.columns[0]?.name ?? 'id';
+        const touches = (a: string, b: string) => selectedId !== null && (a === selectedId || b === selectedId);
+        const firstColumn = (c: string, name: string) => schema.table(c, name)?.columns[0]?.name ?? 'id';
 
         type Spec = { id: string; source: string; target: string; sourceColumn: string; targetColumn: string; data: Omit<LinkEdgeData, 'route'> };
         const specs: Spec[] = [];
 
-        for (const l of schema.links(connection)) {
+        for (const l of links) {
             const kind: EdgeKind = l.state;
             const source = nodeId(l.from.connection, l.from.table);
             const target = nodeId(l.to.connection, l.to.table);
@@ -309,9 +351,9 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
         }
 
         if (layers.through) {
-            for (const d of schema.derived(connection)) {
-                const source = nodeId(connection, d.from);
-                const target = nodeId(connection, d.to);
+            for (const d of derived) {
+                const source = nodeId(d.connection, d.from);
+                const target = nodeId(d.connection, d.to);
                 if (!visible(source) || !visible(target)) {
                     continue;
                 }
@@ -320,8 +362,8 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                     id: d.id,
                     source,
                     target,
-                    sourceColumn: firstColumn(d.from),
-                    targetColumn: firstColumn(d.to),
+                    sourceColumn: firstColumn(d.connection, d.from),
+                    targetColumn: firstColumn(d.connection, d.to),
                     data: {
                         kind: 'through',
                         morph: false,
@@ -339,7 +381,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
 
         const boxes = new Map<string, Box>();
         nodes.forEach((n) => {
-            if (n.hidden) {
+            if (n.hidden || n.type === 'region') {
                 return;
             }
             boxes.set(n.id, {
@@ -374,41 +416,41 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                 },
             ];
         });
-    }, [schema, connection, layers, selected, hovered, isDim, positionOf, nodes]);
+    }, [schema, links, derived, layers, selectedId, hovered, isDim, positionOf, nodes]);
 
     const centerOn = useCallback(
-        (name: string) => {
-            const n = flow.getNode(nodeId(connection, name));
+        (id: string) => {
+            const n = flow.getNode(id);
             if (n) {
                 const h = n.measured?.height ?? 200;
                 flow.setCenter(n.position.x + NODE_WIDTH / 2, n.position.y + h / 2, { zoom: Math.max(flow.getZoom(), 0.9), duration: 400 });
             }
         },
-        [flow, connection],
+        [flow],
     );
 
     // After switching connection from an external node, select the table once it is placed.
     useEffect(() => {
-        if (pending && nodes.some((n) => n.id === nodeId(connection, pending))) {
+        if (pending && nodes.some((n) => n.id === nodeId(pending.connection, pending.table))) {
             setSelected(pending);
             setPending(null);
-            window.setTimeout(() => centerOn(pending), 350);
+            window.setTimeout(() => centerOn(nodeId(pending.connection, pending.table)), 350);
         }
-    }, [pending, nodes, connection, centerOn]);
+    }, [pending, nodes, centerOn]);
 
     const open = useCallback(
         (conn: string, table: string) => {
             setTab('table');
-            if (conn !== connection) {
-                setConnection(conn);
+            if (!scopeConnections.includes(conn)) {
+                setScope(conn);
                 setSelected(null);
-                setPending(table);
+                setPending({ connection: conn, table });
                 return;
             }
-            setSelected(table);
-            centerOn(table);
+            setSelected({ connection: conn, table });
+            centerOn(nodeId(conn, table));
         },
-        [connection, centerOn],
+        [scopeConnections, centerOn],
     );
 
     const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
@@ -418,14 +460,18 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                 open(d.connection, d.table);
                 return;
             }
-            setSelected((node.data as { table: { name: string } }).table.name);
+            if (node.type === 'region') {
+                return;
+            }
+            const d = node.data as { connection: string; table: Table };
+            setSelected({ connection: d.connection, table: d.table.name });
             setTab('table');
         },
         [open],
     );
 
     const switchConnection = (name: string) => {
-        setConnection(name);
+        setScope(name);
         setSelected(null);
         setPending(null);
     };
@@ -451,12 +497,37 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
         save(`${exportUrl}?${new URLSearchParams({ format, connection })}`, '');
     };
 
+    // The standalone viewer: every connection in one HTML file that opens without the app, built from this page.
+    const downloadHtml = () => {
+        if (!exportUrl && !downloads) {
+            notify('Downloads are blocked in this preview. In your app the file downloads.');
+            return;
+        }
+        notify('Building the standalone viewer…');
+        standaloneHtml(doc, downloads, exportUrl).then(
+            (html) => {
+                const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+                save(url, 'schema-viewer.html');
+                window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+                notify('Standalone viewer downloaded.');
+            },
+            (e: Error) => notify(`The standalone viewer could not be built: ${e.message}`),
+        );
+    };
+
+    const htmlItem = { label: 'Standalone viewer (HTML)', hint: 'Every connection in one file that opens without your app', onSelect: downloadHtml };
+
     const onAutoLayout = () => {
         setLayoutVersion((v) => v + 1);
         notify('Tables arranged automatically.');
     };
 
-    const connectionOptions = doc.connections.map((c) => ({ value: c.name, label: c.name, hint: `${c.driver} · ${c.tables.length} tables` }));
+    const connectionOptions = [
+        ...doc.connections.map((c) => ({ value: c.name, label: c.name, hint: `${c.driver} · ${c.tables.length} tables` })),
+        ...(doc.connections.length > 1
+            ? [{ value: ALL, label: 'All connections', hint: `${doc.connections.length} connections · ${doc.connections.reduce((n, c) => n + c.tables.length, 0)} tables` }]
+            : []),
+    ];
 
     const downloadHeading = (
         <span className="ui-menu__heading">
@@ -489,8 +560,8 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
             return;
         }
 
-        const connections = doc.connections.map((c) => c.name);
-        const step = (by: number) => switchConnection(connections.at((connections.indexOf(connection) + by + connections.length) % connections.length) ?? connection);
+        const scopes = connectionOptions.map((o) => o.value);
+        const step = (by: number) => switchConnection(scopes.at((scopes.indexOf(scope) + by + scopes.length) % scopes.length) ?? scope);
         const actionsByKey: Record<string, () => void> = {
             '/': () => searchRef.current?.focus(),
             '?': () => setTourOpen(true),
@@ -531,7 +602,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
         window.addEventListener('keydown', listener);
         return () => window.removeEventListener('keydown', listener);
     }, []);
-    const hintCount = schema.hints(connection).length;
+    const hintCount = scopeConnections.reduce((n, c) => n + schema.hints(c).length, 0);
 
     return (
         <div className={`app${keysOn ? '' : ' keys-off'}`}>
@@ -545,7 +616,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                     </svg>
                     <span>Schema Viewer</span>
                 </div>
-                <SearchBox schema={schema} connection={connection} tables={visibleTables} query={query} onQuery={setQuery} onPick={(table) => open(connection, table)} inputRef={searchRef} />
+                <SearchBox schema={schema} tables={visibleTables} multiple={scopeConnections.length > 1} query={query} onQuery={setQuery} onPick={open} inputRef={searchRef} />
                 <div className="toolbar__spacer" />
                 {narrow ? (
                     <Menu
@@ -559,12 +630,12 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                         }
                         itemsLabel={downloadHeading}
                         items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
-                        extraItems={[{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }]}
+                        extraItems={[htmlItem, { label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }]}
                         open={menuOpen || tourMenu === 'phone'}
                         onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
                         choice={{
                             label: 'Connection',
-                            value: connection,
+                            value: scope,
                             options: connectionOptions,
                             onChange: switchConnection,
                             hint: (
@@ -590,7 +661,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                         <Select
                             id="connection"
                             label="Connection"
-                            value={connection}
+                            value={scope}
                             onChange={switchConnection}
                             options={connectionOptions}
                             hint={
@@ -614,6 +685,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                                 }
                                 itemsLabel={downloadHeading}
                                 items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
+                                extraItems={[htmlItem]}
                             />
                         </div>
                         <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
@@ -635,6 +707,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                         <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} hotkey={t.hotkey} divider={t.key === 'framework'} />
                     ))}
                     <span className="layers__note">
+                        {scopeConnections.length > 1 ? `${scopeConnections.length} connections · ` : ''}
                         {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'}
                         {example ? ' · example data' : ''}
                     </span>
@@ -660,7 +733,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                         }}
                         nodesConnectable={false}
                         edgesFocusable={false}
-                        minZoom={0.2}
+                        minZoom={0.08}
                         maxZoom={2}
                         proOptions={{ hideAttribution: true }}
                     >
@@ -699,7 +772,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                             </Tooltip>
                         </Controls>
                         {/* Below 1100px the diagram needs the room more than an overview does. */}
-                        {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} style={{ width: 160, height: 110 }} />}
+                        {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
                     </ReactFlow>
                     <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="left">
                         <button type="button" className={`tour-fab${toured ? '' : ' is-new'}`} aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
@@ -709,7 +782,7 @@ function Viewer({ doc, example, exportUrl, downloads }: { doc: SchemaDocument; e
                 </div>
                 <SidePanel
                     schema={schema}
-                    connection={connection}
+                    connections={scopeConnections}
                     selected={selected}
                     tab={tab}
                     onTab={(t) => {
@@ -804,7 +877,7 @@ const SHORTCUTS: [string[], string][] = [
     [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
     [['G'], 'Show or hide framework tables'],
     [['T', 'H'], 'Open the Table or Hints tab'],
-    [['[', ']'], 'Previous or next connection'],
+    [['[', ']'], 'Previous or next connection, or all of them'],
     [['Shift A'], 'Arrange tables automatically'],
     [['S'], 'Show this list'],
     [['?'], 'Take the tour'],

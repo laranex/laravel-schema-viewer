@@ -4,6 +4,7 @@ import type { Table } from '../types';
 import { Tooltip } from './ui';
 
 export type TableNodeData = {
+    connection: string;
     table: Table;
     models: string[];
     pivot: boolean;
@@ -106,5 +107,24 @@ function ExternalNode({ data }: NodeProps<ExternalNodeType>) {
     );
 }
 
+// The frame around one connection's tables when every connection is on the diagram.
+export type RegionNodeData = { connection: string; driver: string; tables: number; hints: number };
+export type RegionNodeType = Node<RegionNodeData, 'region'>;
+
+function RegionNode({ data }: NodeProps<RegionNodeType>) {
+    return (
+        <div className="region-node">
+            <span className="region-node__label">
+                <span className="region-node__name">{data.connection}</span>
+                <span className="region-node__meta">
+                    {data.driver} · {data.tables} {data.tables === 1 ? 'table' : 'tables'}
+                    {data.hints > 0 && ` · ${data.hints} ${data.hints === 1 ? 'hint' : 'hints'}`}
+                </span>
+            </span>
+        </div>
+    );
+}
+
 export const TableNodeView = memo(TableNode);
+export const RegionNodeView = memo(RegionNode);
 export const ExternalNodeView = memo(ExternalNode);
