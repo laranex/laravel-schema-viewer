@@ -15,7 +15,7 @@ final class MarkdownExporter
 {
     public function export(ConnectionSchema $connection): string
     {
-        $out = ['# Database schema: '.$connection->name.' ('.$connection->driver.')', '', count($connection->tables).' tables.'];
+        $out = ['# Database schema: '.$this->text($connection->name).' ('.$this->text($connection->driver).')', '', count($connection->tables).' tables.'];
 
         foreach ($connection->tables as $table) {
             array_push($out, '', ...$this->table($table));
@@ -38,26 +38,26 @@ final class MarkdownExporter
         $foreign = [];
         foreach ($table->foreignKeys as $fk) {
             foreach ($fk->columns as $i => $column) {
-                $foreign[$column] = $fk->foreignTable.'.'.($fk->foreignColumns[$i] ?? 'id');
+                $foreign[$column] = $this->text($fk->foreignTable.'.'.($fk->foreignColumns[$i] ?? 'id'));
             }
         }
 
-        $out = ['## '.$table->name];
+        $out = ['## '.$this->text($table->name)];
 
         if ($table->comment !== null) {
-            array_push($out, '', $table->comment);
+            array_push($out, '', $this->text($table->comment));
         }
         array_push($out, '', '| Column | Type | Null | Default | Key | Comment |', '| --- | --- | --- | --- | --- | --- |');
 
         foreach ($table->columns as $column) {
             $out[] = sprintf(
                 '| `%s` | %s | %s | %s | %s | %s |',
-                $column->name,
-                $column->type,
+                $this->code($column->name),
+                $this->text($column->type),
                 $column->nullable ? 'yes' : '',
-                $column->default !== null ? '`'.$this->cell($column->default).'`' : '',
+                $column->default !== null ? '`'.$this->code($column->default).'`' : '',
                 in_array($column->name, $primary, true) ? 'PK' : (isset($foreign[$column->name]) ? 'FK → '.$foreign[$column->name] : ''),
-                $column->comment !== null ? $this->cell($column->comment) : '',
+                $column->comment !== null ? $this->text($column->comment) : '',
             );
         }
 
@@ -66,7 +66,7 @@ final class MarkdownExporter
         if ($indexes !== []) {
             array_push($out, '', 'Indexes:', '');
             foreach ($indexes as $index) {
-                $out[] = sprintf('- `%s` (%s)%s', $index->name, implode(', ', $index->columns), $index->unique ? ', unique' : '');
+                $out[] = sprintf('- `%s` (%s)%s', $this->code($index->name), $this->text(implode(', ', $index->columns)), $index->unique ? ', unique' : '');
             }
         }
 
@@ -75,12 +75,12 @@ final class MarkdownExporter
             foreach ($table->foreignKeys as $fk) {
                 $out[] = sprintf(
                     '- `%s`: (%s) → %s (%s), on update %s, on delete %s',
-                    $fk->name,
-                    implode(', ', $fk->columns),
-                    $fk->foreignTable,
-                    implode(', ', $fk->foreignColumns),
-                    $fk->onUpdate,
-                    $fk->onDelete,
+                    $this->code($fk->name),
+                    $this->text(implode(', ', $fk->columns)),
+                    $this->text($fk->foreignTable),
+                    $this->text(implode(', ', $fk->foreignColumns)),
+                    $this->text($fk->onUpdate),
+                    $this->text($fk->onDelete),
                 );
             }
         }
@@ -88,8 +88,19 @@ final class MarkdownExporter
         return $out;
     }
 
-    private function cell(string $text): string
+    /**
+     * Text from the database as plain Markdown: no HTML, no code spans, no table cells broken by a pipe or a newline.
+     */
+    private function text(string $text): string
     {
-        return str_replace(['|', "\n"], ['\|', ' '], $text);
+        return str_replace(['&', '<', '>', '|', '`', "\r\n", "\r", "\n"], ['&amp;', '&lt;', '&gt;', '\|', '\`', ' ', ' ', ' '], $text);
+    }
+
+    /**
+     * Text from the database inside a code span, which shows it literally: only a backtick could close the span.
+     */
+    private function code(string $text): string
+    {
+        return str_replace(['`', '|', "\r\n", "\r", "\n"], ["'", '\|', ' ', ' ', ' '], $text);
     }
 }

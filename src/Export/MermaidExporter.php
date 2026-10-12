@@ -42,12 +42,20 @@ final class MermaidExporter
                     $this->ident($fk->foreignTable),
                     $table->isUnique($fk->columns) ? 'o|' : 'o{',
                     $this->ident($table->name),
-                    implode(', ', $fk->columns),
+                    $this->label(implode(', ', $fk->columns)),
                 );
             }
         }
 
         return implode("\n", $lines)."\n";
+    }
+
+    /**
+     * A relationship label: the quotes around it hold anything but a double quote or a line break.
+     */
+    private function label(string $value): string
+    {
+        return (string) preg_replace('/[\x00-\x1f]+/', ' ', str_replace('"', "'", $value));
     }
 
     private function ident(string $value): string
