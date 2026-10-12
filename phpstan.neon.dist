@@ -11,3 +11,5 @@ parameters:
     reportUnmatchedIgnoredErrors: false
     ignoreErrors:
         - identifier: typeCoverage.constantTypeCoverage
+        # Only some Laravel releases declare getRawListeners() on the events Dispatcher contract.
+        - message: '#^Call to function method_exists\(\) with Illuminate\\Contracts\\Events\\Dispatcher and .getRawListeners. will always evaluate to true\.$#'
