@@ -13,11 +13,13 @@ const centralTable = (): Element | null => {
     );
 };
 
-const firstLabel = (): Element | null =>
-    [...document.querySelectorAll('.edge-label')].find((el) => {
-        const r = el.getBoundingClientRect();
-        return r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight;
-    }) ?? null;
+// A relation label wholly on screen, clear of the toolbar and the bars at the bottom; else any label in view.
+const firstLabel = (): Element | null => {
+    const labels = [...document.querySelectorAll('.edge-label')].map((el) => ({ el, r: el.getBoundingClientRect() }));
+    const inView = labels.filter(({ r }) => r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight);
+    const clear = inView.filter(({ r }) => r.left >= 12 && r.right <= window.innerWidth - 12 && r.top >= 80 && r.bottom <= window.innerHeight - 160);
+    return (clear[0] ?? inView[0])?.el ?? null;
+};
 
 export const TOUR_STEPS: TourStep[] = [
     {
@@ -39,6 +41,7 @@ export const TOUR_STEPS: TourStep[] = [
     },
     {
         target: centralTable,
+        closeUp: true,
         title: 'A table',
         body: (
             <ul>
@@ -49,7 +52,7 @@ export const TOUR_STEPS: TourStep[] = [
                 <li>The right column shows the type, or the cast when the model casts it.</li>
                 <li>An amber number counts the hints for this table. Click the card to see everything about it.</li>
                 <li>
-                    The arrow folds the card to its key columns, then to its name. <b>Columns</b> in the bar at the bottom of the diagram does it for every table (<kbd>C</kbd>).
+                    The arrow folds the card to its key columns, then to its name. <b>Show</b> in the bar at the bottom of the diagram does it for every table (<kbd>C</kbd>).
                 </li>
                 <li>
                     Double-click a card to focus on it: only the table and its neighbors stay, one to three links away (<kbd>Shift F</kbd>).
@@ -59,11 +62,13 @@ export const TOUR_STEPS: TourStep[] = [
     },
     {
         target: firstLabel,
+        labels: true,
+        closeUp: true,
         title: 'A relationship',
         body: (
             <p>
                 Each line joins the column that holds the key to the column it points at. The label names the relation methods and the kind of relationship. Crow's feet mark the many side. Hover a label for the exact
-                columns.
+                columns. On a big schema the labels show only on the selected table's lines; <b>Relation names</b> under <b>Show</b> puts them on every line (<kbd>L</kbd>).
             </p>
         ),
     },
@@ -97,8 +102,7 @@ export const TOUR_STEPS: TourStep[] = [
         body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
     },
     {
-        target: ['[data-tour="layers"]', '[data-tour="menu-show"]'],
-        menu: 'phone',
+        target: '[data-tour="layers"]',
         title: 'What the lines mean',
         body: (
             <ul>
@@ -115,7 +119,7 @@ export const TOUR_STEPS: TourStep[] = [
                     <b>Blue dots</b>: a through relation.
                 </li>
                 <li>
-                    <b>Lines</b> shows or hides each kind and the relation names; <b>Tables</b> hides framework and package tables.
+                    <b>Relationships</b> shows or hides each kind, <b>Tables</b> hides framework and package tables, and <b>Show</b> holds the relation names and how many columns each card shows.
                 </li>
             </ul>
         ),
@@ -152,11 +156,11 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: '.tour-fab',
+        target: '[data-tour="help"]',
         title: 'Come back any time',
         body: (
             <p>
-                Press this button or <kbd>?</kbd> to take the tour again.
+                Press <b>?</b> in the bar, or the <kbd>?</kbd> key, to take the tour again.
             </p>
         ),
     },

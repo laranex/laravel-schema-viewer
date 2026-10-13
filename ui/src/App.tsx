@@ -1,8 +1,6 @@
 import {
     Background,
     BackgroundVariant,
-    ControlButton,
-    Controls,
     MiniMap,
     ReactFlow,
     ReactFlowProvider,
@@ -18,7 +16,7 @@ import { EdgeHover, EdgeMarkers, HoverStore, LinkEdgeView, type EdgeKind, type L
 import { SearchBox } from './components/SearchBox';
 import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
-import { Dialog, Menu, Select, Tooltip, TooltipProvider, type MenuToggle } from './components/ui';
+import { Dialog, Menu, Select, Tooltip, TooltipProvider, type MenuChoice, type MenuToggle } from './components/ui';
 import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
@@ -251,10 +249,29 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     // A wider screen's toolbar menu the tour holds open for its step (Download).
     const [tourOpens, setTourOpens] = useState<TourStep['opens']>(undefined);
     const [downloadOpen, setDownloadOpen] = useState(false);
+    const [tourLabels, setTourLabels] = useState(false);
     const onTourStep = useCallback((step: TourStep | null) => {
         setTourMenu(step?.menu);
         setTourOpens(step?.opens);
-    }, []);
+        setTourLabels(!!step?.labels);
+        if (step?.closeUp && flow.getZoom() < 0.8) {
+            flow.zoomTo(0.9);
+        }
+        // Once the labels are drawn, bring the one nearest the middle to the middle, so the step shows it whole.
+        if (step?.labels) {
+            window.setTimeout(() => {
+                const cx = window.innerWidth / 2;
+                const cy = window.innerHeight / 2;
+                const nearest = [...document.querySelectorAll('.edge-label')]
+                    .map((el) => el.getBoundingClientRect())
+                    .sort((a, b) => Math.hypot(a.x + a.width / 2 - cx, a.y + a.height / 2 - cy) - Math.hypot(b.x + b.width / 2 - cx, b.y + b.height / 2 - cy))[0];
+                if (nearest) {
+                    const at = flow.screenToFlowPosition({ x: nearest.x + nearest.width / 2, y: nearest.y + nearest.height / 2 });
+                    flow.setCenter(at.x, at.y, { zoom: flow.getZoom() });
+                }
+            }, 80);
+        }
+    }, [flow]);
     const endTour = useCallback(() => setTourOpen(false), []);
     const toastTimer = useRef<number | undefined>(undefined);
     const initialized = useNodesInitialized();
@@ -326,7 +343,8 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
         hotkey: t.hotkey,
     });
-    const lineToggles = layerToggles.filter((t) => t.swatch || t.key === 'allLabels').map(asMenuToggle);
+    const lineToggles = layerToggles.filter((t) => t.swatch).map(asMenuToggle);
+    const showToggles = layerToggles.filter((t) => t.key === 'allLabels').map(asMenuToggle);
     const tableToggles = layerToggles.filter((t) => t.key === 'framework' || t.key === 'package').map(asMenuToggle);
     const tablesById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), e])), [visibleTables]);
 
@@ -566,7 +584,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                     many: !schema.isUnique(l.from.connection, l.from.table, l.from.columns),
                     label: names.length ? names.join(' · ') : (l.foreignKey ?? ''),
                     detail: `${l.from.table}.${l.from.columns.join(', ')} → ${l.to.table}.${l.to.columns.join(', ')}`,
-                    showLabel: layers.allLabels || touch,
+                    showLabel: layers.allLabels || tourLabels || touch,
                     emphasized: touch,
                     dim: isDim(source) || isDim(target) || (selected !== null && !touch),
                 },
@@ -594,7 +612,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                         many: true,
                         label: `${d.relation.split('::')[1]} via ${d.via.join(', ')}`,
                         detail: `${d.from} → ${d.via.join(' → ')} → ${d.to}`,
-                        showLabel: layers.allLabels || touch,
+                        showLabel: layers.allLabels || tourLabels || touch,
                         emphasized: touch,
                         dim: isDim(source) || isDim(target) || (selected !== null && !touch),
                     },
@@ -603,7 +621,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         }
 
         return specs;
-    }, [schema, links, derived, layers, selectedId, selected, isDim, shownIds]);
+    }, [schema, links, derived, layers, tourLabels, selectedId, selected, isDim, shownIds]);
 
     // Where each card is and which rows it shows. While a card is dragged this keeps the last place, so edges are
     // routed again once, on drop, instead of on every frame.
@@ -1081,24 +1099,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                         </span>
                                     ),
                                 }}
-                                toggles={{
-                                    label: 'Show',
-                                    items: layerToggles.map((t) => ({
-                                        label: t.label,
-                                        checked: layers[t.key],
-                                        onChange: () => toggle(t.key),
-                                        icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
-                                        hotkey: t.hotkey,
-                                    })),
-                                }}
-                                afterToggles={{
-                                    label: 'Columns',
-                                    value: columns,
-                                    options: FOLDS.map((f) => ({ value: f, label: COLUMN_CHOICES[f].label, hint: COLUMN_CHOICES[f].hint })),
-                                    onChange: (v) => setColumns(v as Fold),
-                                    hint: <kbd className="kbd-hint">C</kbd>,
-                                    tour: 'menu-columns',
-                                }}
                             />
                         ) : (
                             <div className="toolbar__group" role="group" aria-label="Connection and export">
@@ -1192,75 +1192,35 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 proOptions={{ hideAttribution: true }}
                             >
                                 <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-                                {narrow && (
-                                <Controls showInteractive={false} showZoom={false} showFitView={false}>
-                                    <Tooltip content={<>Zoom in <kbd>+</kbd></>} side="right">
-                                        <ControlButton onClick={() => flow.zoomIn({ duration: 150 })} aria-label="Zoom in" aria-keyshortcuts="+">
-                                            <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                                <path d="M8 3 V13 M3 8 H13" />
-                                            </svg>
-                                        </ControlButton>
-                                    </Tooltip>
-                                    <Tooltip content={<>Zoom out <kbd>−</kbd></>} side="right">
-                                        <ControlButton onClick={() => flow.zoomOut({ duration: 150 })} aria-label="Zoom out" aria-keyshortcuts="-">
-                                            <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                                <path d="M3 8 H13" />
-                                            </svg>
-                                        </ControlButton>
-                                    </Tooltip>
-                                    <Tooltip content={<>Fit the diagram <kbd>F</kbd></>} side="right">
-                                        <ControlButton onClick={() => flow.fitView({ padding: 0.08, duration: 250 })} aria-label="Fit the diagram" aria-keyshortcuts="F">
-                                            <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                                <path d="M2.5 6 V2.5 H6 M10 2.5 H13.5 V6 M13.5 10 V13.5 H10 M6 13.5 H2.5 V10" />
-                                            </svg>
-                                        </ControlButton>
-                                    </Tooltip>
-                                    <Tooltip content={<>Auto layout <kbd>Shift A</kbd></>} side="right">
-                                        <ControlButton onClick={onAutoLayout} aria-label="Arrange tables automatically" aria-keyshortcuts="Shift+A" data-tour="auto-layout">
-                                            <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                                <rect x="1.5" y="2" width="5" height="4" rx="1" />
-                                                <rect x="9.5" y="2" width="5" height="4" rx="1" />
-                                                <rect x="5.5" y="10" width="5" height="4" rx="1" />
-                                                <path d="M4 6 V8 H12 V6 M8 8 V10" />
-                                            </svg>
-                                        </ControlButton>
-                                    </Tooltip>
-                                    {onRefresh && (
-                                        <Tooltip content={<>Read the schema again <kbd>Shift R</kbd></>} side="right">
-                                            <ControlButton onClick={refresh} aria-label="Read the database and models again" aria-keyshortcuts="Shift+R">
-                                                <svg viewBox="0 0 16 16" aria-hidden="true" className="ui-icon">
-                                                    <path d="M13 8 A5 5 0 1 1 11.5 4.4 M13 2.5 V5 H10.5" />
-                                                </svg>
-                                            </ControlButton>
-                                        </Tooltip>
-                                    )}
-                                </Controls>
-                                )}
                                 {/* Below 1100px the diagram needs the room more than an overview does. */}
                                 {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
                             </ReactFlow>
-                            {!narrow && (
                                 <div className="float-bar">
                                     <div className="float-bar__group" role="group" aria-label="Zoom and arrange" data-tour="zoom">
                                         <FloatButton label="Zoom out" keys="−" shortcut="-" onClick={() => flow.zoomOut({ duration: 150 })}>
                                             <path d="M3 8 H13" />
                                         </FloatButton>
-                                        <ZoomLevel onReset={() => flow.zoomTo(1, { duration: 200 })} />
+                                        {!narrow && <ZoomLevel onReset={() => flow.zoomTo(1, { duration: 200 })} />}
                                         <FloatButton label="Zoom in" keys="+" shortcut="+" onClick={() => flow.zoomIn({ duration: 150 })}>
                                             <path d="M8 3 V13 M3 8 H13" />
                                         </FloatButton>
                                         <FloatButton label="Fit the diagram" keys="F" shortcut="F" onClick={() => flow.fitView({ padding: 0.08, duration: 250 })}>
                                             <path d="M2.5 6 V2.5 H6 M10 2.5 H13.5 V6 M13.5 10 V13.5 H10 M6 13.5 H2.5 V10" />
                                         </FloatButton>
-                                        <FloatButton label={panMode ? 'Pan mode on: drag anywhere to move' : 'Pan mode: drag anywhere to move'} keys="Hold Space" pressed={panMode} onClick={() => setPanMode((on) => !on)}>
-                                            <path d="M5.5 8.5 V4 a1 1 0 0 1 2 0 V7.5 M7.5 7.5 V2.8 a1 1 0 0 1 2 0 V7.5 M9.5 7.5 V3.8 a1 1 0 0 1 2 0 V8.5 M11.5 8.5 V6 a1 1 0 0 1 2 0 V10 a4.5 4.5 0 0 1 -4.5 4.5 H8.6 a4 4 0 0 1 -3.1 -1.5 L2.7 9.6 a1.1 1.1 0 0 1 1.7 -1.4 L5.5 9.7" />
-                                        </FloatButton>
-                                        <FloatButton label="Arrange tables automatically" keys="Shift A" shortcut="Shift+A" onClick={onAutoLayout} tour="auto-layout">
-                                            <rect x="1.5" y="2" width="5" height="4" rx="1" />
-                                            <rect x="9.5" y="2" width="5" height="4" rx="1" />
-                                            <rect x="5.5" y="10" width="5" height="4" rx="1" />
-                                            <path d="M4 6 V8 H12 V6 M8 8 V10" />
-                                        </FloatButton>
+                                        {/* On a phone a drag always pans, and the layout already suits the screen. */}
+                                        {!narrow && (
+                                            <>
+                                            <FloatButton label={panMode ? 'Pan mode on: drag anywhere to move' : 'Pan mode: drag anywhere to move'} keys="Hold Space" pressed={panMode} onClick={() => setPanMode((on) => !on)}>
+                                                <path d="M5.5 8.5 V4 a1 1 0 0 1 2 0 V7.5 M7.5 7.5 V2.8 a1 1 0 0 1 2 0 V7.5 M9.5 7.5 V3.8 a1 1 0 0 1 2 0 V8.5 M11.5 8.5 V6 a1 1 0 0 1 2 0 V10 a4.5 4.5 0 0 1 -4.5 4.5 H8.6 a4 4 0 0 1 -3.1 -1.5 L2.7 9.6 a1.1 1.1 0 0 1 1.7 -1.4 L5.5 9.7" />
+                                            </FloatButton>
+                                            <FloatButton label="Arrange tables automatically" keys="Shift A" shortcut="Shift+A" onClick={onAutoLayout} tour="auto-layout">
+                                                <rect x="1.5" y="2" width="5" height="4" rx="1" />
+                                                <rect x="9.5" y="2" width="5" height="4" rx="1" />
+                                                <rect x="5.5" y="10" width="5" height="4" rx="1" />
+                                                <path d="M4 6 V8 H12 V6 M8 8 V10" />
+                                            </FloatButton>
+                                            </>
+                                        )}
                                         {onRefresh && (
                                             <FloatButton label="Read the database and models again" keys="Shift R" shortcut="Shift+R" onClick={refresh}>
                                                 <path d="M13 8 A5 5 0 1 1 11.5 4.4 M13 2.5 V5 H10.5" />
@@ -1269,22 +1229,13 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     </div>
                                     <span className="float-bar__divider" aria-hidden="true" />
                                     <div className="float-bar__group" role="group" aria-label="Show on the diagram" data-tour="layers">
-                                    <ViewMenu label="Lines" toggles={lineToggles} cosmetic={['Relation names']} />
+                                    <ViewMenu label="Relationships" toggles={lineToggles} />
                                     <ViewMenu label="Tables" toggles={tableToggles} />
-                                    <Menu
-                                        label="Columns"
-                                        triggerClass="button button--with-icon"
-                                        tour="columns"
-                                        trigger={
-                                            <>
-                                                Columns <span className="float-bar__value">{COLUMN_CHOICES[columns].label}</span>
-                                                <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className="ui-icon">
-                                                    <path d="M4 6 L8 10 L12 6" />
-                                                </svg>
-                                            </>
-                                        }
-                                        items={[]}
-                                        afterToggles={{
+                                    <ViewMenu
+                                        label="Show"
+                                        toggles={showToggles}
+                                        counted={false}
+                                        choice={{
                                             label: 'Columns',
                                             value: columns,
                                             options: FOLDS.map((f) => ({ value: f, label: COLUMN_CHOICES[f].label, hint: COLUMN_CHOICES[f].hint })),
@@ -1293,8 +1244,13 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                         }}
                                     />
                                     </div>
+                                    <span className="float-bar__divider" aria-hidden="true" />
+                                    <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="top">
+                                        <button type="button" className="float-bar__help" aria-label="Take the tour" aria-keyshortcuts="?" data-tour="help" onClick={() => setTourOpen(true)}>
+                                            ?
+                                        </button>
+                                    </Tooltip>
                                 </div>
-                            )}
                             {focus && (
                                 <div className="focus-bar" role="group" aria-label="Focus mode">
                                     <span className="focus-bar__label">
@@ -1318,11 +1274,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     </Tooltip>
                                 </div>
                             )}
-                            <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="right">
-                                <button type="button" className="tour-fab" aria-label="Take the tour" aria-keyshortcuts="?" onClick={() => setTourOpen(true)}>
-                                    ?
-                                </button>
-                            </Tooltip>
                         </div>
                         {sideBySide && (
                             <div
@@ -1478,10 +1429,10 @@ function ZoomLevel({ onReset }: { onReset: () => void }) {
     );
 }
 
-// A toolbar menu of switches, such as which lines show. It notes how many layers are hidden, so one is not forgotten;
-// switches that only change how things look, such as relation names, don't count.
-function ViewMenu({ label, toggles, cosmetic = [] }: { label: string; toggles: MenuToggle[]; cosmetic?: string[] }) {
-    const off = toggles.filter((t) => !t.checked && !cosmetic.includes(t.label)).length;
+// A menu of switches in the floating bar, and optionally one choice below them. It notes how many layers are hidden,
+// so one is not forgotten; a menu of switches that only change how things look (counted: false) doesn't.
+function ViewMenu({ label, toggles, choice, counted = true }: { label: string; toggles: MenuToggle[]; choice?: MenuChoice; counted?: boolean }) {
+    const off = counted ? toggles.filter((t) => !t.checked).length : 0;
     return (
         <Menu
             label={label}
@@ -1497,6 +1448,7 @@ function ViewMenu({ label, toggles, cosmetic = [] }: { label: string; toggles: M
             }
             items={[]}
             toggles={{ label, items: toggles }}
+            afterToggles={choice}
         />
     );
 }

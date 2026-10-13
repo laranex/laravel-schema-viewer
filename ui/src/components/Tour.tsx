@@ -11,6 +11,10 @@ export type TourStep = {
     menu?: 'always' | 'phone';
     // A toolbar menu the tour opens beside the spotlighted button on wider screens, so the step shows what is inside it.
     opens?: 'download';
+    // Relation names show on every line while this step is open, even when they are switched off.
+    labels?: boolean;
+    // The diagram zooms in to a readable size first, when it shows more than it can label.
+    closeUp?: boolean;
 };
 
 type Target = string | (() => Element | null);

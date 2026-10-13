@@ -214,6 +214,55 @@ code {
     background: var(--surface-2);
 }
 
+@media (max-width: 760px) {
+    /* Above the details sheet's bar, and narrow enough for a phone. */
+    .float-bar {
+        bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 12px);
+        max-width: calc(100% - 24px);
+        padding: 4px;
+        gap: 2px;
+    }
+    .float-bar .button {
+        height: 36px;
+        font-size: 13.5px;
+    }
+    .float-bar .button--icon {
+        width: 36px;
+        padding: 0;
+    }
+    .float-bar .button--with-icon {
+        gap: 4px;
+        padding: 0 7px;
+    }
+    /* The menus' chevrons give way to the labels. */
+    .float-bar .button--with-icon > svg {
+        display: none;
+    }
+    .float-bar__divider {
+        margin: 0 2px;
+    }
+}
+
+/* The tour's button: the bar's one filled button, so newcomers find it. */
+.float-bar__help {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin: 0 2px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #062b24;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.float-bar__help:hover {
+    background: color-mix(in srgb, var(--accent) 88%, white);
+}
+
 /* Pan mode: the hand shows over the whole diagram, tables included. */
 .canvas.is-panning .react-flow__pane,
 .canvas.is-panning .react-flow__node {
@@ -1752,58 +1801,6 @@ kbd {
 
 /* Above the zoom controls (26px wide, 104px tall, 15px from the corner), centered on them, with a pulsing ring so
    it stays noticeable. */
-.tour-fab {
-    position: absolute;
-    /* Bottom left: on larger screens the zoom controls are in the floating bar. */
-    left: 18px;
-    bottom: 22px;
-    z-index: 8;
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border: 0;
-    border-radius: 50%;
-    background: var(--accent);
-    color: #062b24;
-    font-size: 14px;
-    font-weight: 600;
-    box-shadow: var(--shadow);
-    cursor: pointer;
-}
-
-.tour-fab:hover {
-    background: color-mix(in srgb, var(--accent) 88%, white);
-}
-
-.tour-fab::after {
-    content: '';
-    position: absolute;
-    inset: -7px;
-    border: 2px solid var(--accent);
-    border-radius: 50%;
-    animation: pulse 1.8s ease-out infinite;
-}
-
-@keyframes pulse {
-    from {
-        opacity: 0.8;
-        transform: scale(0.85);
-    }
-    to {
-        opacity: 0;
-        transform: scale(1.35);
-    }
-}
-
-@media (max-width: 760px) {
-    .tour-fab {
-        width: 30px;
-        height: 30px;
-        left: 13px;
-        bottom: calc(72px + env(safe-area-inset-bottom, 0px) + var(--controls-height, 104px) + 14px);
-    }
-}
 
 .tour {
     position: fixed;
@@ -1900,13 +1897,6 @@ kbd {
     display: flex;
     justify-content: space-between;
     gap: 8px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .tour-fab::after {
-        animation: none;
-        opacity: 0.6;
-    }
 }
 
 .react-flow__controls-button .ui-icon {
