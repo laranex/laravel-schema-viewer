@@ -25,6 +25,7 @@ dataset('skills', [
         '### Read the database',
         '### Answer questions from the JSON',
         '### Find where the database and the models disagree',
+        '### See what changed',
         '### Point a person at a table, relationship or column',
         '## Avoid',
     ]],

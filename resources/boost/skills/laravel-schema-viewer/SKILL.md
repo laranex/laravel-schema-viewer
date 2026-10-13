@@ -82,7 +82,12 @@ When `schema-viewer.json` is committed, fail CI when someone migrates or changes
 php artisan migrate --force && php artisan schema-viewer:build --check
 ```
 
-`--check` builds in memory, never writes, and exits 0 when the file matches, 1 when it is missing or out of date (with a short summary of what differs). CI must use the same database engine and connection names as the machine that built the file. A `.gitattributes` line `schema-viewer.json text eol=lf` keeps line endings stable; the check also accepts CRLF checkouts.
+`--check` builds in memory, never writes, and exits 0 when the file matches, 1 when it is missing or out of date (with a short summary of what differs). The file also keeps what changed since the previous build that changed the schema, which the viewer's Changes tab and `php artisan schema-viewer:diff` show. To put a pull request's schema changes in the job summary:
+
+```bash
+git show origin/main:schema-viewer.json > base.json
+php artisan schema-viewer:diff base.json --against=schema-viewer.json --format=markdown >> "$GITHUB_STEP_SUMMARY"
+``` CI must use the same database engine and connection names as the machine that built the file. A `.gitattributes` line `schema-viewer.json text eol=lf` keeps line endings stable; the check also accepts CRLF checkouts.
 
 ### Share the viewer without the app
 

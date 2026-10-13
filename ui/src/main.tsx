@@ -73,7 +73,7 @@ function Root() {
         );
     }
 
-    return <App doc={doc} example={!server} downloads={server?.downloads} defaultConnection={server?.defaultConnection} editor={server?.editor} />;
+    return <App doc={doc} example={!server} downloads={server?.downloads} defaultConnection={server?.defaultConnection} editor={server?.editor} changes={server?.changes} />;
 }
 
 createRoot(document.getElementById('root')!).render(

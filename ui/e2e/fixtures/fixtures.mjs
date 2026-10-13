@@ -51,4 +51,17 @@ function large() {
     };
 }
 
-export const fixtures = { blog, multi, large };
+// The blog after a build that found changes: what the Changes tab lists.
+function changes() {
+    const snapshot = blog();
+    snapshot.changes = [
+        { type: 'column', change: 'added', connection: 'testing', table: 'posts', name: 'subtitle', after: { type: 'varchar' } },
+        { type: 'column', change: 'changed', connection: 'testing', table: 'posts', name: 'title', fields: { nullable: [true, false] } },
+        { type: 'table', change: 'added', connection: 'testing', table: 'tags', after: { columns: 2 } },
+        { type: 'table', change: 'removed', connection: 'testing', table: 'legacy_tags', before: { columns: 3 } },
+        { type: 'hint', change: 'removed', connection: 'testing', table: 'posts', name: 'foreign_key_without_index', columns: 'user_id', relation: null, message: 'posts.user_id has a foreign key but no index that starts with it.' },
+    ];
+    return snapshot;
+}
+
+export const fixtures = { blog, multi, large, changes };

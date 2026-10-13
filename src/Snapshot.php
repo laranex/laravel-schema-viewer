@@ -6,6 +6,7 @@ namespace Laranex\LaravelSchemaViewer;
 
 use Illuminate\Contracts\Foundation\Application;
 use Laranex\LaravelSchemaViewer\Build\Isolation;
+use Laranex\LaravelSchemaViewer\Diff\SchemaDiff;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
 use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 use RuntimeException;
@@ -26,7 +27,7 @@ final class Snapshot
     /**
      * The file read last, kept for the requests that follow until it changes on disk.
      *
-     * @var array{stamp: string, json: string, files: array<string, array{mermaid: string, dbml: string, markdown: string}>}|null
+     * @var array{stamp: string, json: string, files: array<string, array{mermaid: string, dbml: string, markdown: string}>, changes: string}|null
      */
     private ?array $loaded = null;
 
@@ -72,7 +73,9 @@ final class Snapshot
 
     /**
      * Read the models and the database, as build() does, and return the document and the file it would write, without
-     * writing it.
+     * writing it. The file keeps what changed since the snapshot it replaces: the changes that snapshot listed when the
+     * schema is the same, so building twice changes nothing, or the changes from it to this one. Without a readable
+     * snapshot to compare with, changes is null.
      *
      * @return array{document: SchemaDocument, contents: string}
      */
@@ -84,13 +87,43 @@ final class Snapshot
         $written = $document->jsonSerialize();
         unset($written['generatedAt']);
 
+        // Encoded and decoded once, so it compares with the file as JSON reads it back.
+        $fresh = json_decode((string) json_encode($written, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), true);
+        $previous = $this->decoded($this->current());
+
+        $changes = match (true) {
+            $previous === null || ! is_array($fresh) => null,
+            $previous['document'] === $fresh => $previous['changes'],
+            default => SchemaDiff::diff($previous['document'], $fresh),
+        };
+
         $contents = json_encode([
             'format' => self::FORMAT,
             'document' => $written,
             'downloads' => HtmlExporter::downloads($document),
+            'changes' => $changes,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n";
 
         return ['document' => $document, 'contents' => $contents];
+    }
+
+    /**
+     * A snapshot's contents decoded, or null when it is missing, damaged or written by another version.
+     *
+     * @return array{document: array<mixed>, changes: list<array<string, mixed>>|null}|null
+     */
+    public function decoded(?string $contents): ?array
+    {
+        $data = $contents !== null ? json_decode($contents, true) : null;
+
+        if (! is_array($data) || ($data['format'] ?? null) !== self::FORMAT || ! is_array($data['document'] ?? null)) {
+            return null;
+        }
+
+        /** @var list<array<string, mixed>>|null $changes */
+        $changes = is_array($data['changes'] ?? null) ? array_values(array_filter($data['changes'], 'is_array')) : null;
+
+        return ['document' => $data['document'], 'changes' => $changes];
     }
 
     /**
@@ -123,76 +156,20 @@ final class Snapshot
             return null;
         }
 
-        $old = json_decode($existing, true);
-        $new = json_decode($fresh, true);
+        $old = $this->decoded($existing);
+        $new = $this->decoded($fresh);
 
-        if (! is_array($old) || ($old['format'] ?? null) !== self::FORMAT || ! is_array($old['document'] ?? null) || ! is_array($new)) {
+        if ($old === null || $new === null) {
             return ['It was written by another version of laravel-schema-viewer.'];
         }
 
-        if ($old === $new) {
+        if (json_decode($existing, true) === json_decode($fresh, true)) {
             return ['Only its formatting differs.'];
         }
 
-        $lines = $this->summary($old, $new);
+        $lines = array_map(SchemaDiff::describe(...), SchemaDiff::diff($old['document'], $new['document']));
 
-        return $lines !== [] ? $lines : ['Its contents differ in order only.'];
-    }
-
-    /**
-     * What changed, section by section: tables per connection, models, relations, hints and downloads.
-     *
-     * @param  array<mixed>  $old
-     * @param  array<mixed>  $new
-     * @return list<string>
-     */
-    private function summary(array $old, array $new): array
-    {
-        $lines = [];
-        $tables = function (array $data): array {
-            $tables = [];
-
-            foreach ((array) ($data['document']['connections'] ?? []) as $connection) {
-                foreach ((array) ($connection['tables'] ?? []) as $table) {
-                    $tables[($connection['name'] ?? '').'.'.($table['name'] ?? '')] = $table;
-                }
-            }
-
-            return $tables;
-        };
-        $before = $tables($old);
-        $after = $tables($new);
-
-        foreach (['added' => array_diff_key($after, $before), 'removed' => array_diff_key($before, $after)] as $change => $list) {
-            if ($list !== []) {
-                $lines[] = sprintf('Tables %s: %s.', $change, implode(', ', array_keys($list)));
-            }
-        }
-
-        $changed = array_keys(array_filter(array_intersect_key($after, $before), fn (mixed $table, string $key): bool => $table !== $before[$key], ARRAY_FILTER_USE_BOTH));
-
-        if ($changed !== []) {
-            $lines[] = sprintf('Tables changed: %s.', implode(', ', $changed));
-        }
-
-        foreach (['models' => 'class', 'relations' => 'id', 'hints' => 'message'] as $section => $key) {
-            $count = fn (array $data): array => array_count_values(array_map(fn (mixed $item): string => is_array($item) ? (string) json_encode($item[$key] ?? $item) : '', (array) ($data['document'][$section] ?? [])));
-            $was = $count($old);
-            $is = $count($new);
-            $added = array_sum(array_map(fn (string $item): int => max(0, $is[$item] - ($was[$item] ?? 0)), array_keys($is)));
-            $removed = array_sum(array_map(fn (string $item): int => max(0, $was[$item] - ($is[$item] ?? 0)), array_keys($was)));
-            $same = $added === 0 && $removed === 0;
-
-            if (! $same || ($old['document'][$section] ?? null) !== ($new['document'][$section] ?? null)) {
-                $lines[] = $same ? ucfirst($section).' changed.' : sprintf('%s: %d added, %d removed.', ucfirst($section), $added, $removed);
-            }
-        }
-
-        if (($old['downloads'] ?? null) !== ($new['downloads'] ?? null) && $lines === []) {
-            $lines[] = 'The downloads differ.';
-        }
-
-        return $lines;
+        return $lines !== [] ? $lines : ['Its contents differ in details the summary does not cover, such as the order of items or the downloads.'];
     }
 
     /**
@@ -218,7 +195,17 @@ final class Snapshot
     }
 
     /**
-     * @return array{stamp: string, json: string, files: array<string, array{mermaid: string, dbml: string, markdown: string}>}
+     * What changed since the snapshot before this one, as JSON: a list, or null when there was none to compare with.
+     *
+     * @throws SnapshotUnavailable
+     */
+    public function changes(): string
+    {
+        return $this->load()['changes'];
+    }
+
+    /**
+     * @return array{stamp: string, json: string, files: array<string, array{mermaid: string, dbml: string, markdown: string}>, changes: string}
      *
      * @throws SnapshotUnavailable
      */
@@ -267,6 +254,7 @@ final class Snapshot
             'stamp' => $stamp,
             'json' => (string) json_encode($data->document, JSON_UNESCAPED_SLASHES),
             'files' => $files,
+            'changes' => is_array($data->changes ?? null) ? (string) json_encode($data->changes, JSON_UNESCAPED_SLASHES) : 'null',
         ];
     }
 

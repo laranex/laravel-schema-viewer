@@ -612,6 +612,19 @@ button:disabled {
     white-space: nowrap;
 }
 
+.table-node__change {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+.table-node__change--changed {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .table-node__hints {
     flex: none;
     min-width: 18px;
@@ -1408,6 +1421,76 @@ button:disabled {
 .hint__title {
     font-weight: 600;
     font-size: var(--text-sm);
+}
+
+.count--changes {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+}
+
+.changes__head {
+    margin: 0 0 10px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.changes__group + .changes__group {
+    margin-top: 14px;
+}
+
+.changes__group h3 {
+    margin: 0 0 6px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.changes__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.change {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: var(--text-sm);
+    line-height: 1.45;
+}
+
+.change__mark {
+    flex: none;
+    min-width: 56px;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    background: var(--surface-2);
+    color: var(--muted);
+}
+
+.change__mark--added {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+}
+
+.change__mark--removed {
+    background: var(--warn-soft);
+    color: var(--warn-ink);
+}
+
+.change__text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+.change--removed .change__text {
+    color: var(--muted);
 }
 
 .hints__filter {

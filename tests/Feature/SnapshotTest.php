@@ -39,7 +39,8 @@ it('builds the snapshot as readable JSON with the document and every download', 
 
     expect($contents)->toStartWith("{\n    \"format\": 2,\n    \"document\": {\n        \"version\": 1,")
         ->and($contents)->toEndWith("}\n")
-        ->and(array_keys($data))->toBe(['format', 'document', 'downloads'])
+        ->and(array_keys($data))->toBe(['format', 'document', 'downloads', 'changes'])
+        ->and($data['changes'])->toBeNull()
         ->and(array_keys($data['downloads']['testing']))->toBe(['mermaid', 'dbml', 'markdown'])
         ->and($data['downloads']['testing']['mermaid'])->toStartWith('erDiagram');
 });
@@ -183,7 +184,7 @@ it('checks that the snapshot is up to date without writing it', function (): voi
 
     $this->artisan('schema-viewer:build', ['--check' => true])
         ->expectsOutputToContain('The schema snapshot [schema-viewer.json] is out of date. Run php artisan schema-viewer:build and commit it.')
-        ->expectsOutputToContain('Tables added: testing.gadgets.')
+        ->expectsOutputToContain('Table gadgets added: columns 1')
         ->assertFailed();
 
     clearstatcache();
@@ -224,6 +225,41 @@ it('says what kind of difference the check found', function (string $edit, strin
 })->with([
     'another format' => ['format', 'It was written by another version of laravel-schema-viewer.'],
     'formatting only' => ['formatting', 'Only its formatting differs.'],
-    'a hint' => ['hint', 'Hints: 1 added, 0 removed.'],
-    'a model' => ['model', 'Models: 1 added, 0 removed.'],
+    'a hint' => ['hint', 'New hint ('],
+    'a model' => ['model', 'Model Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\'],
 ]);
+
+it('lists what changed since the snapshot it replaces, and keeps that list while the schema stays the same', function (): void {
+    buildSnapshot();
+    $changes = fn (): mixed => json_decode((string) file_get_contents($this->snapshot), true)['changes'];
+
+    expect($changes())->toBeNull();
+
+    buildSnapshot();
+    expect($changes())->toBeNull();
+
+    Schema::create('gadgets', fn (Blueprint $table) => $table->id());
+    Schema::table('posts', fn (Blueprint $table) => $table->string('subtitle')->nullable());
+    buildSnapshot();
+    $first = $changes();
+
+    expect(collect($first)->map(fn (array $change): string => $change['type'].' '.$change['change'].' '.($change['table'] ?? '').' '.($change['name'] ?? ''))->all())
+        ->toContain('table added gadgets ', 'column added posts subtitle');
+
+    $contents = (string) file_get_contents($this->snapshot);
+    buildSnapshot();
+
+    expect((string) file_get_contents($this->snapshot))->toBe($contents)
+        ->and($changes())->toBe($first);
+
+    $this->artisan('schema-viewer:build', ['--check' => true])->assertSuccessful();
+
+    expect(viewerConfig($this)['changes'])->toBe($first);
+});
+
+it('gives the page no changes before a second build', function (): void {
+    buildSnapshot();
+
+    expect(viewerConfig($this))->toHaveKey('changes')
+        ->and(viewerConfig($this)['changes'])->toBeNull();
+});

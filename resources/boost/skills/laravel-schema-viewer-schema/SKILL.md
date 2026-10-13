@@ -83,6 +83,16 @@ Partial, expression, prefix and `INCLUDE` indexes, and indexes of another struct
 
 Each hint has a `severity` (`warning` or `info`) and a `certainty`: `certain` hints state a fact read from the database or the models; `likely` hints are inferred from names or conventions (the check marks them `· likely`), so verify them against the code and the queries before acting on one. Each hint names its connection, table and columns or relation. Fix the cause in a migration or the model when the task touches it; mention the others to the person rather than changing them unasked.
 
+### See what changed
+
+```bash
+php artisan schema-viewer:diff
+php artisan schema-viewer:diff base.json --format=json
+php artisan schema-viewer:diff base.json --against=schema-viewer.json --format=markdown
+```
+
+Without arguments it prints the `changes` stored in `schema-viewer.json`: what changed since the previous build that changed the schema (null before there was one), without touching the database. With an older snapshot it compares that file with the schema now, or with `--against` two files without running any model code. Each change has a `type` (connection, table, column, index, foreign_key, model, relation, link, hint), a `change` (added, removed, changed), where it is, and `fields` ([before, after]) for a change. A renamed table or column shows as one removed and one added. To review a branch, compare with the base branch's file: `git show origin/main:schema-viewer.json > base.json`.
+
 ### Point a person at a table, relationship or column
 
 Visit `/schema-viewer` in the local environment (after `php artisan schema-viewer:build`): every table of the connection, the models on them, and each relation drawn as an edge with its methods and kind (one-to-many, many-to-many, polymorphic, has-many-through).

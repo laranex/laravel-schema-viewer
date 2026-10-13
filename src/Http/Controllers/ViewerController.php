@@ -30,9 +30,10 @@ final class ViewerController
             // The document as it was built, so empty objects stay {}.
             $schema = $snapshot->json();
             $downloads = json_encode((object) $snapshot->files(), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $changes = $snapshot->changes();
             $missing = null;
         } catch (SnapshotUnavailable $e) {
-            $schema = $downloads = null;
+            $schema = $downloads = $changes = null;
             $missing = $e->getMessage();
         }
 
@@ -46,7 +47,7 @@ final class ViewerController
         ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
         if ($schema !== null) {
-            $config = substr($config, 0, -1).',"schema":'.$schema.',"downloads":'.$downloads.'}';
+            $config = substr($config, 0, -1).',"schema":'.$schema.',"downloads":'.$downloads.',"changes":'.$changes.'}';
         }
 
         $config = strtr($config, self::SCRIPT_SAFE);

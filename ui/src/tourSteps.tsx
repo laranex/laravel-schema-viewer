@@ -172,6 +172,16 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
+        target: ['.ui-tabs .ui-tab:nth-child(4)', '.sheet-bar__main'],
+        tab: 'changes',
+        title: 'Changes',
+        body: (
+            <p>
+                What changed since the previous build that changed the schema (<kbd>W</kbd>): tables, columns, indexes, foreign keys, models, relations and hints. A dot on a card marks a new or changed table.
+            </p>
+        ),
+    },
+    {
         target: ['#connection', '[data-tour="menu-connection"]'],
         menu: 'phone',
         title: 'Connections',

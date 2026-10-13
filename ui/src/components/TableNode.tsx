@@ -10,6 +10,8 @@ export type TableNodeData = {
     models: string[];
     pivot: boolean;
     hintCount: number;
+    // New or changed since the previous build.
+    change?: 'new' | 'changed';
     dim: boolean;
     active: boolean;
     primary: string[];
@@ -77,6 +79,11 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
                     ))}
                 <div className="table-node__title">
                     <span className="table-node__name">{table.name}</span>
+                    {data.change && (
+                        <Tooltip content={data.change === 'new' ? 'New since the previous build: see the Changes tab' : 'Changed since the previous build: see the Changes tab'}>
+                            <span className={`table-node__change table-node__change--${data.change}`} aria-label={data.change === 'new' ? 'New table' : 'Changed table'} role="img" />
+                        </Tooltip>
+                    )}
                     {data.hintCount > 0 && (
                         <Tooltip content={`${data.hintCount} hint${data.hintCount > 1 ? 's' : ''}: open the Hints tab`}>
                             <span className="table-node__hints">{data.hintCount}</span>

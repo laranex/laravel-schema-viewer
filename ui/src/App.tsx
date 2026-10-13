@@ -25,7 +25,8 @@ import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortCl
 import { boxWidth, route, type Box, type Route } from './routing';
 import { layoutConnections, TALL, WIDE, type StaticDownloads } from './layout';
 import { standaloneHtml } from './standalone';
-import type { SchemaDocument, Table } from './types';
+import { changedTables } from './components/Changes';
+import type { Change, SchemaDocument, Table } from './types';
 
 type AppNode = TableNodeType | ExternalNodeType | RegionNodeType;
 
@@ -186,6 +187,7 @@ type ViewerProps = {
     downloads?: StaticDownloads;
     defaultConnection?: string;
     editor?: string | null;
+    changes?: Change[] | null;
 };
 
 export default function App(props: ViewerProps) {
@@ -198,7 +200,7 @@ export default function App(props: ViewerProps) {
     );
 }
 
-function Viewer({ doc, example = false, downloads, defaultConnection, editor }: ViewerProps) {
+function Viewer({ doc, example = false, downloads, defaultConnection, editor, changes }: ViewerProps) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
     const [linked] = useState(() => readHash(doc));
@@ -642,7 +644,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
 
     // What a card shows that only the schema decides, worked out once per table.
     const cards = useMemo(() => {
-        const cache = new Map<string, { models: string[]; primary: string[]; foreign: string[]; casts: Record<string, string>; ends: string[]; hintCount: number }>();
+        const cache = new Map<string, { models: string[]; primary: string[]; foreign: string[]; casts: Record<string, string>; ends: string[]; hintCount: number; change?: 'new' | 'changed' }>();
+        const marks = changedTables(changes);
         return (c: string, t: Table) => {
             const id = nodeId(c, t.name);
             let card = cache.get(id);
@@ -657,12 +660,13 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
                     // Edges end on key columns, and through links on the first column.
                     ends: t.columns.filter((col, i) => i === 0 || keys.has(col.name)).map((col) => col.name),
                     hintCount: schema.hints(c, t.name).length,
+                    change: marks.get(id),
                 };
                 cache.set(id, card);
             }
             return card;
         };
-    }, [schema]);
+    }, [schema, changes]);
 
     // What each node shows for the current selection and search.
     const decorate = useCallback(
@@ -1150,7 +1154,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
             return;
         }
         notify('Building the standalone viewer…');
-        standaloneHtml(doc, downloads, defaultConnection).then(
+        standaloneHtml(doc, downloads, defaultConnection, changes).then(
             (html) => {
                 const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
                 save(url, 'schema-viewer.html');
@@ -1238,6 +1242,10 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
             t: () => setTab('details'),
             h: () => {
                 setTab('hints');
+                setSheetOpen(true);
+            },
+            w: () => {
+                setTab('changes');
                 setSheetOpen(true);
             },
             A: () => onAutoLayout(),
@@ -1549,6 +1557,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
                             onFocusHighlight={focusHighlight}
                             onLeaveFocus={endFocus}
                             onCopyLink={copyLink}
+                            changes={changes}
                             connections={scopeConnections}
                             tables={visibleTables}
                             selected={selected}
@@ -1802,7 +1811,7 @@ const SHORTCUTS: [string[], string][] = [
     [['Y'], 'Show or hide your own tables'],
     [['G'], 'Show or hide framework tables'],
     [['P'], 'Show or hide package tables, such as Passport\'s oauth_*'],
-    [['A', 'D', 'H'], 'Open the Browse, Details or Hints tab'],
+    [['A', 'D', 'H', 'W'], 'Open the Browse, Details, Hints or Changes tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
     [['Shift A'], 'Arrange tables automatically'],
     [['Shift F'], 'Focus on the selected table, relationship or column and what is around it, or leave focus mode'],

@@ -161,6 +161,26 @@ export type Hint = {
     ignore?: { hint: IgnoreRule; kindOnTable: IgnoreRule; table: IgnoreRule; kind: IgnoreRule };
 };
 
+// One thing that changed since the previous build that changed the schema (schema-viewer:build), from SchemaDiff.
+export type Change = {
+    type: 'connection' | 'table' | 'column' | 'index' | 'foreign_key' | 'model' | 'relation' | 'link' | 'hint';
+    change: 'added' | 'removed' | 'changed';
+    connection?: string;
+    table?: string;
+    name?: string;
+    // A link's id, to open the relationship.
+    id?: string;
+    // [before, after] by field, for a change.
+    fields?: Record<string, [unknown, unknown]>;
+    // A few facts about what was removed or added.
+    before?: Record<string, unknown>;
+    after?: Record<string, unknown>;
+    // Links and hints say what happened in words.
+    message?: string;
+    columns?: string | null;
+    relation?: string | null;
+};
+
 export type IgnoreRule = Partial<Record<'connection' | 'table' | 'kind' | 'columns' | 'relation' | 'certainty', string>>;
 
 export type SchemaDocument = {

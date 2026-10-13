@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { relationKind, relationLabel, shortClass, type Schema } from '../graph';
 import { Browse, type BrowseMode, type Highlight } from './Browse';
+import { ChangeList } from './Changes';
 import { HighlightDetails } from './Details';
 import { Dialog, Tab, TabList, TabPanel, Tabs, Tooltip } from './ui';
-import type { Hint, IgnoreRule, Index, Relation, Source, Table } from '../types';
+import type { Change, Hint, IgnoreRule, Index, Relation, Source, Table } from '../types';
 
-export type PanelTab = 'browse' | 'details' | 'hints';
+export type PanelTab = 'browse' | 'details' | 'hints' | 'changes';
 
 type Props = {
     schema: Schema;
@@ -33,6 +34,8 @@ type Props = {
     onFocusHighlight: (highlight: Highlight) => void;
     onLeaveFocus: () => void;
     onCopyLink: () => void;
+    // What changed since the previous build; null before there was one to compare with.
+    changes: Change[] | null | undefined;
 };
 
 type TableProps = Pick<Props, 'schema' | 'onOpen' | 'onHighlight' | 'editor' | 'focused' | 'onFocus' | 'onLeaveFocus' | 'onCopyLink'> & { connection: string; name: string };
@@ -144,11 +147,12 @@ function relationshipTitle(schema: Schema, connection: string, id: string): stri
     return d ? `${d.from} → ${d.to}` : 'Relationship';
 }
 
-export function SidePanel({ schema, connections, tables, selected, highlight, onHighlight, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, focusedOn, onFocusHighlight, onLeaveFocus, onCopyLink }: Props) {
+export function SidePanel({ schema, connections, tables, selected, highlight, onHighlight, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, focusedOn, onFocusHighlight, onLeaveFocus, onCopyLink, changes }: Props) {
     const hints = connections.flatMap((c) => schema.hints(c));
     const [filter, setFilter] = useState('');
     const [mode, setMode] = useState<BrowseMode>('tables');
     const models = selected ? schema.modelsFor(selected.connection, selected.table) : [];
+    const changeCount = (changes ?? []).filter((c) => !c.connection || connections.includes(c.connection)).length;
 
     return (
         <aside className={`panel${sheet ? ' panel--sheet' : ''}${sheet && sheetOpen ? ' is-open' : ''}`} aria-label="Details">
@@ -190,6 +194,9 @@ export function SidePanel({ schema, connections, tables, selected, highlight, on
                     </Tab>
                     <Tab value="hints">
                         Hints <span className="count">{hints.length}</span> <kbd className="kbd-hint">H</kbd>
+                    </Tab>
+                    <Tab value="changes">
+                        Changes {changeCount > 0 && <span className="count count--changes">{changeCount}</span>} <kbd className="kbd-hint">W</kbd>
                     </Tab>
                 </TabList>
                 <TabPanel value="browse" className="panel__body">
@@ -244,6 +251,9 @@ export function SidePanel({ schema, connections, tables, selected, highlight, on
                 </TabPanel>
                 <TabPanel value="hints" className="panel__body">
                     <HintList hints={hints} several={connections.length > 1} onOpen={onOpen} />
+                </TabPanel>
+                <TabPanel value="changes" className="panel__body">
+                    <ChangeList schema={schema} changes={changes} connections={connections} onOpen={onOpen} onHighlight={onHighlight} />
                 </TabPanel>
             </Tabs>
         </aside>

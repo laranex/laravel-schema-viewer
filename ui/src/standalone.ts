@@ -1,5 +1,5 @@
 import type { StaticDownloads } from './layout';
-import type { SchemaDocument } from './types';
+import type { Change, SchemaDocument } from './types';
 
 // Inflates the config and the app, then starts the app. Kept identical to HtmlExporter::LOADER.
 const LOADER = `const unpack = async (id) => new Response(new Blob([Uint8Array.from(atob(document.getElementById(id).textContent.trim()), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
@@ -14,9 +14,9 @@ try {
 // HtmlExporter), built from what this page already has: its own script and stylesheet with the fonts inlined, the
 // schema it shows, and each connection's downloads. The script and the schema are gzipped and base64 encoded, and the
 // page's loader inflates them.
-export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownloads, defaultConnection = 'all'): Promise<string> {
+export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownloads, defaultConnection = 'all', changes?: Change[] | null): Promise<string> {
     const [css, js] = await Promise.all([styles(), script()]);
-    const [config, app] = await Promise.all([pack(JSON.stringify({ schema: doc, downloads, defaultConnection })), pack(js)]);
+    const [config, app] = await Promise.all([pack(JSON.stringify({ schema: doc, downloads, defaultConnection, ...(changes !== undefined ? { changes } : {}) })), pack(js)]);
 
     return `<!doctype html>
 <html lang="en">

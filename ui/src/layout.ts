@@ -1,7 +1,7 @@
 import { elkLayout } from './elk';
 import { NODE_WIDTH, nodeId, type Schema } from './graph';
 import { GAP } from './routing';
-import type { SchemaDocument } from './types';
+import type { Change, SchemaDocument } from './types';
 
 export type Positions = Record<string, { x: number; y: number }>;
 
@@ -176,6 +176,8 @@ export type ServerConfig = {
     editor?: string | null;
     // Set when the app has no readable snapshot yet: what to run to build it.
     missing?: string | null;
+    // What changed since the previous build that changed the schema; null before there was one to compare with.
+    changes?: Change[] | null;
 };
 
 // Each connection's Mermaid, DBML and Markdown files, carried by the page.
