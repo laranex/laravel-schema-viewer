@@ -71,8 +71,10 @@ it('leaves the cache, jobs, events, logs and HTTP calls of relation methods to s
     Event::listen('noisy.announced', function () use (&$seen): void {
         $seen[] = 'event';
     });
-    Event::listen(MessageLogged::class, function () use (&$seen): void {
-        $seen[] = 'log';
+    Event::listen(MessageLogged::class, function (MessageLogged $log) use (&$seen): void {
+        if ($log->message === 'noisy relation read') {
+            $seen[] = 'log';
+        }
     });
 
     noisyDocument();

@@ -302,8 +302,8 @@ final class RelationResolver
      */
     private function dynamicRelations(Model $model): array
     {
+        // Reflection reads protected properties without setAccessible() since PHP 8.1, which deprecates it in 8.5.
         $property = new ReflectionProperty(Model::class, 'relationResolvers');
-        $property->setAccessible(true);
 
         /** @var array<string, array<string, Closure>> $resolvers */
         $resolvers = $property->getValue();
