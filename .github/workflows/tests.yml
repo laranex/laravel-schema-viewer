@@ -81,6 +81,10 @@ jobs:
 
       - name: Type Coverage
         if: runner.os != 'Windows'
+        # One analysis process at a time: the type coverage plugin's forks share one cache file, and a fork that waits
+        # too long for its lock reads it half written (a ParseError in .temp/v3.php).
+        env:
+          FORK_MEM_PER_PROC: 1099511627776000
         run: composer test:types
 
       - name: Test Suite
