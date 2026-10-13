@@ -187,8 +187,6 @@ type ViewerProps = {
     downloads?: StaticDownloads;
     defaultConnection?: string;
     editor?: string | null;
-    // Reads the database and models again; only the app's own page can.
-    onRefresh?: () => Promise<void>;
 };
 
 export default function App(props: ViewerProps) {
@@ -201,7 +199,7 @@ export default function App(props: ViewerProps) {
     );
 }
 
-function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection, editor, onRefresh }: ViewerProps) {
+function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection, editor }: ViewerProps) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
     const [linked] = useState(() => readHash(doc));
@@ -1159,20 +1157,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     };
 
 
-    // The server keeps the schema it read until a model, the config or a migration changes; this reads it again, e.g.
-    // after a table was altered by hand.
-    const refresh = () => {
-        if (!onRefresh) {
-            notify('This page shows the schema as it was exported. Export it again to update it.');
-            return;
-        }
-        notify('Reading the database and models again…');
-        onRefresh().then(
-            () => notify('Schema read again.'),
-            (e: Error) => notify(`The schema could not be read: ${e.message}`),
-        );
-    };
-
     const onAutoLayout = () => {
         setLayoutVersion((v) => v + 1);
         notify('Tables arranged automatically.');
@@ -1251,7 +1235,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 setSheetOpen(true);
             },
             A: () => onAutoLayout(),
-            R: () => refresh(),
             C: () => copyLink(),
             '[': () => step(-1),
             ']': () => step(1),
@@ -1295,7 +1278,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     return (
         <EdgeHover.Provider value={hover}>
             <TableActions.Provider value={tableActions}>
-                <div className={`app${keysOn ? '' : ' keys-off'}${onRefresh ? ' has-refresh' : ''}${shownTables.length > DENSE ? ' is-dense' : ''}${selected ? ' has-selection' : ''}`}>
+                <div className={`app${keysOn ? '' : ' keys-off'}${shownTables.length > DENSE ? ' is-dense' : ''}${selected ? ' has-selection' : ''}`}>
                     <EdgeMarkers />
                     <header className="toolbar">
                         <div className="toolbar__brand">
@@ -1468,11 +1451,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                                 <path d="M4 6 V8 H12 V6 M8 8 V10" />
                                             </FloatButton>
                                             </>
-                                        )}
-                                        {onRefresh && (
-                                            <FloatButton label="Read the database and models again" keys="Shift R" shortcut="Shift+R" onClick={refresh} extra>
-                                                <path d="M13 8 A5 5 0 1 1 11.5 4.4 M13 2.5 V5 H10.5" />
-                                            </FloatButton>
                                         )}
                                     </div>
                                     <span className="float-bar__divider" aria-hidden="true" />
@@ -1818,7 +1796,6 @@ const SHORTCUTS: [string[], string][] = [
     [['A', 'D', 'H'], 'Open the Browse, Details or Hints tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
     [['Shift A'], 'Arrange tables automatically'],
-    [['Shift R'], 'Read the database and models again (in your app, not in an exported page)'],
     [['Shift F'], 'Focus on the selected table, relationship or column and what is around it, or leave focus mode'],
     [['C'], 'Show every column, the key columns only, or the table names only'],
     [['Shift C'], 'Copy a link to exactly this view'],

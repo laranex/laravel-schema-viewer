@@ -175,6 +175,8 @@ export type ServerConfig = {
     defaultConnection?: string;
     // Opens a file in the developer's editor: {file} (relative to the app's root) and {line}. Never in a static export.
     editor?: string | null;
+    // Set when the app has no readable snapshot yet: what to run to build it.
+    missing?: string | null;
 };
 
 // Each connection's Mermaid, DBML and Markdown files, written by schema-viewer:export --format=html.

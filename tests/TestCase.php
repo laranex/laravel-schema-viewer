@@ -27,10 +27,22 @@ abstract class TestCase extends Orchestra
         $resolvers->setValue(null, []);
         SchemaViewer::$authUsing = null;
 
+        foreach (glob(dirname($this->snapshot).'/{,.}*', GLOB_BRACE) ?: [] as $file) {
+            if (is_file($file)) {
+                @unlink($file);
+            }
+        }
+        @rmdir(dirname($this->snapshot));
+
         parent::tearDown();
     }
 
     private string $environment = 'local';
+
+    /**
+     * Where this test's snapshot is written: its own folder, so parallel tests never share one.
+     */
+    protected string $snapshot = '';
 
     /**
      * @var array<string, mixed>
@@ -55,8 +67,10 @@ abstract class TestCase extends Orchestra
         $app['env'] = $this->environment;
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('k', 32)));
 
-        // Set first, so rebootWith() can point the viewer at other models.
+        // Set first, so rebootWith() can point the viewer at other models or another snapshot.
         $app['config']->set('schema-viewer.models', [__DIR__.'/Fixtures/Models']);
+        $this->snapshot = sys_get_temp_dir().DIRECTORY_SEPARATOR.'schema-viewer-tests'.DIRECTORY_SEPARATOR.bin2hex(random_bytes(8)).DIRECTORY_SEPARATOR.'schema-viewer.json';
+        $app['config']->set('schema-viewer.snapshot', $this->snapshot);
 
         foreach ($this->viewerConfig as $key => $value) {
             $app['config']->set('schema-viewer.'.$key, $value);

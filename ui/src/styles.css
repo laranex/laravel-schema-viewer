@@ -2707,6 +2707,3 @@ a.source--link:focus-visible .ui-icon {
     overflow-wrap: anywhere;
 }
 
-.app.has-refresh {
-    --controls-height: 130px;
-}

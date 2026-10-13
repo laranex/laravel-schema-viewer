@@ -117,6 +117,8 @@ it('needs the viewSchema gate when enabled outside the local environment', funct
 });
 
 it('serves the schema document', function (): void {
+    buildSnapshot();
+
     $this->getJson('/schema-viewer/api/schema')
         ->assertOk()
         ->assertJsonPath('version', 1)
@@ -143,6 +145,8 @@ it('can live on another path', function (): void {
 });
 
 it('downloads the database schema as Mermaid, DBML, Markdown or JSON', function (): void {
+    buildSnapshot();
+
     expect($this->get('/schema-viewer/api/export?format=mermaid&connection=testing')
         ->assertOk()
         ->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.mmd"')
@@ -160,6 +164,8 @@ it('downloads the database schema as Mermaid, DBML, Markdown or JSON', function 
 });
 
 it('rejects a format or connection given as a list', function (): void {
+    buildSnapshot();
+
     $this->getJson('/schema-viewer/api/export?format[]=dbml')->assertStatus(422)->assertJsonPath('message', 'Use format mermaid, dbml, markdown or json.');
     $this->getJson('/schema-viewer/api/export?format=dbml&connection[]=testing')->assertStatus(422)->assertJsonPath('message', 'Name one connection.');
 });

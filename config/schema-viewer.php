@@ -78,22 +78,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Cache
+    | Snapshot
     |--------------------------------------------------------------------------
     |
-    | The viewer keeps the schema it read in the cache until a model file,
-    | this config, a connection's migrations or an SQLite database file
-    | changes, or for ttl seconds. Store null uses the default cache store.
-    | The viewer's refresh button (or api/schema?refresh=1) reads it again,
-    | e.g. after altering a table by hand. The artisan commands never cache.
+    | php artisan schema-viewer:build reads the database and the models and
+    | writes the snapshot the viewer serves: readable JSON you can commit or
+    | ignore. The viewer's routes only read it; no model code runs in a web
+    | request. Null writes schema-viewer.json in the project root; a relative
+    | path starts there too.
+    |
+    | Build after migrate runs the build again whenever migrations finish in
+    | the console, so the viewer follows your schema. Unset, it is on in the
+    | local environment only. It never fails a migration.
     |
     */
 
-    'cache' => [
-        'enabled' => env('SCHEMA_VIEWER_CACHE', true),
-        'store' => env('SCHEMA_VIEWER_CACHE_STORE'),
-        'ttl' => 3600,
-    ],
+    'snapshot' => env('SCHEMA_VIEWER_SNAPSHOT'),
+
+    'build_after_migrate' => env('SCHEMA_VIEWER_BUILD_AFTER_MIGRATE'),
 
     /*
     |--------------------------------------------------------------------------

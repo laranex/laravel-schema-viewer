@@ -8,11 +8,13 @@ use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Laranex\LaravelSchemaViewer\SchemaCache;
+use Laranex\LaravelSchemaViewer\Snapshot;
+use Laranex\LaravelSchemaViewer\SnapshotUnavailable;
 
 /**
  * One connection's database schema as a file to download: Mermaid, DBML, Markdown or JSON. Format all answers every
- * connection's Mermaid, DBML and Markdown at once, as JSON, for the viewer's standalone HTML download.
+ * connection's Mermaid, DBML and Markdown at once, as JSON, for the viewer's standalone HTML download. Everything comes
+ * from the snapshot schema-viewer:build wrote; no model code runs.
  */
 final class ExportController
 {
@@ -23,13 +25,19 @@ final class ExportController
         'json' => ['json', 'application/json'],
     ];
 
-    public function __invoke(Request $request, SchemaCache $cache, ConnectionResolverInterface $connections): Response|JsonResponse
+    public function __invoke(Request $request, Snapshot $snapshot, ConnectionResolverInterface $connections): Response|JsonResponse
     {
+        try {
+            $files = $snapshot->files();
+        } catch (SnapshotUnavailable $e) {
+            return new JsonResponse(['message' => $e->getMessage()], 503, ['Cache-Control' => 'no-store']);
+        }
+
         $format = $request->query('format', 'mermaid');
         $requested = $request->query('connection', '');
 
         if ($format === 'all') {
-            $all = array_map(fn (array $files): array => ['mermaid' => $files['mermaid'], 'dbml' => $files['dbml'], 'markdown' => $files['markdown']], $cache->files());
+            $all = array_map(fn (array $downloads): array => ['mermaid' => $downloads['mermaid'], 'dbml' => $downloads['dbml'], 'markdown' => $downloads['markdown']], $files);
 
             return new JsonResponse($all, 200, ['Cache-Control' => 'no-store'], JSON_UNESCAPED_SLASHES);
         }
@@ -43,7 +51,7 @@ final class ExportController
         }
 
         $name = $requested !== '' ? $requested : $connections->getDefaultConnection();
-        $content = $cache->files()[$name][$format] ?? null;
+        $content = $files[$name][$format] ?? null;
 
         if ($content === null) {
             return new JsonResponse(['message' => "The schema has no connection [{$name}]."], 404);

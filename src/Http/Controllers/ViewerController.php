@@ -8,14 +8,23 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Http\Response;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Laranex\LaravelSchemaViewer\Snapshot;
+use Laranex\LaravelSchemaViewer\SnapshotUnavailable;
 
 /**
- * The viewer page: the built app plus the URLs it talks to.
+ * The viewer page: the built app plus the URLs it talks to, or, without a readable snapshot, what to run to build it.
  */
 final class ViewerController
 {
-    public function __invoke(UrlGenerator $url, SchemaViewer $viewer, Application $app): Response
+    public function __invoke(UrlGenerator $url, SchemaViewer $viewer, Snapshot $snapshot, Application $app): Response
     {
+        try {
+            $snapshot->etag();
+            $missing = null;
+        } catch (SnapshotUnavailable $e) {
+            $missing = $e->getMessage();
+        }
+
         $version = substr(hash('sha256', (string) @filemtime(__DIR__.'/../../../dist/app.js')), 0, 12);
         $asset = fn (string $file): string => $url->route('schema-viewer.asset', ['file' => $file]).'?v='.$version;
 
@@ -24,6 +33,7 @@ final class ViewerController
             'exportUrl' => $url->route('schema-viewer.export'),
             'defaultConnection' => $viewer->defaultConnection(),
             'editor' => $viewer->editorHref(),
+            'missing' => $missing,
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
 
         $css = htmlspecialchars($asset('app.css'), ENT_QUOTES);

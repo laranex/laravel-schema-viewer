@@ -132,15 +132,18 @@ class SchemaViewer
     /**
      * Build the document. Every model is constructed and its relation methods called with every connection pretending
      * (see RelationResolver); the tables are read afterwards. A model that cannot be constructed or inspected is noted
-     * as unresolved instead of failing the document.
+     * as unresolved instead of failing the document. The relation methods run inside $whileReadingRelations when given,
+     * which schema-viewer:build uses to fake events while they run.
+     *
+     * @param  (Closure(Closure(): void): void)|null  $whileReadingRelations
      */
-    public function document(): SchemaDocument
+    public function document(?Closure $whileReadingRelations = null): SchemaDocument
     {
         $models = [];
         $relations = [];
         $unresolved = [];
 
-        $this->relations->pretend(function () use (&$models, &$relations, &$unresolved): void {
+        $this->relations->pretend(function () use (&$models, &$relations, &$unresolved, $whileReadingRelations): void {
             $instances = [];
 
             foreach ($this->finder->find($this->modelPaths()) as $class) {
@@ -154,11 +157,15 @@ class SchemaViewer
                 }
             }
 
-            foreach ($instances as $model) {
-                $found = $this->relations->resolve($model);
-                array_push($relations, ...$found['relations']);
-                array_push($unresolved, ...$found['unresolved']);
-            }
+            $read = function () use ($instances, &$relations, &$unresolved): void {
+                foreach ($instances as $model) {
+                    $found = $this->relations->resolve($model);
+                    array_push($relations, ...$found['relations']);
+                    array_push($unresolved, ...$found['unresolved']);
+                }
+            };
+
+            $whileReadingRelations !== null ? $whileReadingRelations($read) : $read();
         });
 
         $connections = array_map(

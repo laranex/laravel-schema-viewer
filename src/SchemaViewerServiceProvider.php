@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer;
 
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Database\Events\MigrationsEnded;
 use Illuminate\Support\ServiceProvider;
+use Laranex\LaravelSchemaViewer\Build\BuildAfterMigrations;
 
 class SchemaViewerServiceProvider extends ServiceProvider
 {
@@ -17,7 +21,7 @@ class SchemaViewerServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/schema-viewer.php', 'schema-viewer');
 
         $this->app->singleton(SchemaViewer::class);
-        $this->app->singleton(SchemaCache::class);
+        $this->app->singleton(Snapshot::class);
     }
 
     /**
@@ -25,7 +29,7 @@ class SchemaViewerServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        if ($this->enabled()) {
+        if (self::flag($this->app, $this->app->make(ConfigRepository::class)->get('schema-viewer.enabled'))) {
             $this->loadRoutesFrom(__DIR__.'/../routes/schema-viewer.php');
         }
 
@@ -34,9 +38,12 @@ class SchemaViewerServiceProvider extends ServiceProvider
         }
 
         $this->commands([
+            Console\BuildCommand::class,
             Console\ExportCommand::class,
             Console\CheckCommand::class,
         ]);
+
+        $this->app->make(Dispatcher::class)->listen(MigrationsEnded::class, BuildAfterMigrations::class);
 
         $this->publishes([
             __DIR__.'/../config/schema-viewer.php' => $this->app->configPath('schema-viewer.php'),
@@ -44,16 +51,15 @@ class SchemaViewerServiceProvider extends ServiceProvider
     }
 
     /**
-     * Unset: on in the local environment only. Otherwise the configured value.
+     * A switch that is on in the local environment only while unset, otherwise the configured value: enabled and
+     * build_after_migrate.
      */
-    private function enabled(): bool
+    public static function flag(Application $app, mixed $value): bool
     {
-        $enabled = $this->app->make(ConfigRepository::class)->get('schema-viewer.enabled');
-
-        if ($enabled === null || $enabled === '') {
-            return $this->app->environment('local');
+        if ($value === null || $value === '') {
+            return $app->environment('local');
         }
 
-        return filter_var($enabled, FILTER_VALIDATE_BOOLEAN);
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 }

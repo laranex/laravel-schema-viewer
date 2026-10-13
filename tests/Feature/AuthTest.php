@@ -10,12 +10,14 @@ use Laranex\LaravelSchemaViewer\SchemaViewer;
 
 it('is open to everyone in the local environment by default', function (): void {
     $this->rebootWith('local');
+    buildSnapshot();
 
     $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7'])->getJson('/schema-viewer/api/schema')->assertOk();
 });
 
 it('needs the viewSchema gate elsewhere by default', function (): void {
     $this->rebootWith('production', ['enabled' => true]);
+    buildSnapshot();
 
     $this->getJson('/schema-viewer/api/schema')->assertForbidden();
 
@@ -33,6 +35,7 @@ it('lets the auth callback close the viewer in the local environment', function 
 
 it('lets the auth callback open the viewer without the gate elsewhere', function (): void {
     $this->rebootWith('production', ['enabled' => true]);
+    buildSnapshot();
     SchemaViewer::auth(fn (Request $request): bool => $request->header('X-Team') === 'data');
 
     $this->getJson('/schema-viewer/api/schema')->assertForbidden();
