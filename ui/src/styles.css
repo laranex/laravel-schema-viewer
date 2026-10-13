@@ -191,14 +191,60 @@ code {
     white-space: nowrap;
 }
 
-.float-bar > .button {
+.float-bar__group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.float-bar__divider {
+    width: 1px;
+    height: 22px;
+    margin: 0 4px;
+    background: var(--line);
+}
+
+.float-bar .button {
     border-color: transparent;
     background: transparent;
 }
 
-.float-bar > .button:hover,
-.float-bar > .button[data-state='open'] {
+.float-bar .button:hover,
+.float-bar .button[data-state='open'] {
     background: var(--surface-2);
+}
+
+.float-bar .button[aria-pressed='true'] {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+}
+
+.float-bar__zoom {
+    min-width: 46px;
+    height: 30px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: inherit;
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+
+.float-bar__zoom:hover {
+    background: var(--surface-2);
+}
+
+/* Pan mode: the hand shows over the whole diagram, tables included. */
+.canvas.is-panning .react-flow__pane,
+.canvas.is-panning .react-flow__node {
+    cursor: grab;
+}
+
+.canvas.is-panning .react-flow__pane.dragging,
+.canvas.is-panning .react-flow__pane.dragging .react-flow__node {
+    cursor: grabbing;
 }
 
 .float-bar__value {
@@ -646,14 +692,14 @@ button:disabled {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    height: 18px;
-    padding: 0 6px;
+    gap: 3px;
+    height: 15px;
+    padding: 0 5px;
     border: 1px solid var(--line);
     border-radius: 999px;
     background: var(--surface);
     box-shadow: var(--shadow);
-    font-size: 10px;
+    font-size: 9px;
     white-space: nowrap;
     pointer-events: auto;
     z-index: 5;
@@ -673,12 +719,12 @@ button:disabled {
 
 .edge-label__chip {
     flex: none;
-    padding: 0 4px;
+    padding: 0 3px;
     border-radius: 3px;
     background: var(--through-soft);
     color: var(--through);
-    font-size: 8.5px;
-    line-height: 13px;
+    font-size: 7.5px;
+    line-height: 11px;
     font-weight: 600;
 }
 

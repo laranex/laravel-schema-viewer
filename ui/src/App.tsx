@@ -9,10 +9,11 @@ import {
     useNodesInitialized,
     useNodesState,
     useReactFlow,
+    useViewport,
     type Node,
     type NodeMouseHandler,
 } from '@xyflow/react';
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { EdgeHover, EdgeMarkers, HoverStore, LinkEdgeView, type EdgeKind, type LinkEdgeData, type LinkEdgeType } from './components/LinkEdge';
 import { SearchBox } from './components/SearchBox';
 import { Tour, type TourStep } from './components/Tour';
@@ -199,6 +200,11 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const [layoutVersion, setLayoutVersion] = useState(0);
     const [needsFit, setNeedsFit] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
+    // Pan mode: dragging anywhere moves the diagram, even over a table. The hand button switches it; holding Space
+    // turns it on until the key is released.
+    const [panMode, setPanMode] = useState(false);
+    const [spacePan, setSpacePan] = useState(false);
+    const panning = panMode || spacePan;
     const narrow = useNarrow();
     const roomy = useMedia('(min-width: 1100px)');
     // The panel sits beside the diagram, so its width can be dragged.
@@ -989,6 +995,29 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     };
 
     useEffect(() => {
+        const typing = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            return !!target && (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(target.tagName));
+        };
+        const down = (e: KeyboardEvent) => {
+            if (e.key === ' ' && !typing(e)) {
+                e.preventDefault();
+                setSpacePan(true);
+            }
+        };
+        const up = (e: KeyboardEvent) => e.key === ' ' && setSpacePan(false);
+        const reset = () => setSpacePan(false);
+        window.addEventListener('keydown', down);
+        window.addEventListener('keyup', up);
+        window.addEventListener('blur', reset);
+        return () => {
+            window.removeEventListener('keydown', down);
+            window.removeEventListener('keyup', up);
+            window.removeEventListener('blur', reset);
+        };
+    }, []);
+
+    useEffect(() => {
         const listener = (e: KeyboardEvent) => shortcuts.current(e);
         window.addEventListener('keydown', listener);
         return () => window.removeEventListener('keydown', listener);
@@ -1110,7 +1139,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                         ref={mainRef}
                         style={panelWidth !== null ? ({ '--panel-width': `${panelWidth}px` } as CSSProperties) : undefined}
                     >
-                        <div className="canvas" ref={canvasRef}>
+                        <div className={`canvas${panning ? ' is-panning' : ''}`} ref={canvasRef}>
                             <ReactFlow<AppNode, LinkEdgeType>
                                 nodes={nodes}
                                 edges={edges}
@@ -1136,12 +1165,14 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     }
                                 }}
                                 nodesConnectable={false}
+                                nodesDraggable={!panning}
                                 edgesFocusable={false}
                                 minZoom={0.02}
                                 maxZoom={2}
                                 proOptions={{ hideAttribution: true }}
                             >
                                 <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
+                                {narrow && (
                                 <Controls showInteractive={false} showZoom={false} showFitView={false}>
                                     <Tooltip content={<>Zoom in <kbd>+</kbd></>} side="right">
                                         <ControlButton onClick={() => flow.zoomIn({ duration: 150 })} aria-label="Zoom in" aria-keyshortcuts="+">
@@ -1184,11 +1215,40 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                         </Tooltip>
                                     )}
                                 </Controls>
+                                )}
                                 {/* Below 1100px the diagram needs the room more than an overview does. */}
                                 {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
                             </ReactFlow>
                             {!narrow && (
-                                <div className="float-bar" role="group" aria-label="Show on the diagram" data-tour="layers">
+                                <div className="float-bar">
+                                    <div className="float-bar__group" role="group" aria-label="Zoom and arrange" data-tour="zoom">
+                                        <FloatButton label="Zoom out" keys="−" shortcut="-" onClick={() => flow.zoomOut({ duration: 150 })}>
+                                            <path d="M3 8 H13" />
+                                        </FloatButton>
+                                        <ZoomLevel onReset={() => flow.zoomTo(1, { duration: 200 })} />
+                                        <FloatButton label="Zoom in" keys="+" shortcut="+" onClick={() => flow.zoomIn({ duration: 150 })}>
+                                            <path d="M8 3 V13 M3 8 H13" />
+                                        </FloatButton>
+                                        <FloatButton label="Fit the diagram" keys="F" shortcut="F" onClick={() => flow.fitView({ padding: 0.08, duration: 250 })}>
+                                            <path d="M2.5 6 V2.5 H6 M10 2.5 H13.5 V6 M13.5 10 V13.5 H10 M6 13.5 H2.5 V10" />
+                                        </FloatButton>
+                                        <FloatButton label={panMode ? 'Pan mode on: drag anywhere to move' : 'Pan mode: drag anywhere to move'} keys="Hold Space" pressed={panMode} onClick={() => setPanMode((on) => !on)}>
+                                            <path d="M5.5 8.5 V4 a1 1 0 0 1 2 0 V7.5 M7.5 7.5 V2.8 a1 1 0 0 1 2 0 V7.5 M9.5 7.5 V3.8 a1 1 0 0 1 2 0 V8.5 M11.5 8.5 V6 a1 1 0 0 1 2 0 V10 a4.5 4.5 0 0 1 -4.5 4.5 H8.6 a4 4 0 0 1 -3.1 -1.5 L2.7 9.6 a1.1 1.1 0 0 1 1.7 -1.4 L5.5 9.7" />
+                                        </FloatButton>
+                                        <FloatButton label="Arrange tables automatically" keys="Shift A" shortcut="Shift+A" onClick={onAutoLayout} tour="auto-layout">
+                                            <rect x="1.5" y="2" width="5" height="4" rx="1" />
+                                            <rect x="9.5" y="2" width="5" height="4" rx="1" />
+                                            <rect x="5.5" y="10" width="5" height="4" rx="1" />
+                                            <path d="M4 6 V8 H12 V6 M8 8 V10" />
+                                        </FloatButton>
+                                        {onRefresh && (
+                                            <FloatButton label="Read the database and models again" keys="Shift R" shortcut="Shift+R" onClick={refresh}>
+                                                <path d="M13 8 A5 5 0 1 1 11.5 4.4 M13 2.5 V5 H10.5" />
+                                            </FloatButton>
+                                        )}
+                                    </div>
+                                    <span className="float-bar__divider" aria-hidden="true" />
+                                    <div className="float-bar__group" role="group" aria-label="Show on the diagram" data-tour="layers">
                                     <ViewMenu label="Lines" toggles={lineToggles} cosmetic={['Relation names']} />
                                     <ViewMenu label="Tables" toggles={tableToggles} />
                                     <Menu
@@ -1212,6 +1272,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                             hint: <kbd className="kbd-hint">C</kbd>,
                                         }}
                                     />
+                                    </div>
                                 </div>
                             )}
                             {focus && (
@@ -1350,6 +1411,40 @@ function Swatch({ kind }: { kind: EdgeKind }) {
     );
 }
 
+// A square icon button in the floating bar, with its name and key in a tooltip.
+function FloatButton({ label, keys, shortcut, pressed, onClick, tour, children }: { label: string; keys: string; shortcut?: string; pressed?: boolean; onClick: () => void; tour?: string; children: ReactNode }) {
+    return (
+        <Tooltip content={<>{label} <kbd>{keys}</kbd></>} side="top">
+            <button type="button" className="button button--icon float-bar__icon" aria-label={label} aria-pressed={pressed} aria-keyshortcuts={shortcut}
+                onClick={(e) => {
+                    onClick();
+                    // A mouse click leaves focus on the diagram, so Space pans again instead of pressing this button.
+                    if (e.detail > 0) {
+                        e.currentTarget.blur();
+                    }
+                }}
+                data-tour={tour}
+            >
+                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
+                    {children}
+                </svg>
+            </button>
+        </Tooltip>
+    );
+}
+
+// The current zoom; clicking it goes back to 100%. Its own component, so zooming re-renders only this.
+function ZoomLevel({ onReset }: { onReset: () => void }) {
+    const { zoom } = useViewport();
+    return (
+        <Tooltip content="Zoom to 100%" side="top">
+            <button type="button" className="float-bar__zoom" aria-label={`Zoom ${Math.round(zoom * 100)}%, go to 100%`} onClick={onReset}>
+                {Math.round(zoom * 100)}%
+            </button>
+        </Tooltip>
+    );
+}
+
 // A toolbar menu of switches, such as which lines show. It notes how many layers are hidden, so one is not forgotten;
 // switches that only change how things look, such as relation names, don't count.
 function ViewMenu({ label, toggles, cosmetic = [] }: { label: string; toggles: MenuToggle[]; cosmetic?: string[] }) {
@@ -1380,6 +1475,7 @@ const SHORTCUTS: [string[], string][] = [
     [['Esc'], 'Clear the search or selection, close a panel'],
     [['F'], 'Fit the diagram to the screen'],
     [['+', '−'], 'Zoom in or out'],
+    [['Space'], 'Hold to pan: drag anywhere, even over a table'],
     [['L'], 'Show relation names on every edge, or only on the selected table'],
     [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
     [['G'], 'Show or hide framework tables'],
