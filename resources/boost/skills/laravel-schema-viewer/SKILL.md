@@ -100,7 +100,6 @@ expect(collect($document->hints)->pluck('kind'))->not->toContain(\Laranex\Larave
 - Enabling the viewer in production without the `viewSchema` gate or `SchemaViewer::auth()`; schema details help attackers.
 - Expecting the viewer to show a table altered by hand or a model just edited: run `php artisan schema-viewer:build` first.
 - Relation methods that do more than build the relation: the build runs them, with jobs, mail, HTTP, events and the cache faked, but file writes and other clients still run.
-- Sharing a local app (Herd Share, Expose, ngrok) with the viewer on: in `local`, anyone who reaches the app can open it.
 - Writing `hints.ignore` rules by hand: copy the rule `schema-viewer:check` prints or the JSON export's `ignore` field.
 - Ignoring `relation_without_foreign_key` on a regular `belongsTo`: add the foreign key unless the relation crosses connections.
 - Publishing an HTML export where the schema should not be seen.
