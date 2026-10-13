@@ -1831,6 +1831,8 @@ kbd {
 .button--icon {
     display: inline-grid;
     place-items: center;
+    /* Square, as tall as a button; smaller variants (ghost, the floating bar) set their own size. */
+    width: 34px;
     padding: 0;
 }
 

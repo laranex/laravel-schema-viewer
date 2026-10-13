@@ -2,6 +2,11 @@
 
 All notable changes to `laravel-schema-viewer` will be documented in this file.
 
+## v1.2.1 - 2026-10-13
+
+### Fixed
+- The light and dark switch in the top bar is square again instead of squeezed to its icon.
+
 ## v1.2.0 - 2026-10-13
 
 ### Added
