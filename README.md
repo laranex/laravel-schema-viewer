@@ -44,7 +44,6 @@ The full documentation lives at **[laranex.vercel.app/laravel-schema-viewer](htt
 - [Schema hints](https://laranex.vercel.app/laravel-schema-viewer/hints): where the database and the models disagree, and how to act on each
 - [Schema downloads and commands](https://laranex.vercel.app/laravel-schema-viewer/exports): Mermaid, DBML, Markdown, JSON and HTML exports, and the CI check
 - [Laravel Schema Viewer AI agent skills](https://laranex.vercel.app/laravel-schema-viewer/ai-agent-skill): the skills for Claude Code, Codex, Cursor and other coding agents
-- [Upgrading Laravel Schema Viewer](https://laranex.vercel.app/laravel-schema-viewer/upgrading): from v1 to v2
 
 ## License
 
