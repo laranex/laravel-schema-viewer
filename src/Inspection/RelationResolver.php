@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Inspection;
 
 use Closure;
+use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Eloquent\Model;
@@ -30,8 +31,11 @@ use ReflectionProperty;
 use Throwable;
 
 /**
- * Finds a model's relation methods and reads each one from the relation object it returns. No query runs: the methods
- * are called with every connection they may reach pretending, so one that also writes cannot change the database.
+ * Finds a model's relation methods and reads each one from the relation object it returns. Reading a relation runs the
+ * application's own code: the method, and whatever it calls. While it runs, every configured connection pretends, so
+ * queries are logged and never sent, and Eloquent model events are not dispatched. Anything else the code does (the
+ * cache, jobs, events, mail, HTTP calls, files) is not prevented here; schema-viewer:build fakes those in its own
+ * process.
  */
 final class RelationResolver
 {
@@ -55,6 +59,7 @@ final class RelationResolver
         private readonly ModelInspector $models,
         private readonly Application $app,
         private readonly ConnectionResolverInterface $connections,
+        private readonly Config $config,
     ) {}
 
     /**
@@ -66,10 +71,10 @@ final class RelationResolver
         $unresolved = [];
         $this->lines = [];
 
-        $this->pretending($this->reachable($model), function () use ($model, &$relations, &$unresolved): void {
+        $this->pretend(function () use ($model, &$relations, &$unresolved): void {
             foreach ($this->candidates($model) as $name => $call) {
                 try {
-                    $relation = Relation::noConstraints($call);
+                    $relation = Model::withoutEvents(fn (): mixed => Relation::noConstraints($call));
 
                     if (! $relation instanceof Relation) {
                         $unresolved[] = new UnresolvedRelation($model::class, $name, 'It returned '.get_debug_type($relation).' instead of a relation.', $this->package($model, $name));
@@ -87,6 +92,57 @@ final class RelationResolver
         $this->lines = [];
 
         return ['relations' => $relations, 'unresolved' => $unresolved];
+    }
+
+    /**
+     * A model that could not be constructed or inspected, noted like a relation that could not be read.
+     *
+     * @param  class-string  $class
+     */
+    public function unreadable(string $class, Throwable $e): UnresolvedRelation
+    {
+        return new UnresolvedRelation($class, '__construct', $this->reason($e));
+    }
+
+    /**
+     * Run the callback with every configured connection, and every connection already open, pretending: queries are
+     * logged, never sent to the database. Connections opened only for this are closed again afterwards. What the
+     * callback throws is rethrown only after every pretend() has returned, since Laravel 10, 11 and 12 before 12.41
+     * leave a connection pretending (and before 13.33 logging queries) when its callback throws. Connections that
+     * already pretend, as in a nested call, are left as they are.
+     *
+     * @param  Closure(): void  $callback
+     */
+    public function pretend(Closure $callback): void
+    {
+        $open = $this->openConnections();
+        $configured = $this->config->get('database.connections');
+        $names = array_values(array_unique([
+            $this->connections->getDefaultConnection(),
+            ...$open,
+            ...(is_array($configured) ? array_map('strval', array_keys($configured)) : []),
+        ]));
+        $failure = null;
+
+        try {
+            $this->pretendOn($names, function () use ($callback, &$failure): void {
+                try {
+                    $callback();
+                } catch (Throwable $e) {
+                    $failure = $e;
+                }
+            });
+        } finally {
+            if (method_exists($this->connections, 'purge')) {
+                foreach (array_diff($this->openConnections(), $open) as $name) {
+                    $this->connections->purge($name);
+                }
+            }
+        }
+
+        if ($failure instanceof Throwable) {
+            throw $failure;
+        }
     }
 
     /**
@@ -113,46 +169,15 @@ final class RelationResolver
     }
 
     /**
-     * The connections a relation method may reach: the default, the model's own and every connection already open.
+     * The names of the connections open now.
      *
      * @return list<string>
      */
-    private function reachable(Model $model): array
+    private function openConnections(): array
     {
-        $names = [$this->connections->getDefaultConnection(), $model->getConnectionName() ?? $this->connections->getDefaultConnection()];
-
-        if (method_exists($this->connections, 'getConnections')) {
-            foreach (array_keys((array) $this->connections->getConnections()) as $name) {
-                $names[] = (string) $name;
-            }
-        }
-
-        return array_values(array_unique($names));
-    }
-
-    /**
-     * Run the callback with each connection pretending: queries are logged, never sent to the database. What the
-     * callback throws is rethrown only after every pretend() has returned, since Laravel 10, 11 and 12 before 12.41
-     * leave a connection pretending (and before 13.33 logging queries) when its callback throws.
-     *
-     * @param  list<string>  $names
-     * @param  Closure(): void  $callback
-     */
-    private function pretending(array $names, Closure $callback): void
-    {
-        $failure = null;
-
-        $this->pretendOn($names, function () use ($callback, &$failure): void {
-            try {
-                $callback();
-            } catch (Throwable $e) {
-                $failure = $e;
-            }
-        });
-
-        if ($failure instanceof Throwable) {
-            throw $failure;
-        }
+        return method_exists($this->connections, 'getConnections')
+            ? array_map('strval', array_keys((array) $this->connections->getConnections()))
+            : [];
     }
 
     /**
@@ -173,6 +198,12 @@ final class RelationResolver
             $connection = $this->connections->connection($name);
         } catch (Throwable) {
             // A connection that cannot be opened cannot be written to either.
+            $this->pretendOn($names, $callback);
+
+            return;
+        }
+
+        if (method_exists($connection, 'pretending') && $connection->pretending()) {
             $this->pretendOn($names, $callback);
 
             return;

@@ -55,6 +55,9 @@ abstract class TestCase extends Orchestra
         $app['env'] = $this->environment;
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('k', 32)));
 
+        // Set first, so rebootWith() can point the viewer at other models.
+        $app['config']->set('schema-viewer.models', [__DIR__.'/Fixtures/Models']);
+
         foreach ($this->viewerConfig as $key => $value) {
             $app['config']->set('schema-viewer.'.$key, $value);
         }
@@ -81,7 +84,6 @@ abstract class TestCase extends Orchestra
                 'trust_server_certificate' => true,
             ]);
         }
-        $app['config']->set('schema-viewer.models', [__DIR__.'/Fixtures/Models']);
     }
 
     /**

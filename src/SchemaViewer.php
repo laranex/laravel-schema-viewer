@@ -129,35 +129,37 @@ class SchemaViewer
         return $gate->has('viewSchema') && $gate->forUser($request->user())->allows('viewSchema');
     }
 
+    /**
+     * Build the document. Every model is constructed and its relation methods called with every connection pretending
+     * (see RelationResolver); the tables are read afterwards. A model that cannot be constructed or inspected is noted
+     * as unresolved instead of failing the document.
+     */
     public function document(): SchemaDocument
     {
         $models = [];
         $relations = [];
         $unresolved = [];
 
-        $instances = [];
+        $this->relations->pretend(function () use (&$models, &$relations, &$unresolved): void {
+            $instances = [];
 
-        foreach ($this->finder->find($this->modelPaths()) as $class) {
-            /** @var Model $model */
-            $model = new $class;
-            $instances[] = $model;
-            $models[] = $this->models->inspect($model);
-        }
-
-        // Open every model's connection first, so relation methods run with all of them pretending.
-        foreach (array_unique(array_map(fn (Schema\ModelInfo $model): string => $model->connection, $models)) as $name) {
-            try {
-                $this->connections->connection($name);
-            } catch (Throwable) {
-                // The model's relations report the failure.
+            foreach ($this->finder->find($this->modelPaths()) as $class) {
+                try {
+                    /** @var Model $model */
+                    $model = new $class;
+                    $models[] = $this->models->inspect($model);
+                    $instances[] = $model;
+                } catch (Throwable $e) {
+                    $unresolved[] = $this->relations->unreadable($class, $e);
+                }
             }
-        }
 
-        foreach ($instances as $model) {
-            $found = $this->relations->resolve($model);
-            array_push($relations, ...$found['relations']);
-            array_push($unresolved, ...$found['unresolved']);
-        }
+            foreach ($instances as $model) {
+                $found = $this->relations->resolve($model);
+                array_push($relations, ...$found['relations']);
+                array_push($unresolved, ...$found['unresolved']);
+            }
+        });
 
         $connections = array_map(
             fn (string $name) => $this->database->inspect($name, $this->strings('schema-viewer.exclude_tables'), $this->strings('schema-viewer.framework_tables'), $this->packageTables()),

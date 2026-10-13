@@ -361,6 +361,16 @@ final class SchemaGraph
 
         foreach ($unresolved as $failure) {
             $model = $this->model($failure->model);
+
+            if ($failure->method === '__construct') {
+                $hints[] = new Hint(HintKind::UnresolvedRelation, '', '', sprintf(
+                    '%s could not be read: constructing it threw %s',
+                    $failure->model, $failure->reason,
+                ), relation: $failure->model.'::'.$failure->method);
+
+                continue;
+            }
+
             $hints[] = $failure->package === null
                 ? new Hint(HintKind::UnresolvedRelation, $model->connection ?? '', $model->table ?? '', sprintf(
                     '%s::%s() could not be read (the viewer calls it on a blank model, with no row loaded): %s',
