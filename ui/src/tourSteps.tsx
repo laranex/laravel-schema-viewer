@@ -45,17 +45,12 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'A table',
         body: (
             <ul>
-                <li>The header shows the table and the model that uses it.</li>
+                <li>The header names the table and its model; an amber number counts its hints.</li>
                 <li>
-                    <b>PK</b> marks the primary key, <b>FK</b> a foreign key, and <b>?</b> a nullable column.
-                </li>
-                <li>The right column shows the type, or the cast when the model casts it.</li>
-                <li>An amber number counts the hints for this table. Click the card to see everything about it.</li>
-                <li>
-                    The arrow folds the card to its key columns, then to its name. <b>Show</b> in the bar at the bottom of the diagram does it for every table (<kbd>C</kbd>).
+                    <b>PK</b>, <b>FK</b> and <b>?</b> mark the primary key, foreign keys and nullable columns; the right side shows each type or cast.
                 </li>
                 <li>
-                    Double-click a card to focus on it: only the table and its neighbors stay, one to three links away (<kbd>Shift F</kbd>).
+                    Click a card for everything about it, double-click to focus on it and its neighbors (<kbd>Shift F</kbd>). Its arrow folds it.
                 </li>
             </ul>
         ),
@@ -102,24 +97,54 @@ export const TOUR_STEPS: TourStep[] = [
         body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
     },
     {
-        target: '[data-tour="layers"]',
-        title: 'What the lines mean',
+        target: '[data-tour="view-relationships"]',
+        opens: 'relationships',
+        title: 'Relationships',
+        body: (
+            <>
+                <p>Each kind of line has its own look. Untick one to hide those lines; the button counts the hidden kinds.</p>
+                <ul>
+                    <li>
+                        <b>FK + relation</b> (green): a foreign key, and a model relation that uses it. All is well.
+                    </li>
+                    <li>
+                        <b>Relation only</b> (amber dashes): a relation without a foreign key, so rows can point at deleted ones.
+                    </li>
+                    <li>
+                        <b>FK only</b> (grey): a foreign key no model declares a relation for.
+                    </li>
+                    <li>
+                        <b>Through</b> (blue dots): a has-one-through or has-many-through relation, drawn across the table in between.
+                    </li>
+                </ul>
+            </>
+        ),
+    },
+    {
+        target: '[data-tour="view-tables"]',
+        opens: 'tables',
+        title: 'Tables',
+        body: (
+            <p>
+                <b>Framework tables</b> are Laravel's own, such as migrations, jobs, cache and sessions, plus Telescope and Pulse (<kbd>G</kbd>). <b>Package tables</b>, when your app has them, come from a known package such as
+                Passport or spatie/laravel-permission (<kbd>P</kbd>). Hide them to keep only your own tables on the diagram, in the Tables list and in search.
+            </p>
+        ),
+    },
+    {
+        target: '[data-tour="view-show"]',
+        opens: 'show',
+        title: 'Show',
         body: (
             <ul>
                 <li>
-                    <b>Green</b>: a foreign key that a relation also uses.
+                    <b>Relation names</b> labels every line with its methods and kind (<kbd>L</kbd>). Off, only the selected table's lines carry them.
                 </li>
                 <li>
-                    <b>Amber dashes</b>: a relation without a foreign key, so rows can point at deleted ones.
+                    <b>Columns</b>: <b>All</b> of them, only the <b>Keys</b> and the columns relations use, or only the table <b>Names</b> for the big picture (<kbd>C</kbd>). A card's own arrow folds just that card.
                 </li>
                 <li>
-                    <b>Grey</b>: a foreign key no model declares.
-                </li>
-                <li>
-                    <b>Blue dots</b>: a through relation.
-                </li>
-                <li>
-                    <b>Relationships</b> shows or hides each kind, <b>Tables</b> hides framework and package tables, and <b>Show</b> holds the relation names and how many columns each card shows.
+                    <b>Grid</b> shows or hides the dots behind the diagram.
                 </li>
             </ul>
         ),
@@ -138,6 +163,7 @@ export const TOUR_STEPS: TourStep[] = [
         target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
         menu: 'phone',
         opens: 'download',
+        extend: '[data-tour="menu-offline"]',
         title: 'Download',
         body: (
             <p>
@@ -160,7 +186,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Come back any time',
         body: (
             <p>
-                Press <b>?</b> in the bar, or the <kbd>?</kbd> key, to take the tour again.
+                Press the <b>?</b> button in the bar, or the <kbd>?</kbd> key, to take the tour again.
             </p>
         ),
     },

@@ -201,6 +201,14 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     // Pan mode: dragging anywhere moves the diagram, even over a table. The hand button switches it; holding Space
     // turns it on until the key is released.
     const [panMode, setPanMode] = useState(false);
+    // The dotted grid behind the diagram; remembered per browser.
+    const [grid, setGrid] = useState(() => stored('schema-viewer.grid', true, (v) => typeof v === 'boolean'));
+    const switchGrid = () => {
+        setGrid((on) => {
+            store('schema-viewer.grid', !on);
+            return !on;
+        });
+    };
     const [spacePan, setSpacePan] = useState(false);
     const panning = panMode || spacePan;
     const narrow = useNarrow();
@@ -252,22 +260,27 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const [tourLabels, setTourLabels] = useState(false);
     const onTourStep = useCallback((step: TourStep | null) => {
         setTourMenu(step?.menu);
-        setTourOpens(step?.opens);
+        // A short phone has no room for both an open floating-bar menu and the card; the step then shows the button only.
+        const roomFor = step?.opens === 'download' || !(window.innerWidth <= 760 && window.innerHeight < 760);
+        setTourOpens(roomFor ? step?.opens : undefined);
         setTourLabels(!!step?.labels);
         if (step?.closeUp && flow.getZoom() < 0.8) {
             flow.zoomTo(0.9);
         }
-        // Once the labels are drawn, bring the one nearest the middle to the middle, so the step shows it whole.
-        if (step?.labels) {
+        // Bring what the step shows to the middle, so it is whole on screen: the label nearest the middle once the labels
+        // are drawn, or the table nearest it (its header and first columns, when the card is taller than the screen).
+        if (step?.closeUp) {
             window.setTimeout(() => {
                 const cx = window.innerWidth / 2;
                 const cy = window.innerHeight / 2;
-                const nearest = [...document.querySelectorAll('.edge-label')]
+                const nearest = [...document.querySelectorAll(step.labels ? '.edge-label' : '.react-flow__node-table')]
                     .map((el) => el.getBoundingClientRect())
                     .sort((a, b) => Math.hypot(a.x + a.width / 2 - cx, a.y + a.height / 2 - cy) - Math.hypot(b.x + b.width / 2 - cx, b.y + b.height / 2 - cy))[0];
                 if (nearest) {
-                    const at = flow.screenToFlowPosition({ x: nearest.x + nearest.width / 2, y: nearest.y + nearest.height / 2 });
-                    flow.setCenter(at.x, at.y, { zoom: flow.getZoom() });
+                    const at = flow.screenToFlowPosition({ x: nearest.x + nearest.width / 2, y: nearest.y + Math.min(nearest.height, window.innerHeight * 0.4) / 2 });
+                    // On a phone the card takes the top of the screen, so a table goes lower, clear of it.
+                    const lower = !step.labels && window.innerWidth <= 760 ? (window.innerHeight * 0.18) / flow.getZoom() : 0;
+                    flow.setCenter(at.x, at.y - lower, { zoom: flow.getZoom() });
                 }
             }, 80);
         }
@@ -344,7 +357,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         hotkey: t.hotkey,
     });
     const lineToggles = layerToggles.filter((t) => t.swatch).map(asMenuToggle);
-    const showToggles = layerToggles.filter((t) => t.key === 'allLabels').map(asMenuToggle);
+    const showToggles = [...layerToggles.filter((t) => t.key === 'allLabels').map(asMenuToggle), { label: 'Grid', checked: grid, onChange: switchGrid }];
     const tableToggles = layerToggles.filter((t) => t.key === 'framework' || t.key === 'package').map(asMenuToggle);
     const tablesById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), e])), [visibleTables]);
 
@@ -917,6 +930,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const allConnectionsGroup = {
         label: <span className="ui-menu__heading">Use it offline</span>,
         items: [{ label: 'This page as HTML', hint: 'Opens in any browser, offline, with every connection', onSelect: downloadHtml }],
+        tour: 'menu-offline',
     };
 
     // The server keeps the schema it read until a model, the config or a migration changes; this reads it again, e.g.
@@ -1191,7 +1205,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 maxZoom={2}
                                 proOptions={{ hideAttribution: true }}
                             >
-                                <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
+                                {grid && <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />}
                                 {/* Below 1100px the diagram needs the room more than an overview does. */}
                                 {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
                             </ReactFlow>
@@ -1200,7 +1214,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                         <FloatButton label="Zoom out" keys="−" shortcut="-" onClick={() => flow.zoomOut({ duration: 150 })}>
                                             <path d="M3 8 H13" />
                                         </FloatButton>
-                                        {!narrow && <ZoomLevel onReset={() => flow.zoomTo(1, { duration: 200 })} />}
+                                        {!narrow && <ZoomLevel onZoom={(z) => flow.zoomTo(z, { duration: 200 })} />}
                                         <FloatButton label="Zoom in" keys="+" shortcut="+" onClick={() => flow.zoomIn({ duration: 150 })}>
                                             <path d="M8 3 V13 M3 8 H13" />
                                         </FloatButton>
@@ -1229,10 +1243,13 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     </div>
                                     <span className="float-bar__divider" aria-hidden="true" />
                                     <div className="float-bar__group" role="group" aria-label="Show on the diagram" data-tour="layers">
-                                    <ViewMenu label="Relationships" toggles={lineToggles} />
-                                    <ViewMenu label="Tables" toggles={tableToggles} />
+                                    <ViewMenu label="Relationships" icon={<path d="M2 4.5 H6.5 V11.5 H14 M11.5 9 L14 11.5 L11.5 14" />} toggles={lineToggles} tour="relationships" forceOpen={tourOpens === 'relationships'} />
+                                    <ViewMenu label="Tables" icon={<path d="M2.5 3 H13.5 V13 H2.5 Z M2.5 6.3 H13.5 M2.5 9.6 H13.5 M6.5 6.3 V13" />} toggles={tableToggles} tour="tables" forceOpen={tourOpens === 'tables'} />
                                     <ViewMenu
                                         label="Show"
+                                        icon={<path d="M1.5 8 C3.5 4.5 5.6 3.2 8 3.2 C10.4 3.2 12.5 4.5 14.5 8 C12.5 11.5 10.4 12.8 8 12.8 C5.6 12.8 3.5 11.5 1.5 8 Z M8 6 A2 2 0 1 1 7.99 6 Z" />}
+                                        tour="show"
+                                        forceOpen={tourOpens === 'show'}
                                         toggles={showToggles}
                                         counted={false}
                                         choice={{
@@ -1245,11 +1262,9 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     />
                                     </div>
                                     <span className="float-bar__divider" aria-hidden="true" />
-                                    <Tooltip content={<>Take the tour <kbd>?</kbd></>} side="top">
-                                        <button type="button" className="float-bar__help" aria-label="Take the tour" aria-keyshortcuts="?" data-tour="help" onClick={() => setTourOpen(true)}>
-                                            ?
-                                        </button>
-                                    </Tooltip>
+                                    <FloatButton label="Take the tour" keys="?" shortcut="?" onClick={() => setTourOpen(true)} tour="help">
+                                        <path d="M5.3 5.4 a2.7 2.7 0 1 1 3.9 2.4 c-0.75 0.38 -1.2 0.95 -1.2 1.8 V10.4 M8 13.3 V13.4" />
+                                    </FloatButton>
                                 </div>
                             {focus && (
                                 <div className="focus-bar" role="group" aria-label="Focus mode">
@@ -1417,13 +1432,45 @@ function FloatButton({ label, keys, shortcut, pressed, onClick, tour, children }
     );
 }
 
-// The current zoom; clicking it goes back to 100%. Its own component, so zooming re-renders only this.
-function ZoomLevel({ onReset }: { onReset: () => void }) {
+// The current zoom. Click it to type one (2–200%), Enter to apply, Escape to cancel. Its own component, so zooming
+// re-renders only this.
+function ZoomLevel({ onZoom }: { onZoom: (zoom: number) => void }) {
     const { zoom } = useViewport();
+    const [editing, setEditing] = useState<string | null>(null);
+    const percent = Math.round(zoom * 100);
+    const apply = () => {
+        const value = Number.parseFloat(editing ?? '');
+        if (Number.isFinite(value)) {
+            onZoom(Math.min(200, Math.max(2, value)) / 100);
+        }
+        setEditing(null);
+    };
+    if (editing !== null) {
+        return (
+            <input
+                className="float-bar__zoom-input"
+                aria-label="Zoom in percent"
+                inputMode="numeric"
+                autoFocus
+                value={editing}
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setEditing(e.target.value.replace(/[^\d.]/g, ''))}
+                onBlur={apply}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        apply();
+                    } else if (e.key === 'Escape') {
+                        e.stopPropagation();
+                        setEditing(null);
+                    }
+                }}
+            />
+        );
+    }
     return (
-        <Tooltip content="Zoom to 100%" side="top">
-            <button type="button" className="float-bar__zoom" aria-label={`Zoom ${Math.round(zoom * 100)}%, go to 100%`} onClick={onReset}>
-                {Math.round(zoom * 100)}%
+        <Tooltip content="Type a zoom" side="top">
+            <button type="button" className="float-bar__zoom" aria-label={`Zoom ${percent}%, type another`} onClick={() => setEditing(String(percent))}>
+                {percent}%
             </button>
         </Tooltip>
     );
@@ -1431,17 +1478,26 @@ function ZoomLevel({ onReset }: { onReset: () => void }) {
 
 // A menu of switches in the floating bar, and optionally one choice below them. It notes how many layers are hidden,
 // so one is not forgotten; a menu of switches that only change how things look (counted: false) doesn't.
-function ViewMenu({ label, toggles, choice, counted = true }: { label: string; toggles: MenuToggle[]; choice?: MenuChoice; counted?: boolean }) {
+// tour: names the button and the open menu for the guided tour, which holds the menu open (forceOpen) for its step.
+function ViewMenu({ label, icon, toggles, choice, counted = true, tour, forceOpen = false }: { label: string; icon: ReactNode; toggles: MenuToggle[]; choice?: MenuChoice; counted?: boolean; tour: string; forceOpen?: boolean }) {
     const off = counted ? toggles.filter((t) => !t.checked).length : 0;
+    const [open, setOpen] = useState(false);
     return (
+        <span className="float-bar__menu" data-tour={`view-${tour}`}>
         <Menu
+            open={open || forceOpen}
+            onOpenChange={(o) => !forceOpen && setOpen(o)}
+            tour={`${tour}-menu`}
             label={label}
             triggerClass="button button--with-icon"
             trigger={
                 <>
-                    {label}
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" className="ui-icon">
+                        {icon}
+                    </svg>
+                    <span className="float-bar__label">{label}</span>
                     {off > 0 && <span className="toolbar__off">{off} off</span>}
-                    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className="ui-icon">
+                    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className="ui-icon float-bar__chevron">
                         <path d="M4 6 L8 10 L12 6" />
                     </svg>
                 </>
@@ -1450,6 +1506,7 @@ function ViewMenu({ label, toggles, choice, counted = true }: { label: string; t
             toggles={{ label, items: toggles }}
             afterToggles={choice}
         />
+        </span>
     );
 }
 

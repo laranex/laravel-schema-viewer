@@ -9,8 +9,11 @@ export type TourStep = {
     // The step explains something inside the ⋯ menu, which the tour opens for it: on every screen, or only on phones
     // (where the toolbar's controls move into the menu).
     menu?: 'always' | 'phone';
-    // A toolbar menu the tour opens beside the spotlighted button on wider screens, so the step shows what is inside it.
-    opens?: 'download';
+    // A menu the tour opens beside the spotlighted button, so the step shows what is inside it: Download in the toolbar
+    // on wider screens, and the floating bar's menus on every screen.
+    opens?: 'download' | 'relationships' | 'tables' | 'show';
+    // On phones, where the step's part sits in the ⋯ menu, more of the menu to spotlight with it.
+    extend?: string;
     // Relation names show on every line while this step is open, even when they are switched off.
     labels?: boolean;
     // The diagram zooms in to a readable size first, when it shows more than it can label.
@@ -131,7 +134,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
     // Menu steps count when the menu exists (phones): their targets only appear once the tour opens it.
     // Steps that pick their element when shown (a table, a label) always count, so the total never depends on timing.
     const available = useMemo(
-        () => (open ? steps.filter((s) => !s.target || typeof s.target === 'function' || find(s.target) || s.menu === 'always' || (s.menu === 'phone' && menuSteps) || (s.opens !== undefined && !menuSteps)) : []),
+        () => (open ? steps.filter((s) => !s.target || typeof s.target === 'function' || find(s.target) || s.menu === 'always' || (s.menu === 'phone' && menuSteps) || (s.opens === 'download' && !menuSteps)) : []),
         [open, steps, menuSteps],
     );
     const [index, setIndex] = useState(0);
@@ -157,10 +160,13 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
         let frame = 0;
         const update = () => {
             const el = find(step.target);
-            const next = el ? rectOf(el) : null;
+            const extra = el && menuSteps && step.extend ? document.querySelector(step.extend) : null;
+            const next = el ? (extra ? union(rectOf(el), extra.getBoundingClientRect()) : rectOf(el)) : null;
             const same = (prev: Rect | null, n: Rect | null) => (prev && n && Math.abs(prev.x - n.x) + Math.abs(prev.y - n.y) + Math.abs(prev.width - n.width) + Math.abs(prev.height - n.height) < 1 ? prev : n);
-            setRect((prev) => same(prev, next));
             const opened = step.opens ? document.querySelector(`[data-tour="${step.opens}-menu"]`) : null;
+            // A floating-bar menu is part of what the step explains, so it is lit with its button; Download's stays dimmed.
+            const lit = next && opened && step.opens !== 'download' ? union(next, opened.getBoundingClientRect()) : next;
+            setRect((prev) => same(prev, lit));
             const wide = next && opened ? union(next, opened.getBoundingClientRect()) : null;
             setAround((prev) => same(prev, wide));
             frame = window.requestAnimationFrame(update);
@@ -178,7 +184,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
         revealSoon();
         update();
         return () => window.cancelAnimationFrame(frame);
-    }, [open, step]);
+    }, [open, step, menuSteps]);
 
     useLayoutEffect(() => {
         if (cardRef.current) {

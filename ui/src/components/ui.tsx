@@ -111,7 +111,7 @@ export function LazyTooltip(props: { content: ReactNode; children: ReactElement<
 
 export type MenuItem = { label: string; hint?: string; shortcut?: string; onSelect: () => void; tour?: string };
 
-export type MenuGroup = { label?: ReactNode; items: MenuItem[] };
+export type MenuGroup = { label?: ReactNode; items: MenuItem[]; tour?: string };
 
 export type MenuChoice = { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void; hint?: ReactNode };
 
@@ -231,7 +231,7 @@ export function Menu({
                     </MenuPrimitive.Group>
                     )}
                     {groups.map((group, i) => (
-                        <MenuPrimitive.Group key={i}>
+                        <MenuPrimitive.Group key={i} data-tour={group.tour}>
                             <MenuPrimitive.Separator className="ui-menu__separator" />
                             {group.label && <MenuPrimitive.Label className="ui-menu__label">{group.label}</MenuPrimitive.Label>}
                             {group.items.map((item) => (

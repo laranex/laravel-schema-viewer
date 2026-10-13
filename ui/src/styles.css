@@ -169,6 +169,10 @@ code {
     white-space: nowrap;
 }
 
+.float-bar__menu {
+    display: inline-flex;
+}
+
 .float-bar__group {
     display: flex;
     align-items: center;
@@ -183,8 +187,28 @@ code {
 }
 
 .float-bar .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
     border-color: transparent;
     background: transparent;
+    line-height: 1;
+}
+
+.float-bar .button--icon {
+    width: 32px;
+    padding: 0;
+}
+
+.float-bar .button svg {
+    display: block;
+    flex: none;
+}
+
+/* The menu's own icon: on a phone it stands alone, its name in the label for screen readers. */
+.float-bar__label {
+    line-height: 1;
 }
 
 .float-bar .button:hover,
@@ -198,8 +222,12 @@ code {
 }
 
 .float-bar__zoom {
-    min-width: 46px;
-    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 50px;
+    height: 32px;
+    line-height: 1;
     padding: 0 4px;
     border: 0;
     border-radius: 7px;
@@ -208,6 +236,18 @@ code {
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     cursor: pointer;
+}
+
+.float-bar__zoom-input {
+    width: 50px;
+    height: 28px;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background: var(--surface);
+    color: inherit;
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
 }
 
 .float-bar__zoom:hover {
@@ -234,33 +274,35 @@ code {
         gap: 4px;
         padding: 0 7px;
     }
-    /* The menus' chevrons give way to the labels. */
-    .float-bar .button--with-icon > svg {
-        display: none;
+    /* Icons only: the menus keep their icon, the names go to screen readers. */
+    .float-bar .button--with-icon {
+        width: 36px;
+        padding: 0;
+    }
+    .float-bar__label,
+    .float-bar .button--with-icon > .float-bar__chevron {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+    .float-bar .toolbar__off {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        min-width: 8px;
+        height: 8px;
+        padding: 0;
+        font-size: 0;
+    }
+    .float-bar__menu .button {
+        position: relative;
     }
     .float-bar__divider {
         margin: 0 2px;
     }
-}
-
-/* The tour's button: the bar's one filled button, so newcomers find it. */
-.float-bar__help {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    margin: 0 2px;
-    border: 0;
-    border-radius: 50%;
-    background: var(--accent);
-    color: #062b24;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-}
-
-.float-bar__help:hover {
-    background: color-mix(in srgb, var(--accent) 88%, white);
 }
 
 /* Pan mode: the hand shows over the whole diagram, tables included. */
