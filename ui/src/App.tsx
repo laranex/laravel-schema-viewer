@@ -34,6 +34,9 @@ type TableRef = { connection: string; table: string };
 // The connection picker's value for every connection at once.
 const ALL = '*';
 
+// From this many tables on screen, edges are drawn thin and muted until a table is selected.
+const DENSE = 60;
+
 type Layers = Record<EdgeKind, boolean> & { framework: boolean; package: boolean; allLabels: boolean };
 
 const nodeTypes = { table: TableNodeView, external: ExternalNodeView, region: RegionNodeView };
@@ -181,7 +184,16 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const connection = selected?.connection ?? scopeConnections[0];
     const [tab, setTab] = useState<PanelTab>(() => (linked.table ? 'table' : 'tables'));
     const [query, setQuery] = useState('');
-    const [layers, setLayers] = useState<Layers>({ both: true, relation: true, foreign_key: true, through: true, framework: true, package: true, allLabels: true });
+    // A large schema starts with relation names on the selected table only; on every edge they would cover the diagram.
+    const [layers, setLayers] = useState<Layers>(() => ({
+        both: true,
+        relation: true,
+        foreign_key: true,
+        through: true,
+        framework: true,
+        package: true,
+        allLabels: doc.connections.reduce((n, c) => n + schema.tables(c.name).length, 0) <= DENSE,
+    }));
     const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
     const [toast, setToast] = useState<string | null>(null);
     const [layoutVersion, setLayoutVersion] = useState(0);
@@ -976,7 +988,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     return (
         <EdgeHover.Provider value={hover}>
             <TableActions.Provider value={tableActions}>
-                <div className={`app${keysOn ? '' : ' keys-off'}${onRefresh ? ' has-refresh' : ''}`}>
+                <div className={`app${keysOn ? '' : ' keys-off'}${onRefresh ? ' has-refresh' : ''}${shownTables.length > DENSE ? ' is-dense' : ''}${selected ? ' has-selection' : ''}`}>
                     <EdgeMarkers />
                     <header className="toolbar">
                         <div className="toolbar__brand">

@@ -8,8 +8,9 @@ export type Positions = Record<string, { x: number; y: number }>;
 // Layouts already worked out, per schema, by the tables and their heights: going back to a view is instant.
 const layouts = new WeakMap<Schema, Map<string, Positions>>();
 const KEEP = 24;
-// Above this many tables a connection's columns are capped.
+// Above this many tables a connection is always packed into columns; from PACKABLE on, when layers come out tall.
 const LARGE = 40;
+const PACKABLE = 12;
 
 // Layered layout, referenced tables to the left of the tables that point at them.
 export async function autoLayout(schema: Schema, connection: string, visible: Set<string>, sizes: Record<string, number>): Promise<Positions> {
@@ -40,21 +41,59 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
             'elk.spacing.componentComponent': '80',
             'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
             'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-            // A large schema puts dozens of tables in the column beside a table most others point at (users, say),
-            // and the diagram becomes one tall strip; capping each column spreads them over more columns instead.
-            ...(ids.length > LARGE ? { 'elk.layered.layering.strategy': 'COFFMAN_GRAHAM', 'elk.layered.layering.coffmanGraham.layerBound': String(Math.ceil(Math.sqrt(ids.length) * 0.7)), 'elk.aspectRatio': '1.6', 'elk.layered.compaction.connectedComponents': 'true' } : {}),
         },
         children: ids.map((id) => ({ id, width: NODE_WIDTH, height: sizes[id] ?? 120 })),
         edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
     });
 
-    const positions: Positions = {};
+    let positions: Positions = {};
     result.children?.forEach((c) => {
         positions[c.id] = { x: c.x ?? 0, y: c.y ?? 0 };
     });
+    if (ids.length > LARGE || (ids.length >= PACKABLE && tallerThanWide(positions, sizes))) {
+        positions = packColumns(positions, sizes);
+    }
     cache.set(key, positions);
     if (cache.size > KEEP) {
         cache.delete(cache.keys().next().value as string);
+    }
+    return positions;
+}
+
+function tallerThanWide(positions: Positions, sizes: Record<string, number>): boolean {
+    const boxes = Object.entries(positions);
+    const width = Math.max(...boxes.map(([, p]) => p.x)) - Math.min(...boxes.map(([, p]) => p.x)) + NODE_WIDTH;
+    const height = Math.max(...boxes.map(([id, p]) => p.y + (sizes[id] ?? 120))) - Math.min(...boxes.map(([, p]) => p.y));
+    return height > width;
+}
+
+// Vertical space between two cards in a packed column.
+const STACK_GAP = 48;
+
+// A large schema laid out in layers puts dozens of tables in the column beside a table most others point at (users,
+// say), and the diagram becomes one tall strip. Packed columns keep the layered order, so referenced tables stay to the
+// left and related tables stay close, but fill evenly sized columns until the diagram is about a screen's shape.
+function packColumns(layered: Positions, sizes: Record<string, number>): Positions {
+    const order = Object.entries(layered)
+        .sort(([, a], [, b]) => a.x - b.x || a.y - b.y)
+        .map(([id]) => id);
+    const heightOf = (id: string) => (sizes[id] ?? 120) + STACK_GAP;
+    const total = order.reduce((sum, id) => sum + heightOf(id), 0);
+    const step = NODE_WIDTH + GAP;
+    // Columns for a width about 1.6 times the height.
+    const columns = Math.max(1, Math.round(Math.sqrt((1.6 * total) / step)));
+    const target = total / columns;
+
+    const positions: Positions = {};
+    let column = 0;
+    let y = 0;
+    for (const id of order) {
+        if (y > 0 && y + heightOf(id) / 2 > target && column < columns - 1) {
+            column++;
+            y = 0;
+        }
+        positions[id] = { x: column * step, y };
+        y += heightOf(id);
     }
     return positions;
 }
