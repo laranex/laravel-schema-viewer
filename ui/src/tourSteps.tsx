@@ -184,7 +184,6 @@ export const TOUR_STEPS: TourStep[] = [
     {
         target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
         menu: 'phone',
-        extend: '[data-tour="menu-offline"]',
         title: 'Download',
         body: (
             <p>

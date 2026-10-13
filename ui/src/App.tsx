@@ -18,6 +18,7 @@ import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
 import { Dialog, Menu, Select, Tooltip, TooltipProvider, type MenuChoice, type MenuToggle } from './components/ui';
 import type { Highlight } from './components/Browse';
+import { DownloadDialog, type ExportFormat } from './components/DownloadDialog';
 import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
@@ -235,8 +236,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const [panelWidth, setPanelWidth] = useState<number | null>(() => stored('schema-viewer.panel-width', null, (v) => typeof v === 'number' && v >= 280));
     const scopeConnections = useMemo(() => (scope === ALL ? doc.connections.map((c) => c.name) : [scope]), [doc, scope]);
     const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
-    // The connection the panel and the per-connection downloads talk about: the selected table's, else the one in view.
-    const connection = selected?.connection ?? scopeConnections[0];
     const [tab, setTab] = useState<PanelTab>(() => (linked.table || linked.highlight ? 'details' : 'browse'));
     const [query, setQuery] = useState('');
     // A large schema starts with relation names on the selected table only; on every edge they would cover the diagram.
@@ -1122,7 +1121,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
 
     // The server builds the file, so a large schema never has to fit in the clipboard or the page's memory. A static
     // export has no server: it carries the files, and JSON is the connection itself, as the server writes it.
-    const download = (format: ExportFormat) => {
+    const download = (format: ExportFormat, connection: string) => {
         if (downloads) {
             const content = format === 'json' ? `${JSON.stringify(doc.connections.find((c) => c.name === connection), null, 4)}\n` : downloads[connection]?.[format];
             if (content === undefined) {
@@ -1159,12 +1158,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         );
     };
 
-    // Below the per-connection formats, under its own heading: the HTML file covers every connection.
-    const allConnectionsGroup = {
-        label: <span className="ui-menu__heading">Use it offline</span>,
-        items: [{ label: 'This page as HTML', hint: 'Opens in any browser, offline, with every connection', onSelect: downloadHtml }],
-        tour: 'menu-offline',
-    };
 
     // The server keeps the schema it read until a model, the config or a migration changes; this reads it again, e.g.
     // after a table was altered by hand.
@@ -1190,16 +1183,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         ...(doc.connections.length > 1
             ? [{ value: ALL, label: 'All connections', hint: `${doc.connections.length} connections · ${doc.connections.reduce((n, c) => n + c.tables.length, 0)} tables` }]
             : []),
-    ];
-
-    const downloadHeading = (
-        <span className="ui-menu__heading">
-            Download <code>{connection}</code> connection
-        </span>
-    );
-
-    const actions = [
-        ...EXPORTS.map((e) => ({ label: e.label, hint: e.hint, tour: undefined, run: () => download(e.format) })),
     ];
 
     const toggle = (key: keyof Layers) => setLayers((l) => ({ ...l, [key]: !l[key] }));
@@ -1336,9 +1319,8 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                         <circle cx="19" cy="12" r="1.8" />
                                     </svg>
                                 }
-                                itemsLabel={downloadHeading}
-                                items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
-                                groups={[allConnectionsGroup, { items: [{ label: dark ? 'Light mode' : 'Dark mode', onSelect: switchTheme }, { label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
+                                items={[{ label: 'Download…', hint: 'Diagrams, references and an offline page', onSelect: () => setDownloadOpen(true) }]}
+                                groups={[{ items: [{ label: dark ? 'Light mode' : 'Dark mode', onSelect: switchTheme }, { label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
                                 open={menuOpen || tourMenu === 'phone'}
                                 onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
                                 choice={{
@@ -1370,24 +1352,12 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     }
                                 />
                                 <div className="toolbar__group" data-tour="actions">
-                                    <Menu
-                                        label="Download"
-                                        triggerClass="button button--with-icon"
-                                        trigger={
-                                            <>
-                                                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
-                                                    <path d="M8 2.5 V10 M4.5 6.5 L8 10 L11.5 6.5 M2.5 13.5 H13.5" />
-                                                </svg>
-                                                Download
-                                            </>
-                                        }
-                                        open={downloadOpen || (!narrow && tourOpens === 'download')}
-                                        onOpenChange={(o) => !tourOpens && setDownloadOpen(o)}
-                                        tour="download-menu"
-                                        itemsLabel={downloadHeading}
-                                        items={EXPORTS.map((e) => ({ label: e.label, hint: e.hint, onSelect: () => download(e.format) }))}
-                                        groups={[allConnectionsGroup]}
-                                    />
+                                    <button type="button" className="button button--with-icon" onClick={() => setDownloadOpen(true)}>
+                                        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
+                                            <path d="M8 2.5 V10 M4.5 6.5 L8 10 L11.5 6.5 M2.5 13.5 H13.5" />
+                                        </svg>
+                                        Download
+                                    </button>
                                 </div>
                                 <Tooltip content={dark ? 'Light mode' : 'Dark mode'} side="bottom">
                                     <button type="button" className="button button--icon" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={switchTheme}>
@@ -1621,6 +1591,14 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                         />
                     </main>
 
+                    <DownloadDialog
+                        open={downloadOpen}
+                        onOpenChange={setDownloadOpen}
+                        connections={doc.connections.map((c) => ({ name: c.name, tables: c.tables.length }))}
+                        initial={highlight?.connection ?? selected?.connection ?? (scope === ALL ? doc.connections[0].name : scope)}
+                        onDownload={download}
+                        onDownloadHtml={downloadHtml}
+                    />
                     <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} keysOn={keysOn} onKeysOn={switchKeys} />
                     <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
 
@@ -1636,7 +1614,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
 }
 
 
-type ExportFormat = 'mermaid' | 'dbml' | 'markdown' | 'json';
 
 const EXTENSIONS: Record<ExportFormat, string> = { mermaid: 'mmd', dbml: 'dbml', markdown: 'md', json: 'json' };
 
@@ -1650,12 +1627,6 @@ function save(href: string, name: string) {
 }
 
 // The database schema of the current connection (tables, columns, keys, indexes, foreign keys), without the Laravel side.
-const EXPORTS: { format: ExportFormat; label: string; hint: string }[] = [
-    { format: 'mermaid', label: 'Mermaid', hint: 'An ER diagram for READMEs and pull requests' },
-    { format: 'dbml', label: 'DBML', hint: 'For dbdiagram.io and other DBML tools' },
-    { format: 'markdown', label: 'Markdown', hint: 'A readable reference of every table' },
-    { format: 'json', label: 'JSON', hint: 'The tables as data, for scripts and tools' },
-];
 
 const COLUMN_CHOICES: Record<Fold, { label: string; hint: string }> = {
     all: { label: 'All', hint: 'Every column of every table' },

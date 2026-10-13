@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { relationKind, relationLabel, shortClass, type Schema } from '../graph';
 import { Browse, type BrowseMode, type Highlight } from './Browse';
 import { HighlightDetails } from './Details';
-import { Tab, TabList, TabPanel, Tabs, Tooltip } from './ui';
+import { Dialog, Tab, TabList, TabPanel, Tabs, Tooltip } from './ui';
 import type { Hint, IgnoreRule, Relation, Source, Table } from '../types';
 
 export type PanelTab = 'browse' | 'details' | 'hints';
@@ -207,6 +207,7 @@ function php(rule: IgnoreRule): string {
 // The hints.ignore rules that leave a hint out, each ready to copy.
 export function IgnoreRules({ hint }: { hint: Hint }) {
     const [copied, setCopied] = useState<string | null>(null);
+    const [open, setOpen] = useState(false);
     if (!hint.ignore) {
         return null;
     }
@@ -232,28 +233,37 @@ export function IgnoreRules({ hint }: { hint: Hint }) {
         );
     };
     return (
-        <details className="ignore">
-            <summary>Ignore…</summary>
-            <p className="ignore__help">
-                Add a rule to <code>hints.ignore</code> in <code>config/schema-viewer.php</code>:
-            </p>
-            <ul className="ignore__rules">
-                {unique.map(([key, label, rule]) => {
-                    const code = php(rule);
-                    return (
-                        <li key={key}>
-                            <span className="ignore__label">{label}</span>
-                            <span className="ignore__row">
-                                <code>{code}</code>
-                                <button type="button" className="button button--small" onClick={() => copy(key, code)} aria-label={`Copy the rule: ${label}`}>
-                                    {copied === key ? 'Copied' : 'Copy'}
-                                </button>
-                            </span>
-                        </li>
-                    );
-                })}
-            </ul>
-        </details>
+        <>
+            <button type="button" className="link-button ignore__open" onClick={() => setOpen(true)}>
+                Ignore…
+            </button>
+            <Dialog open={open} onOpenChange={setOpen} title="Ignore this hint">
+                <div className="ignore">
+                    <p className="ignore__hint">
+                        <strong>{HINT_TITLE[hint.kind]}.</strong> {hint.message}
+                    </p>
+                    <p className="ignore__help">
+                        Add one of these rules to <code>hints.ignore</code> in <code>config/schema-viewer.php</code>, from the narrowest to the widest:
+                    </p>
+                    <ul className="ignore__rules">
+                        {unique.map(([key, label, rule]) => {
+                            const code = php(rule);
+                            return (
+                                <li key={key}>
+                                    <span className="ignore__label">{label}</span>
+                                    <span className="ignore__row">
+                                        <code>{code}</code>
+                                        <button type="button" className="button button--small" onClick={() => copy(key, code)} aria-label={`Copy the rule: ${label}`}>
+                                            {copied === key ? 'Copied' : 'Copy'}
+                                        </button>
+                                    </span>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+            </Dialog>
+        </>
     );
 }
 

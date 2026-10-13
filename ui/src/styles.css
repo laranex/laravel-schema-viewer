@@ -875,6 +875,88 @@ button:disabled {
     color: var(--muted);
 }
 
+/* Download dialog */
+
+.downloads {
+    display: grid;
+    gap: 18px;
+}
+
+.downloads__heading {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.downloads__heading code {
+    color: var(--fg);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.downloads__connections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.downloads__connection {
+    display: grid;
+    gap: 1px;
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+}
+
+.downloads__connection .muted {
+    font-size: var(--text-xs);
+}
+
+.downloads__connection[aria-checked='true'] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.downloads__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+}
+
+.downloads__item {
+    display: grid;
+    gap: 3px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+}
+
+.downloads__item:hover {
+    border-color: var(--accent);
+    background: var(--surface-2);
+}
+
+.downloads__item .muted {
+    font-size: var(--text-xs);
+}
+
+.downloads__item--wide {
+    width: 100%;
+}
+
 /* Browse tab */
 
 .browse__modes {
@@ -1270,9 +1352,9 @@ button:disabled {
 }
 
 .hint__head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: grid;
+    justify-items: start;
+    gap: 2px;
 }
 
 .hint__severity {
@@ -2569,10 +2651,9 @@ a.source--link:focus-visible .ui-icon {
 /* Ignore rules under a hint */
 
 .hint__actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 4px 16px;
+    display: grid;
+    justify-items: start;
+    gap: 4px;
 }
 
 .ignore {
@@ -2580,12 +2661,15 @@ a.source--link:focus-visible .ui-icon {
     min-width: 0;
 }
 
-.hint__actions .ignore[open] {
-    flex-basis: 100%;
+
+.callout .ignore__open {
+    display: block;
+    margin-top: 6px;
 }
 
-.callout .ignore {
-    margin-top: 6px;
+.ignore__hint {
+    margin: 0 0 10px;
+    font-size: var(--text-sm);
 }
 
 .ignore > summary {
