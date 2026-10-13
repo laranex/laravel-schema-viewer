@@ -1517,9 +1517,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     />
                                     </div>
                                     <span className="float-bar__divider" aria-hidden="true" />
-                                    <FloatButton label="Copy a link to this view" keys="Shift C" shortcut="Shift+C" onClick={copyLink} tour="copy">
-                                        <path d="M6.8 9.2 a2.6 2.6 0 0 0 3.7 0 l2.4 -2.4 a2.6 2.6 0 0 0 -3.7 -3.7 l-0.9 0.9 M9.2 6.8 a2.6 2.6 0 0 0 -3.7 0 l-2.4 2.4 a2.6 2.6 0 0 0 3.7 3.7 l0.9 -0.9" />
-                                    </FloatButton>
                                     <FloatButton label="Take the tour" keys="?" shortcut="?" onClick={() => setTourOpen(true)} tour="help">
                                         <path d="M5.3 5.4 a2.7 2.7 0 1 1 3.9 2.4 c-0.75 0.38 -1.2 0.95 -1.2 1.8 V10.4 M8 13.3 V13.4" />
                                     </FloatButton>
@@ -1587,6 +1584,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                             focusedOn={focus?.on ?? null}
                             onFocusHighlight={focusHighlight}
                             onLeaveFocus={endFocus}
+                            onCopyLink={copyLink}
                             connections={scopeConnections}
                             tables={visibleTables}
                             selected={selected}

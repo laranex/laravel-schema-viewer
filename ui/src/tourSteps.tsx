@@ -130,16 +130,6 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: '[data-tour="copy"]',
-        title: 'Share this view',
-        body: (
-            <p>
-                Copies a link to exactly what you see: the connection, the table, relationship or column you picked, focus mode, the columns shown, and where the diagram is zoomed (<kbd>Shift C</kbd>). It
-                works in a downloaded HTML file too.
-            </p>
-        ),
-    },
-    {
         target: '[data-tour="search"]',
         title: 'Search',
         body: <p>Find a table by its name, a column, its model or a relation. Pick a result to jump to the table.</p>,
@@ -157,7 +147,7 @@ export const TOUR_STEPS: TourStep[] = [
                     Click a table, a line or a column on the diagram to pick it there.
                 </li>
                 <li>
-                    With an editor set in the config, model and relation names open in it. <b>Copy link</b> shares the view; drag the panel's edge to widen it.
+                    With an editor set in the config, model and relation names open in it. <b>Copy link</b> copies a link to exactly this view (<kbd>Shift C</kbd>); drag the panel's edge to widen it.
                 </li>
             </ul>
         ),

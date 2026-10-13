@@ -67,7 +67,7 @@ Each hint names its connection, table and columns or relation. Fix the cause in 
 
 Visit `/schema-viewer` in the local environment: every table of the connection, the models on them, and each relation drawn as an edge with its methods and kind (one-to-many, many-to-many, polymorphic, has-many-through).
 
-To point someone at one table, link to it: `/schema-viewer#connection=all&table=mysql:orders&focus=1` opens every connection with the `orders` table of the `mysql` connection selected and focus mode on it and its direct neighbors (`focus` takes 1 to 3 links; leave it out to show the whole diagram). To point at a column instead, use `column=mysql:orders.user_id`; the link button in the viewer (Shift C) copies a link to exactly what is on screen, relationships included. The same hash works on a static HTML export.
+To point someone at one table, link to it: `/schema-viewer#connection=all&table=mysql:orders&focus=1` opens every connection with the `orders` table of the `mysql` connection selected and focus mode on it and its direct neighbors (`focus` takes 1 to 3 links; leave it out to show the whole diagram). To point at a column instead, use `column=mysql:orders.user_id`; Copy link in the viewer's details panel (Shift C) copies a link to exactly what is on screen, relationships included. The same hash works on a static HTML export.
 
 ## Avoid
 

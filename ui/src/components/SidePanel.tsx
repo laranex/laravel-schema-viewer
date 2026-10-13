@@ -32,9 +32,10 @@ type Props = {
     focusedOn: Highlight | null;
     onFocusHighlight: (highlight: Highlight) => void;
     onLeaveFocus: () => void;
+    onCopyLink: () => void;
 };
 
-type TableProps = Pick<Props, 'schema' | 'onOpen' | 'onHighlight' | 'editor' | 'focused' | 'onFocus' | 'onLeaveFocus'> & { connection: string; name: string };
+type TableProps = Pick<Props, 'schema' | 'onOpen' | 'onHighlight' | 'editor' | 'focused' | 'onFocus' | 'onLeaveFocus' | 'onCopyLink'> & { connection: string; name: string };
 
 // Schemes a link must never carry; the server drops them too.
 const UNSAFE_HREF = /^[\s\0-\x1f]*(javascript|data|vbscript|blob|file):/i;
@@ -76,7 +77,7 @@ export const HINT_TITLE: Record<Hint['kind'], string> = {
     custom_relation: 'Custom relation, foreign key not checked',
 };
 
-export function SidePanel({ schema, connections, tables, selected, highlight, onHighlight, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, focusedOn, onFocusHighlight, onLeaveFocus }: Props) {
+export function SidePanel({ schema, connections, tables, selected, highlight, onHighlight, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, focusedOn, onFocusHighlight, onLeaveFocus, onCopyLink }: Props) {
     const hints = connections.flatMap((c) => schema.hints(c));
     const [filter, setFilter] = useState('');
     const [mode, setMode] = useState<BrowseMode>('tables');
@@ -142,7 +143,7 @@ export function SidePanel({ schema, connections, tables, selected, highlight, on
                 </TabPanel>
                 <TabPanel value="details" className="panel__body">
                     {highlight ? (
-                        <HighlightDetails schema={schema} highlight={highlight} editor={editor} onOpen={onOpen} onHighlight={onHighlight} focusedOn={focusedOn} onFocus={onFocusHighlight} onLeaveFocus={onLeaveFocus} />
+                        <HighlightDetails schema={schema} highlight={highlight} editor={editor} onOpen={onOpen} onHighlight={onHighlight} focusedOn={focusedOn} onFocus={onFocusHighlight} onLeaveFocus={onLeaveFocus} onCopyLink={onCopyLink} />
                     ) : selected ? (
                         <TableDetails
                             schema={schema}
@@ -154,6 +155,7 @@ export function SidePanel({ schema, connections, tables, selected, highlight, on
                             focused={focused}
                             onFocus={onFocus}
                             onLeaveFocus={onLeaveFocus}
+                            onCopyLink={onCopyLink}
                         />
                     ) : (
                         <p className="panel__empty">
@@ -270,7 +272,7 @@ function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean;
     );
 }
 
-function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, focused, onFocus, onLeaveFocus }: TableProps) {
+function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, focused, onFocus, onLeaveFocus, onCopyLink }: TableProps) {
     const table = schema.table(connection, name);
     if (!table) {
         return null;
@@ -324,6 +326,11 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                             </button>
                         </Tooltip>
                     )}
+                    <Tooltip content={<>A link that opens exactly this view <kbd>Shift C</kbd></>}>
+                        <button type="button" className="button button--small" onClick={onCopyLink}>
+                            Copy link
+                        </button>
+                    </Tooltip>
                 </div>
             </header>
 

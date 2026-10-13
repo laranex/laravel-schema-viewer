@@ -13,16 +13,22 @@ type Props = {
     focusedOn: Highlight | null;
     onFocus: (highlight: Highlight) => void;
     onLeaveFocus: () => void;
+    onCopyLink: () => void;
 };
 
 const same = (a: Highlight | null, b: Highlight) => !!a && JSON.stringify(a) === JSON.stringify(b);
 
 // Focus mode for this relationship or column, or the badge that leaves it.
-// Focus, as a table's details have it.
-function Actions({ highlight, focusedOn, onFocus, onLeaveFocus, children }: Pick<Props, 'highlight' | 'focusedOn' | 'onFocus' | 'onLeaveFocus'> & { children?: React.ReactNode }) {
+// Focus and Copy link, as a table's details have them.
+function Actions({ highlight, focusedOn, onFocus, onLeaveFocus, onCopyLink, children }: Pick<Props, 'highlight' | 'focusedOn' | 'onFocus' | 'onLeaveFocus' | 'onCopyLink'> & { children?: React.ReactNode }) {
     return (
         <div className="details__actions">
             <FocusButton highlight={highlight} focusedOn={focusedOn} onFocus={onFocus} onLeaveFocus={onLeaveFocus} />
+            <Tooltip content={<>A link that opens exactly this view <kbd>Shift C</kbd></>}>
+                <button type="button" className="button button--small" onClick={onCopyLink}>
+                    Copy link
+                </button>
+            </Tooltip>
             {children}
         </div>
     );
@@ -107,8 +113,8 @@ function RelationItem({ relation: r, schema, editor }: { relation: Relation; sch
     );
 }
 
-function RelationshipDetails({ schema, connection, id, editor, onOpen, onHighlight, highlight, focusedOn, onFocus, onLeaveFocus }: Props & { connection: string; id: string }) {
-    const focusButton = <Actions highlight={highlight} focusedOn={focusedOn} onFocus={onFocus} onLeaveFocus={onLeaveFocus} />;
+function RelationshipDetails({ schema, connection, id, editor, onOpen, onHighlight, highlight, focusedOn, onFocus, onLeaveFocus, onCopyLink }: Props & { connection: string; id: string }) {
+    const focusButton = <Actions highlight={highlight} focusedOn={focusedOn} onFocus={onFocus} onLeaveFocus={onLeaveFocus} onCopyLink={onCopyLink} />;
     const link = schema.links(connection).find((l) => l.id === id);
     const derived = link ? undefined : schema.derived(connection).find((d) => d.id === id);
 
@@ -218,7 +224,7 @@ function RelationshipDetails({ schema, connection, id, editor, onOpen, onHighlig
     );
 }
 
-function ColumnDetails({ schema, highlight, onOpen, onHighlight, focusedOn, onFocus, onLeaveFocus }: Props) {
+function ColumnDetails({ schema, highlight, onOpen, onHighlight, focusedOn, onFocus, onLeaveFocus, onCopyLink }: Props) {
     if (highlight.kind !== 'column') {
         return null;
     }
@@ -246,7 +252,7 @@ function ColumnDetails({ schema, highlight, onOpen, onHighlight, focusedOn, onFo
                     {column.nullable ? ' · nullable' : ''}
                 </p>
                 {column.comment && <p className="details__comment">{column.comment}</p>}
-                <Actions highlight={highlight} focusedOn={focusedOn} onFocus={onFocus} onLeaveFocus={onLeaveFocus}>
+                <Actions highlight={highlight} focusedOn={focusedOn} onFocus={onFocus} onLeaveFocus={onLeaveFocus} onCopyLink={onCopyLink}>
                     <button type="button" className="button button--small" onClick={() => onOpen(connection, name)}>
                         Open {name}
                     </button>
