@@ -12,7 +12,8 @@ return [
     |
     | In the local environment there is no gate: anyone who can reach the
     | app opens the viewer. Keep APP_ENV=local off shared machines, and set
-    | this to false before exposing the app with Herd Share, Expose or ngrok.
+    | this to false before exposing the app with Herd Share, Expose or ngrok,
+    | or decide who may open it with SchemaViewer::auth() in a provider.
     |
     */
 
@@ -25,6 +26,7 @@ return [
     |
     | Where the viewer is served. Outside the local environment, a user also
     | needs the viewSchema gate: Gate::define('viewSchema', fn ($user) => ...).
+    | SchemaViewer::auth(fn ($request) => ...) replaces both checks.
     |
     */
 

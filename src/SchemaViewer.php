@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer;
 
+use Closure;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use InvalidArgumentException;
 use Laranex\LaravelSchemaViewer\Graph\SchemaGraph;
 use Laranex\LaravelSchemaViewer\Inspection\DatabaseInspector;
@@ -67,6 +71,13 @@ class SchemaViewer
         'jeffgreco13/filament-breezy' => ['Jeffgreco13\\FilamentBreezy\\FilamentBreezyServiceProvider', ['breezy_*']],
     ];
 
+    /**
+     * The callback set with auth(), which decides who may open the viewer; null keeps the default.
+     *
+     * @var (Closure(Request): bool)|null
+     */
+    public static ?Closure $authUsing = null;
+
     public function __construct(
         private readonly Application $app,
         private readonly Config $config,
@@ -77,6 +88,46 @@ class SchemaViewer
         private readonly RelationResolver $relations,
         private readonly SchemaGraph $graph,
     ) {}
+
+    /**
+     * Decide who may open the viewer, in every environment. The callback replaces the default check entirely: everyone
+     * in the local environment, elsewhere the users the viewSchema gate allows. Call it in a service provider's boot().
+     *
+     * @param  Closure(Request): bool  $callback
+     */
+    public static function auth(Closure $callback): void
+    {
+        static::$authUsing = $callback;
+    }
+
+    /**
+     * Whether the request may open the viewer: the auth() callback when one is set, otherwise everyone in the local
+     * environment and, elsewhere, the users the viewSchema gate allows.
+     */
+    public static function check(Request $request, ?Application $app = null): bool
+    {
+        if (static::$authUsing !== null) {
+            return (bool) (static::$authUsing)($request);
+        }
+
+        $app ??= Container::getInstance();
+
+        if (! $app instanceof Application) {
+            return false;
+        }
+
+        if ($app->environment('local')) {
+            return true;
+        }
+
+        if (! $app->bound(Gate::class)) {
+            return false;
+        }
+
+        $gate = $app->make(Gate::class);
+
+        return $gate->has('viewSchema') && $gate->forUser($request->user())->allows('viewSchema');
+    }
 
     public function document(): SchemaDocument
     {

@@ -6,6 +6,7 @@ namespace Laranex\LaravelSchemaViewer\Tests;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
+use Laranex\LaravelSchemaViewer\SchemaViewer;
 use Laranex\LaravelSchemaViewer\SchemaViewerServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use ReflectionProperty;
@@ -24,6 +25,7 @@ abstract class TestCase extends Orchestra
         // Dynamic relations live in a static registry; clear the ones tests add.
         $resolvers = new ReflectionProperty(Model::class, 'relationResolvers');
         $resolvers->setValue(null, []);
+        SchemaViewer::$authUsing = null;
 
         parent::tearDown();
     }
