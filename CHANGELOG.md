@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-schema-viewer` will be documented in this file.
 
+## v1.3.0 - 2026-10-14
+
+### Added
+- The Tables menu shows your own tables, framework tables and package tables, each with its count; **Your tables** (`Y`) hides or shows the application's own tables. Package tables is always listed.
+
+### Changed
+- `package_tables` lists table patterns by Composer package name in the config, with Laravel's own packages by default (Passport, Cashier, Cashier Paddle, Pennant). A package's tables are tagged while Composer has it installed; add any other package to the list. `true`, from an older published config, still means the default list, and `false` tags nothing. spatie/laravel-permission and Filament Breezy are no longer built in; add them to the list to tag their tables.
+- Access works exactly as Telescope's: everyone in the local environment, the `viewSchema` gate elsewhere, and `SchemaViewer::auth()` to decide yourself. The local host check from v1.2.0 is gone.
+
 ## v1.2.1 - 2026-10-13
 
 ### Fixed
