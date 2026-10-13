@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer;
 
 use Closure;
+use Composer\InstalledVersions;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Config\Repository as Config;
@@ -60,16 +61,6 @@ class SchemaViewer
      * Link schemes that run code or embed content instead of opening an editor.
      */
     private const UNSAFE_SCHEMES = ['javascript', 'data', 'vbscript', 'blob', 'file', 'about'];
-
-    /**
-     * Tables that well-known packages create, by package name: the class that tells the package is installed, and the
-     * table patterns. They are tagged with the package, so the viewer can show or hide them with one toggle.
-     */
-    private const PACKAGE_TABLES = [
-        'laravel/passport' => ['Laravel\\Passport\\Passport', ['oauth_*']],
-        'spatie/laravel-permission' => ['Spatie\\Permission\\PermissionRegistrar', ['permissions', 'roles', 'model_has_permissions', 'model_has_roles', 'role_has_permissions']],
-        'jeffgreco13/filament-breezy' => ['Jeffgreco13\\FilamentBreezy\\FilamentBreezyServiceProvider', ['breezy_*']],
-    ];
 
     /**
      * The callback set with auth(), which decides who may open the viewer; null keeps the default.
@@ -291,37 +282,54 @@ class SchemaViewer
     }
 
     /**
-     * The table patterns of the installed packages, by package name; none when package_tables is false.
+     * The table patterns of the installed packages, by package name, from package_tables; none when it is false.
      *
      * @return array<string, list<string>>
      */
     public function packageTables(): array
     {
-        if ($this->config->get('schema-viewer.package_tables', true) === false) {
+        $configured = $this->config->get('schema-viewer.package_tables', true);
+
+        if ($configured === false) {
             return [];
+        }
+
+        // true, from a config published before the list moved into it, means the list the package ships.
+        if ($configured === true) {
+            /** @var array{package_tables: mixed} $defaults */
+            $defaults = require __DIR__.'/../config/schema-viewer.php';
+            $configured = $defaults['package_tables'];
+        }
+
+        if (! is_array($configured)) {
+            throw new InvalidArgumentException('schema-viewer.package_tables must be false or a list of table patterns by package name.');
         }
 
         $tables = [];
 
-        foreach (self::PACKAGE_TABLES as $package => [$class, $names]) {
-            if (! $this->installed($class)) {
+        foreach ($configured as $package => $names) {
+            if (! is_string($package) || ! is_array($names) || array_filter($names, fn (mixed $name): bool => ! is_string($name)) !== []) {
+                throw new InvalidArgumentException('schema-viewer.package_tables must be false or a list of table patterns by package name.');
+            }
+
+            if (! $this->installed($package)) {
                 continue;
             }
 
-            // spatie/laravel-permission lets the application rename its tables.
-            $renamed = $package === 'spatie/laravel-permission' ? $this->config->get('permission.table_names') : null;
-            $tables[$package] = is_array($renamed) && $renamed !== [] ? array_values(array_map('strval', $renamed)) : $names;
+            /** @var list<string> $names */
+            $names = array_values($names);
+            $tables[$package] = $names;
         }
 
         return $tables;
     }
 
     /**
-     * Whether a package is installed, by a class it ships.
+     * Whether Composer installed a package.
      */
-    private function installed(string $class): bool
+    private function installed(string $package): bool
     {
-        return class_exists($class);
+        return class_exists(InstalledVersions::class) && InstalledVersions::isInstalled($package);
     }
 
     /**

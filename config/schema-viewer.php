@@ -100,9 +100,11 @@ return [
     | so the viewer can hide them with one toggle, and get no hints since you
     | do not own their schema. Both accept wildcards.
     |
-    | Package tables tags the tables of installed packages (Passport's
-    | oauth_*, spatie/laravel-permission, Filament Breezy) with the package,
-    | so the viewer can hide them with one toggle. They still get hints.
+    | Package tables tags the tables a package creates with the package's
+    | name, while Composer has that package installed, so the viewer can hide
+    | them with one toggle. They still get hints. The list holds Laravel's own
+    | packages; add others, such as spatie/laravel-permission, or set it to
+    | false to tag nothing. Wildcards allowed.
     |
     */
 
@@ -114,7 +116,12 @@ return [
         'telescope_*', 'pulse_*',
     ],
 
-    'package_tables' => true,
+    'package_tables' => [
+        'laravel/passport' => ['oauth_*'],
+        'laravel/cashier' => ['subscriptions', 'subscription_items'],
+        'laravel/cashier-paddle' => ['customers', 'subscriptions', 'subscription_items', 'transactions'],
+        'laravel/pennant' => ['features'],
+    ],
 
     /*
     |--------------------------------------------------------------------------

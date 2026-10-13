@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Composer\InstalledVersions;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Notifications\DatabaseNotification;
@@ -142,18 +143,16 @@ it('puts "a" or "an" before a row by how its table sounds', function (): void {
     );
 });
 
+afterEach(function (): void {
+    // installPackages() swaps Composer's list of installed packages; put the real one back.
+    InstalledVersions::reload(require dirname(__DIR__, 2).'/vendor/composer/installed.php');
+});
+
 it('tags the tables of installed packages with the package, and still gives them hints', function (): void {
     expect(app(SchemaViewer::class)->packageTables())->toBe([]);
 
-    if (! class_exists('Laravel\\Passport\\Passport')) {
-        eval('namespace Laravel\\Passport; class Passport {}');
-    }
-
-    if (! class_exists('Spatie\\Permission\\PermissionRegistrar')) {
-        eval('namespace Spatie\\Permission; class PermissionRegistrar {}');
-    }
-
-    config()->set('permission.table_names', ['roles' => 'roles', 'permissions' => 'permissions']);
+    installPackages('laravel/passport', 'spatie/laravel-permission');
+    config()->set('schema-viewer.package_tables', [...config('schema-viewer.package_tables'), 'spatie/laravel-permission' => ['roles', 'permissions']]);
 
     expect(app(SchemaViewer::class)->packageTables())->toBe([
         'laravel/passport' => ['oauth_*'],
@@ -172,6 +171,41 @@ it('tags the tables of installed packages with the package, and still gives them
 
     expect(app(SchemaViewer::class)->packageTables())->toBe([]);
 });
+
+it('tags the tables of packages the application adds to package_tables', function (): void {
+    installPackages('acme/blog');
+    config()->set('schema-viewer.package_tables', ['acme/blog' => ['posts', 'comm*'], 'acme/missing' => ['users']]);
+
+    $tables = collect(schemaDocument()->connections[0]->tables)->mapWithKeys(fn ($table) => [$table->name => $table->package]);
+
+    expect(app(SchemaViewer::class)->packageTables())->toBe(['acme/blog' => ['posts', 'comm*']])
+        ->and($tables['posts'])->toBe('acme/blog')
+        ->and($tables['comments'])->toBe('acme/blog')
+        ->and($tables['users'])->toBeNull();
+});
+
+it('lists only Laravel\'s own packages by default', function (): void {
+    $defaults = (require dirname(__DIR__, 2).'/config/schema-viewer.php')['package_tables'];
+
+    expect(array_keys($defaults))->each->toStartWith('laravel/');
+});
+
+it('reads true, from a config published before the list moved into it, as the list the package ships', function (): void {
+    installPackages('laravel/passport');
+    config()->set('schema-viewer.package_tables', true);
+
+    expect(app(SchemaViewer::class)->packageTables())->toBe(['laravel/passport' => ['oauth_*']]);
+});
+
+it('refuses a package_tables value that is not a list of table patterns by package name', function (mixed $value): void {
+    config()->set('schema-viewer.package_tables', $value);
+
+    app(SchemaViewer::class)->packageTables();
+})->with([
+    'a string' => ['oauth_*'],
+    'a list without package names' => [[['oauth_*']]],
+    'a pattern that is not a string' => [['laravel/passport' => [1]]],
+])->throws(InvalidArgumentException::class, 'schema-viewer.package_tables must be false or a list of table patterns by package name.');
 
 it('gives each hint the hints.ignore rules that leave it out, narrowest first', function (): void {
     $hints = collect(schemaDocument()->hints);
@@ -276,3 +310,20 @@ it('notes an unreadable relation from a package instead of failing on it', funct
         ->and($package)->toHaveCount(1)
         ->and($package[0]->message)->toStartWith(Packages\AppToken::class.'::owner() comes from acme/tokens and could not be read (the viewer calls it on a blank model, with no row loaded)');
 });
+
+/**
+ * Makes Composer report these packages as installed for the rest of the test; afterEach puts the real list back.
+ */
+function installPackages(string ...$packages): void
+{
+    $versions = [];
+
+    foreach ($packages as $package) {
+        $versions[$package] = ['pretty_version' => '1.0.0', 'version' => '1.0.0.0', 'reference' => null, 'type' => 'library', 'install_path' => '', 'aliases' => [], 'dev_requirement' => false];
+    }
+
+    InstalledVersions::reload([
+        'root' => ['name' => 'test/app', 'pretty_version' => '1.0.0', 'version' => '1.0.0.0', 'reference' => null, 'type' => 'project', 'install_path' => '', 'aliases' => [], 'dev' => true],
+        'versions' => $versions,
+    ]);
+}
