@@ -1,15 +1,20 @@
 import { useState, type ReactNode } from 'react';
 import { relationKind, relationLabel, shortClass, type Schema } from '../graph';
+import { TableList } from './TableList';
 import { Tab, TabList, TabPanel, Tabs, Tooltip } from './ui';
-import type { Hint, IgnoreRule, Relation, Source } from '../types';
+import type { Hint, IgnoreRule, Relation, Source, Table } from '../types';
+
+export type PanelTab = 'tables' | 'table' | 'hints';
 
 type Props = {
     schema: Schema;
     // The connections in view: their hints are listed.
     connections: string[];
+    // The tables in view, listed in the Tables tab.
+    tables: { connection: string; table: Table }[];
     selected: { connection: string; table: string } | null;
-    tab: 'table' | 'hints';
-    onTab: (tab: 'table' | 'hints') => void;
+    tab: PanelTab;
+    onTab: (tab: PanelTab) => void;
     onOpen: (connection: string, table: string) => void;
     sheet: boolean;
     sheetOpen: boolean;
@@ -65,8 +70,9 @@ const HINT_TITLE: Record<Hint['kind'], string> = {
     custom_relation: 'Custom relation, foreign key not checked',
 };
 
-export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, onLeaveFocus, onCopyLink }: Props) {
+export function SidePanel({ schema, connections, tables, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, onLeaveFocus, onCopyLink }: Props) {
     const hints = connections.flatMap((c) => schema.hints(c));
+    const [filter, setFilter] = useState('');
     const models = selected ? schema.modelsFor(selected.connection, selected.table) : [];
 
     return (
@@ -93,8 +99,11 @@ export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, s
                     </button>
                 </div>
             )}
-            <Tabs value={tab} onValueChange={(v) => onTab(v as 'table' | 'hints')} className="panel__tabs-root">
+            <Tabs value={tab} onValueChange={(v) => onTab(v as PanelTab)} className="panel__tabs-root">
                 <TabList label="Details">
+                    <Tab value="tables">
+                        Tables <kbd className="kbd-hint">A</kbd>
+                    </Tab>
                     <Tab value="table">
                         Table <kbd className="kbd-hint">T</kbd>
                     </Tab>
@@ -102,6 +111,9 @@ export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, s
                         Hints <span className="count">{hints.length}</span> <kbd className="kbd-hint">H</kbd>
                     </Tab>
                 </TabList>
+                <TabPanel value="tables" className="panel__body">
+                    <TableList schema={schema} tables={tables} several={connections.length > 1} selected={selected} onOpen={onOpen} filter={filter} onFilter={setFilter} />
+                </TabPanel>
                 <TabPanel value="table" className="panel__body">
                     {selected ? (
                         <TableDetails
@@ -116,7 +128,13 @@ export function SidePanel({ schema, connections, selected, tab, onTab, onOpen, s
                             onCopyLink={onCopyLink}
                         />
                     ) : (
-                        <p className="panel__empty">Select a table to see its columns, relations, indexes and model.</p>
+                        <p className="panel__empty">
+                            Select a table on the diagram or in{' '}
+                            <button type="button" className="link-button" onClick={() => onTab('tables')}>
+                                Tables
+                            </button>{' '}
+                            to see its columns, relations, indexes and model.
+                        </p>
                     )}
                 </TabPanel>
                 <TabPanel value="hints" className="panel__body">

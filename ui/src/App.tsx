@@ -18,7 +18,7 @@ import { SearchBox } from './components/SearchBox';
 import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
 import { Dialog, Menu, Select, Tooltip, TooltipProvider } from './components/ui';
-import { SidePanel } from './components/SidePanel';
+import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
 import { boxWidth, route, type Box, type Route } from './routing';
@@ -179,7 +179,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
     // The connection the panel and the per-connection downloads talk about: the selected table's, else the one in view.
     const connection = selected?.connection ?? scopeConnections[0];
-    const [tab, setTab] = useState<'table' | 'hints'>('table');
+    const [tab, setTab] = useState<PanelTab>(() => (linked.table ? 'table' : 'tables'));
     const [query, setQuery] = useState('');
     const [layers, setLayers] = useState<Layers>({ both: true, relation: true, foreign_key: true, through: true, framework: true, package: true, allLabels: true });
     const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
@@ -945,6 +945,10 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
             '2': () => toggle('relation'),
             '3': () => toggle('foreign_key'),
             '4': () => toggle('through'),
+            a: () => {
+                setTab('tables');
+                setSheetOpen(true);
+            },
             t: () => setTab('table'),
             h: () => {
                 setTab('hints');
@@ -1136,7 +1140,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 }}
                                 nodesConnectable={false}
                                 edgesFocusable={false}
-                                minZoom={0.08}
+                                minZoom={0.02}
                                 maxZoom={2}
                                 proOptions={{ hideAttribution: true }}
                             >
@@ -1243,6 +1247,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                             onLeaveFocus={endFocus}
                             onCopyLink={copyLink}
                             connections={scopeConnections}
+                            tables={visibleTables}
                             selected={selected}
                             tab={tab}
                             onTab={(t) => {
@@ -1345,7 +1350,7 @@ const SHORTCUTS: [string[], string][] = [
     [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
     [['G'], 'Show or hide framework tables'],
     [['P'], 'Show or hide package tables, such as Passport\'s oauth_*'],
-    [['T', 'H'], 'Open the Table or Hints tab'],
+    [['A', 'T', 'H'], 'Open the Tables, Table or Hints tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
     [['Shift A'], 'Arrange tables automatically'],
     [['Shift R'], 'Read the database and models again (in your app, not in an exported page)'],

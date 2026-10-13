@@ -8,6 +8,8 @@ export type Positions = Record<string, { x: number; y: number }>;
 // Layouts already worked out, per schema, by the tables and their heights: going back to a view is instant.
 const layouts = new WeakMap<Schema, Map<string, Positions>>();
 const KEEP = 24;
+// Above this many tables a connection's columns are capped.
+const LARGE = 40;
 
 // Layered layout, referenced tables to the left of the tables that point at them.
 export async function autoLayout(schema: Schema, connection: string, visible: Set<string>, sizes: Record<string, number>): Promise<Positions> {
@@ -38,6 +40,9 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
             'elk.spacing.componentComponent': '80',
             'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
             'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+            // A large schema puts dozens of tables in the column beside a table most others point at (users, say),
+            // and the diagram becomes one tall strip; capping each column spreads them over more columns instead.
+            ...(ids.length > LARGE ? { 'elk.layered.layering.strategy': 'COFFMAN_GRAHAM', 'elk.layered.layering.coffmanGraham.layerBound': String(Math.ceil(Math.sqrt(ids.length) * 0.7)), 'elk.aspectRatio': '1.6', 'elk.layered.compaction.connectedComponents': 'true' } : {}),
         },
         children: ids.map((id) => ({ id, width: NODE_WIDTH, height: sizes[id] ?? 120 })),
         edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),

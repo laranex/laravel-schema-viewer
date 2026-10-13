@@ -86,13 +86,13 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Details',
         body: (
             <p>
-                The selected table's columns, relations, the relations that point at it, indexes and model settings: casts, fillable, hidden, scopes and observers. With an editor set in the config, model and relation names open in it, and{' '}
+                <b>Tables</b> lists every table, with a filter; pick one to see it. The <b>Table</b> tab shows the selected table's columns, relations, the relations that point at it, indexes and model settings: casts, fillable, hidden, scopes and observers. With an editor set in the config, model and relation names open in it, and{' '}
                 <b>Copy link</b> shares exactly this view. Drag the panel's edge to make it wider.
             </p>
         ),
     },
     {
-        target: ['.ui-tabs .ui-tab:nth-child(2)', '.sheet-bar__hints'],
+        target: ['.ui-tabs .ui-tab:nth-child(3)', '.sheet-bar__hints'],
         title: 'Hints',
         body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
     },
