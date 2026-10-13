@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node -e \"require('fs').rmSync('../dist/index.html',{force:true})\"",
     "typecheck": "tsc --noEmit",
-    "build:prototype": "tsc --noEmit && vite build --mode prototype --outDir ../build/prototype"
+    "build:prototype": "tsc --noEmit && vite build --mode prototype --outDir ../build/prototype",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",
@@ -22,6 +23,8 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",

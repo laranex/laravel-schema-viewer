@@ -12,6 +12,7 @@
     --accent-soft: #daf3ee;
     --warn: #b45309;
     --warn-soft: #fcefdc;
+    --warn-ink: #92400e;
     --fk: #6b7976;
     --through: #4f63a8;
     --through-soft: #e6eaf7;
@@ -40,6 +41,7 @@
     --accent-soft: #11362f;
     --warn: #f0a347;
     --warn-soft: #382812;
+    --warn-ink: #f0a347;
     --fk: #8e9c99;
     --through: #93a5e0;
     --through-soft: #1d2440;
@@ -858,7 +860,7 @@ button:disabled {
     padding: 0 5px;
     border-radius: 9px;
     background: var(--warn-soft);
-    color: var(--warn);
+    color: var(--warn-ink);
     font-size: 11px;
     font-weight: 600;
     line-height: 18px;

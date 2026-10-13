@@ -1064,6 +1064,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
     // Dragging the panel's edge sets its width, kept between the panel's minimum and room for the diagram.
     const mainRef = useRef<HTMLElement>(null);
     // Dragging remembers the width once, on release; the keyboard and double-click remember it at once.
+    // The panel's width as the resizer announces it: the dragged width, or the width the layout gives it.
+    const panelDefaultWidth = Math.round(document.querySelector('.panel')?.getBoundingClientRect().width ?? 360);
     const resizePanel = (width: number | null, remember = true) => {
         const room = mainRef.current?.getBoundingClientRect().width ?? window.innerWidth;
         const next = width === null ? null : Math.round(Math.min(Math.max(width, 280), room - DIAGRAM_ROOM));
@@ -1521,7 +1523,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
                                 role="separator"
                                 aria-orientation="vertical"
                                 aria-label="Resize the details panel"
-                                aria-valuenow={panelWidth ?? undefined}
+                                aria-valuenow={panelWidth ?? panelDefaultWidth}
+                                aria-valuemin={280}
                                 tabIndex={0}
                                 onPointerDown={onResizeStart}
                                 onDoubleClick={() => resizePanel(null)}
