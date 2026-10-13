@@ -128,14 +128,17 @@ return [
     |
     | Ignore lists the hints you have accepted. A hint is left out when it
     | matches every field a rule names; a field left out matches anything.
-    | Fields: connection, table (both take wildcards), kind, columns and
-    | relation. Each hint in the viewer and in schema-viewer:check shows the
-    | rule that ignores it, ready to copy:
+    | Fields: connection, table (both take wildcards), kind, columns,
+    | relation and certainty: 'certain' for facts read from the database or
+    | the models, 'likely' for hints inferred from names or conventions.
+    | Each hint in the viewer and in schema-viewer:check shows the rule that
+    | ignores it, ready to copy:
     |
     |   ['kind' => 'morph_without_map']                     a kind, everywhere
     |   ['connection' => 'legacy']                          a connection
     |   ['connection' => 'mysql', 'table' => 'audit_logs']  a table
     |   ['table' => 'oauth_*']                              tables, by wildcard
+    |   ['certainty' => 'likely']                           every likely hint
     |   ['connection' => 'mysql', 'table' => 'comments',
     |    'kind' => 'relation_without_foreign_key', 'columns' => 'user_id']
     |                                                       one hint

@@ -56,7 +56,7 @@ final class CheckCommand extends Command
             $failing += $fails ? 1 : 0;
             $this->components->twoColumnDetail(
                 sprintf('<fg=%s>%s</> %s.%s', $fails ? 'red' : 'yellow', $fails ? 'FAIL' : 'NOTE', $hint->connection, $hint->table),
-                $hint->kind->value,
+                $hint->kind->value.($hint->kind->certainty() === 'likely' ? ' <fg=gray>· likely</>' : ''),
             );
             $this->line('  <fg=gray>'.$hint->message.'</>');
             $this->line('  <fg=gray>Ignore it:</> '.IgnoreRule::php($hint->ignoreRules()['hint']).',');

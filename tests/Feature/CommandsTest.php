@@ -149,6 +149,19 @@ it('fails the check on the configured hint kinds', function (): void {
         ->assertFailed();
 });
 
+it('marks only likely hints as likely in the check', function (): void {
+    Artisan::call('schema-viewer:check');
+    $lines = explode("\n", Artisan::output());
+    $marked = array_values(array_filter($lines, fn (string $line): bool => str_contains($line, '· likely')));
+    $likely = array_filter(app(SchemaViewer::class)->document()->hints, fn ($hint): bool => $hint->kind->certainty() === 'likely');
+
+    expect($marked)->toHaveCount(count($likely));
+
+    foreach ($marked as $line) {
+        expect(collect($likely)->contains(fn ($hint): bool => str_contains($line, $hint->kind->value)))->toBeTrue();
+    }
+});
+
 it('passes the check when only other kinds remain', function (): void {
     $this->artisan('schema-viewer:check', ['--fail-on' => ['relation_without_foreign_key']])->assertFailed();
 

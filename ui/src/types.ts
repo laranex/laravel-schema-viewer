@@ -129,6 +129,9 @@ export type Hint = {
         | 'unresolved_package_relation'
         | 'custom_relation';
     severity: 'warning' | 'info';
+    // certain: a fact read from the database or the models; likely: inferred from names or conventions. Missing means
+    // certain (snapshots built before hints carried it).
+    certainty?: 'certain' | 'likely';
     connection: string;
     table: string;
     columns?: string | null;
@@ -138,7 +141,7 @@ export type Hint = {
     ignore?: { hint: IgnoreRule; kindOnTable: IgnoreRule; table: IgnoreRule; kind: IgnoreRule };
 };
 
-export type IgnoreRule = Partial<Record<'connection' | 'table' | 'kind' | 'columns' | 'relation', string>>;
+export type IgnoreRule = Partial<Record<'connection' | 'table' | 'kind' | 'columns' | 'relation' | 'certainty', string>>;
 
 export type SchemaDocument = {
     version: 1;

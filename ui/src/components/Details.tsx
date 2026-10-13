@@ -1,6 +1,6 @@
 import { linkKind, relationKind, shortClass, type Schema } from '../graph';
 import { columnHints, linkHints, type Highlight } from './Browse';
-import { HINT_TITLE, IgnoreRules, RelationKeys, SourceLink } from './SidePanel';
+import { Certainty, HINT_TITLE, IgnoreRules, RelationKeys, SourceLink } from './SidePanel';
 import { Tooltip } from './ui';
 import type { Hint, Link, Relation } from '../types';
 
@@ -66,7 +66,7 @@ function Hints({ hints }: { hints: Hint[] }) {
         <>
             {hints.map((h, i) => (
                 <div key={i} className={`callout callout--${h.severity}`}>
-                    <strong>{HINT_TITLE[h.kind]}.</strong> {h.message}
+                    <strong>{HINT_TITLE[h.kind]}.</strong> <Certainty hint={h} /> {h.message}
                     <IgnoreRules hint={h} />
                 </div>
             ))}

@@ -40,13 +40,14 @@ final class Hint implements JsonSerializable
     }
 
     /**
-     * @return array{kind: string, severity: string, connection: string, table: string, columns: string|null, relation: string|null, message: string, ignore: array{hint: array<string, string>, kindOnTable: array<string, string>, table: array<string, string>, kind: array<string, string>}}
+     * @return array{kind: string, severity: string, certainty: string, connection: string, table: string, columns: string|null, relation: string|null, message: string, ignore: array{hint: array<string, string>, kindOnTable: array<string, string>, table: array<string, string>, kind: array<string, string>}}
      */
     public function jsonSerialize(): array
     {
         return [
             'kind' => $this->kind->value,
             'severity' => $this->kind->severity(),
+            'certainty' => $this->kind->certainty(),
             'connection' => $this->connection,
             'table' => $this->table,
             'columns' => $this->columns,

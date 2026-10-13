@@ -255,7 +255,22 @@ it('refuses an ignore rule with an unknown field or kind', function (mixed $rule
     'an unknown field' => [['tabel' => 'posts'], 'Unknown hints.ignore field [tabel]'],
     'an unknown kind' => [['kind' => 'morph_map'], 'Unknown hint kind [morph_map]'],
     'an empty value' => [['table' => ''], 'must be a non-empty string'],
+    'an unknown certainty' => [['certainty' => 'sure'], 'Unknown certainty [sure] in hints.ignore; use certain or likely.'],
 ]);
+
+it('leaves out the hints of an ignored certainty', function (): void {
+    expect(schemaDocument()->hints)->not->toBe([]);
+
+    config()->set('schema-viewer.hints.ignore', [['certainty' => 'likely']]);
+    $likely = collect(schemaDocument()->hints);
+
+    config()->set('schema-viewer.hints.ignore', [['certainty' => 'certain']]);
+    $certain = collect(schemaDocument()->hints);
+
+    expect($likely->every(fn (Hint $hint): bool => $hint->kind->certainty() === 'certain'))->toBeTrue()
+        ->and($likely)->not->toBeEmpty()
+        ->and($certain->every(fn (Hint $hint): bool => $hint->kind->certainty() === 'likely'))->toBeTrue();
+});
 
 it('describes the models', function (): void {
     $models = collect(schemaDocument()->models)->keyBy('class');
@@ -286,7 +301,8 @@ it('serializes the whole document for the viewer', function (): void {
     expect($json)->toHaveKeys(['version', 'generatedAt', 'connections', 'models', 'relations', 'unresolved', 'links', 'derivedLinks', 'hints'])
         ->and($json['version'])->toBe(1)
         ->and($json['links'][0])->toHaveKeys(['id', 'from', 'to', 'foreignKey', 'relations', 'state', 'morph'])
-        ->and($json['hints'][0])->toHaveKeys(['kind', 'severity', 'connection', 'table', 'message']);
+        ->and($json['hints'][0])->toHaveKeys(['kind', 'severity', 'certainty', 'connection', 'table', 'message'])
+        ->and(array_slice(array_keys($json['hints'][0]), 0, 3))->toBe(['kind', 'severity', 'certainty']);
 });
 
 it('raises no hints on framework tables', function (): void {

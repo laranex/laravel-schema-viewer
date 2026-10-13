@@ -65,7 +65,7 @@ Hint kinds:
 - `unresolved_package_relation` (note): the same for a method inherited from a package, such as Passport's `Token::user()`; usually nothing to do.
 - `custom_relation` (note): a relation without a foreign key that joins other tables or matches a column that is not unique, so its foreign key is not checked.
 
-Each hint names its connection, table and columns or relation. Fix the cause in a migration or the model when the task touches it; mention the others to the person rather than changing them unasked.
+Each hint has a `severity` (`warning` or `info`) and a `certainty`: `certain` hints state a fact read from the database or the models; `likely` hints are inferred from names or conventions (the check marks them `· likely`), so verify them against the code and the queries before acting on one. Each hint names its connection, table and columns or relation. Fix the cause in a migration or the model when the task touches it; mention the others to the person rather than changing them unasked.
 
 ### Point a person at a table, relationship or column
 

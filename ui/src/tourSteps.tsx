@@ -167,7 +167,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Hints',
         body: (
             <p>
-                Things worth a second look (<kbd>H</kbd>): relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.
+                Things worth a second look (<kbd>H</kbd>): relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read. A hint marked <b>likely</b> is inferred from names or conventions: check it before changing anything.
             </p>
         ),
     },

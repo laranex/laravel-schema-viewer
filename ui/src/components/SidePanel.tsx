@@ -77,6 +77,20 @@ export const HINT_TITLE: Record<Hint['kind'], string> = {
     custom_relation: 'Custom relation, foreign key not checked',
 };
 
+// A small "likely" mark on a hint inferred from names or conventions; nothing on a certain one.
+export function Certainty({ hint }: { hint: Hint }) {
+    if (hint.certainty !== 'likely') {
+        return null;
+    }
+    return (
+        <Tooltip content="Found from names or conventions; check before changing it">
+            <span className="badge badge--likely" tabIndex={0}>
+                likely
+            </span>
+        </Tooltip>
+    );
+}
+
 // A relationship's short name for the phone's sheet bar: its two tables.
 function relationshipTitle(schema: Schema, connection: string, id: string): string {
     const l = schema.links(connection).find((x) => x.id === id);
@@ -267,17 +281,51 @@ export function IgnoreRules({ hint }: { hint: Hint }) {
     );
 }
 
+type CertaintyFilter = 'all' | 'certain' | 'likely';
+
 function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean; onOpen: (connection: string, table: string) => void }) {
+    const [certainty, setCertainty] = useState<CertaintyFilter>('all');
     if (!hints.length) {
         return <p className="panel__empty">{several ? 'No hints on any connection.' : 'No hints on this connection.'}</p>;
     }
+    const likely = hints.filter((h) => h.certainty === 'likely').length;
+    // The filter shows only while both kinds are listed.
+    const mixed = likely > 0 && likely < hints.length;
+    const shown = mixed && certainty !== 'all' ? hints.filter((h) => (h.certainty ?? 'certain') === certainty) : hints;
+    return (
+        <>
+            {mixed && (
+                <div className="hints__filter">
+                    <span className="segmented" role="radiogroup" aria-label="Show hints">
+                        {(
+                            [
+                                ['all', `All ${hints.length}`],
+                                ['certain', `Certain ${hints.length - likely}`],
+                                ['likely', `Likely ${likely}`],
+                            ] as [CertaintyFilter, string][]
+                        ).map(([value, label]) => (
+                            <button key={value} type="button" role="radio" aria-checked={certainty === value} className="segmented__option" onClick={() => setCertainty(value)}>
+                                {label}
+                            </button>
+                        ))}
+                    </span>
+                </div>
+            )}
+            <HintItems hints={shown} several={several} onOpen={onOpen} />
+        </>
+    );
+}
+
+function HintItems({ hints, several, onOpen }: { hints: Hint[]; several: boolean; onOpen: (connection: string, table: string) => void }) {
     return (
         <ul className="hints">
             {hints.map((h, i) => (
                 <li key={i} className={`hint hint--${h.severity}`}>
                     <div className="hint__head">
                         <span className="hint__severity">{h.severity}</span>
-                        <span className="hint__title">{HINT_TITLE[h.kind]}</span>
+                        <span className="hint__title">
+                            {HINT_TITLE[h.kind]} <Certainty hint={h} />
+                        </span>
                     </div>
                     <p>{h.message}</p>
                     <div className="hint__actions">
@@ -356,7 +404,7 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
 
             {hints.map((h, i) => (
                 <div key={i} className={`callout callout--${h.severity}`}>
-                    <strong>{HINT_TITLE[h.kind]}.</strong> {h.message}
+                    <strong>{HINT_TITLE[h.kind]}.</strong> <Certainty hint={h} /> {h.message}
                     <IgnoreRules hint={h} />
                 </div>
             ))}

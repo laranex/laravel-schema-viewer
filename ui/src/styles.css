@@ -1248,6 +1248,14 @@ button:disabled {
     color: var(--through);
 }
 
+.badge--likely {
+    border: 1px dashed var(--line-strong);
+    background: transparent;
+    font-weight: 500;
+    vertical-align: 1px;
+    cursor: help;
+}
+
 .badge--constraint {
     border: 1px solid var(--line-strong);
     background: transparent;
@@ -1362,6 +1370,10 @@ button:disabled {
 .hint__title {
     font-weight: 600;
     font-size: var(--text-sm);
+}
+
+.hints__filter {
+    margin-bottom: 10px;
 }
 
 .hint p {

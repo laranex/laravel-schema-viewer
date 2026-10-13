@@ -33,3 +33,17 @@ it('gives each hint kind a severity', function (): void {
         ->and(HintKind::UnresolvedPackageRelation->severity())->toBe('info')
         ->and(HintKind::CustomRelation->severity())->toBe('info');
 });
+
+it('gives each hint kind a certainty', function (HintKind $kind): void {
+    expect($kind->certainty())->toBeIn(['certain', 'likely']);
+})->with(HintKind::cases());
+
+it('calls the hints read from the database or the models certain', function (): void {
+    $certain = [
+        HintKind::RelationWithoutForeignKey, HintKind::ForeignKeyWithoutRelation, HintKind::ForeignKeyWithoutIndex,
+        HintKind::ModelWithoutTable, HintKind::MorphWithoutMap, HintKind::UnresolvedRelation,
+        HintKind::UnresolvedPackageRelation, HintKind::CustomRelation,
+    ];
+
+    expect(array_map(fn (HintKind $kind): string => $kind->certainty(), $certain))->each->toBe('certain');
+});

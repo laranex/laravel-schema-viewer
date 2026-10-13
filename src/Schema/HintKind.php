@@ -25,4 +25,15 @@ enum HintKind: string
             default => 'warning',
         };
     }
+
+    /**
+     * How sure the hint is: certain when it states a fact read from the database or the models, likely when it is
+     * inferred from names or conventions and is worth checking before acting on it.
+     *
+     * @return 'certain'|'likely'
+     */
+    public function certainty(): string
+    {
+        return 'certain';
+    }
 }

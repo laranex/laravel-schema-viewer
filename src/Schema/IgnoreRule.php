@@ -13,7 +13,9 @@ use InvalidArgumentException;
  */
 final class IgnoreRule
 {
-    public const FIELDS = ['connection', 'table', 'kind', 'columns', 'relation'];
+    public const FIELDS = ['connection', 'table', 'kind', 'columns', 'relation', 'certainty'];
+
+    public const CERTAINTIES = ['certain', 'likely'];
 
     public function __construct(
         public readonly ?string $connection = null,
@@ -21,6 +23,7 @@ final class IgnoreRule
         public readonly ?HintKind $kind = null,
         public readonly ?string $columns = null,
         public readonly ?string $relation = null,
+        public readonly ?string $certainty = null,
     ) {}
 
     /**
@@ -60,12 +63,17 @@ final class IgnoreRule
             throw new InvalidArgumentException(sprintf('Unknown hint kind [%s] in hints.ignore.', $rule['kind']));
         }
 
+        if (isset($rule['certainty']) && ! in_array($rule['certainty'], self::CERTAINTIES, true)) {
+            throw new InvalidArgumentException(sprintf('Unknown certainty [%s] in hints.ignore; use certain or likely.', $rule['certainty']));
+        }
+
         return new self(
             connection: $rule['connection'] ?? null,
             table: $rule['table'] ?? null,
             kind: $kind,
             columns: isset($rule['columns']) ? str_replace(' ', '', $rule['columns']) : null,
             relation: isset($rule['relation']) ? ltrim($rule['relation'], '\\') : null,
+            certainty: $rule['certainty'] ?? null,
         );
     }
 
@@ -75,7 +83,8 @@ final class IgnoreRule
             && ($this->table === null || Str::is($this->table, $hint->table))
             && ($this->kind === null || $this->kind === $hint->kind)
             && ($this->columns === null || $this->columns === $hint->columns)
-            && ($this->relation === null || $this->relation === $hint->relation);
+            && ($this->relation === null || $this->relation === $hint->relation)
+            && ($this->certainty === null || $this->certainty === $hint->kind->certainty());
     }
 
     /**
