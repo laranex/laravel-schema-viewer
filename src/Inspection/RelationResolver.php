@@ -131,13 +131,35 @@ final class RelationResolver
     }
 
     /**
-     * Run the callback with each connection pretending: queries are logged, never sent to the database. The callback
-     * must not throw, since Laravel 10 leaves a connection pretending when it does.
+     * Run the callback with each connection pretending: queries are logged, never sent to the database. What the
+     * callback throws is rethrown only after every pretend() has returned, since Laravel 10, 11 and 12 before 12.41
+     * leave a connection pretending (and before 13.33 logging queries) when its callback throws.
      *
      * @param  list<string>  $names
      * @param  Closure(): void  $callback
      */
     private function pretending(array $names, Closure $callback): void
+    {
+        $failure = null;
+
+        $this->pretendOn($names, function () use ($callback, &$failure): void {
+            try {
+                $callback();
+            } catch (Throwable $e) {
+                $failure = $e;
+            }
+        });
+
+        if ($failure instanceof Throwable) {
+            throw $failure;
+        }
+    }
+
+    /**
+     * @param  list<string>  $names
+     * @param  Closure(): void  $callback
+     */
+    private function pretendOn(array $names, Closure $callback): void
     {
         $name = array_shift($names);
 
@@ -151,12 +173,12 @@ final class RelationResolver
             $connection = $this->connections->connection($name);
         } catch (Throwable) {
             // A connection that cannot be opened cannot be written to either.
-            $this->pretending($names, $callback);
+            $this->pretendOn($names, $callback);
 
             return;
         }
 
-        $connection->pretend(fn () => $this->pretending($names, $callback));
+        $connection->pretend(fn () => $this->pretendOn($names, $callback));
     }
 
     /**
