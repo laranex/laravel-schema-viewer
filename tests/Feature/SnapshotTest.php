@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Illuminate\Database\Events\MigrationsEnded;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
@@ -11,8 +10,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Laranex\LaravelSchemaViewer\Snapshot;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\SideEffects\Noisy;
-use Symfony\Component\Console\Output\BufferedOutput;
-use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * The schema the viewer's API serves.
@@ -193,94 +190,6 @@ it('keeps the application\'s jobs, events, cache and HTTP calls from the outside
     // Put back: the application's own calls work again after the build.
     event('noisy.announced');
     expect($announced)->toBe(1);
-});
-
-it('builds the snapshot after migrations in the local environment', function (): void {
-    app()->instance(OutputInterface::class, $output = new BufferedOutput);
-
-    event(new MigrationsEnded('up'));
-
-    expect(is_file($this->snapshot))->toBeTrue()
-        ->and($output->fetch())->toContain('snapshot written to');
-});
-
-it('builds after a real migrate run', function (): void {
-    app()->instance(OutputInterface::class, new BufferedOutput);
-    $migrations = dirname($this->snapshot).DIRECTORY_SEPARATOR.'migrations';
-    mkdir($migrations, 0755, true);
-    file_put_contents($migrations.'/2026_10_13_000000_create_gadgets_table.php', <<<'PHP'
-        <?php
-
-        use Illuminate\Database\Migrations\Migration;
-        use Illuminate\Database\Schema\Blueprint;
-        use Illuminate\Support\Facades\Schema;
-
-        return new class extends Migration
-        {
-            public function up(): void
-            {
-                Schema::create('gadgets', fn (Blueprint $table) => $table->id());
-            }
-        };
-        PHP);
-
-    try {
-        $this->artisan('migrate', ['--path' => $migrations, '--realpath' => true])->assertSuccessful();
-    } finally {
-        @unlink($migrations.'/2026_10_13_000000_create_gadgets_table.php');
-        @rmdir($migrations);
-    }
-
-    expect(servedTables($this))->toContain('gadgets');
-});
-
-it('does not build after migrations outside the local environment unless told to, and only while enabled', function (): void {
-    $this->rebootWith('production');
-    event(new MigrationsEnded('up'));
-    expect(is_file($this->snapshot))->toBeFalse();
-
-    $this->rebootWith('production', ['build_after_migrate' => true]);
-    event(new MigrationsEnded('up'));
-    expect(is_file($this->snapshot))->toBeFalse();
-
-    $this->rebootWith('production', ['build_after_migrate' => true, 'enabled' => true]);
-    app()->instance(OutputInterface::class, new BufferedOutput);
-    event(new MigrationsEnded('up'));
-    expect(is_file($this->snapshot))->toBeTrue();
-});
-
-it('does not build after migrations when turned off', function (): void {
-    $this->rebootWith('local', ['build_after_migrate' => false]);
-
-    event(new MigrationsEnded('up'));
-
-    expect(is_file($this->snapshot))->toBeFalse();
-});
-
-it('does not build after migrations that only pretended to run', function (): void {
-    if ((new ReflectionMethod(MigrationsEnded::class, '__construct'))->getNumberOfParameters() < 2) {
-        $this->markTestSkipped('Laravel 10 does not tell whether migrations pretended.');
-    }
-
-    event(new MigrationsEnded('up', ['pretend' => true]));
-
-    expect(is_file($this->snapshot))->toBeFalse();
-});
-
-it('never fails a migration when the build fails', function (): void {
-    // A folder cannot be created inside a file.
-    $file = tempnam(sys_get_temp_dir(), 'not-a-folder');
-    config()->set('schema-viewer.snapshot', $file.DIRECTORY_SEPARATOR.'schema-viewer.json');
-    app()->instance(OutputInterface::class, $output = new BufferedOutput);
-
-    try {
-        event(new MigrationsEnded('up'));
-    } finally {
-        @unlink($file);
-    }
-
-    expect($output->fetch())->toContain('could not build its snapshot')
-        ->toContain('Run php artisan schema-viewer:build.');
 });
 
 it('reports a build that fails', function (): void {

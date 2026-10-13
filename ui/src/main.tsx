@@ -71,7 +71,7 @@ function Root() {
                 <h1>No schema yet</h1>
                 <p>{missing}</p>
                 <p className="muted">
-                    Run <code>php artisan schema-viewer:build</code> in your project, then reload this page. It runs again after <code>php artisan migrate</code> in your local environment.
+                    Run <code>php artisan schema-viewer:build</code> in your project, then reload this page. Run it again after you migrate or change a model.
                 </p>
             </div>
         );

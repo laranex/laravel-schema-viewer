@@ -22,7 +22,7 @@ Laravel has no single schema file. The tables live in the database, and the rela
 - **Straight to the code.** Model and relation names open in your editor at the line that declares them.
 - **Downloads and commands.** The database schema as Mermaid, DBML, Markdown or JSON, the whole viewer as one HTML file, and a check that fails your CI on the hints you choose.
 
-Run `php artisan schema-viewer:build` and open `/schema-viewer` in your local environment. The build writes `schema-viewer.json` in your project root and runs again after every `php artisan migrate` there; the viewer only reads that file.
+Run `php artisan schema-viewer:build` and open `/schema-viewer` in your local environment. The build writes `schema-viewer.json` in your project root, and it is the only thing the viewer reads; run it again after migrating.
 
 ## Installation
 

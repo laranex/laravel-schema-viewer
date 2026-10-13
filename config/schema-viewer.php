@@ -85,17 +85,12 @@ return [
     | writes the snapshot the viewer serves: readable JSON you can commit or
     | ignore. The viewer's routes only read it; no model code runs in a web
     | request. Null writes schema-viewer.json in the project root; a relative
-    | path starts there too.
-    |
-    | Build after migrate runs the build again whenever migrations finish in
-    | the console, so the viewer follows your schema. Unset, it is on in the
-    | local environment only. It never fails a migration.
+    | path starts there too. Run the build again after changing migrations or
+    | models, and in your deploy script.
     |
     */
 
     'snapshot' => env('SCHEMA_VIEWER_SNAPSHOT'),
-
-    'build_after_migrate' => env('SCHEMA_VIEWER_BUILD_AFTER_MIGRATE'),
 
     /*
     |--------------------------------------------------------------------------
