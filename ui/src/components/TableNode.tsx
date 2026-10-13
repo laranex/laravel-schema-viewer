@@ -101,7 +101,7 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
                     )}
                 </div>
                 <div className="table-node__meta">
-                    {data.models.length > 0 ? data.models.map((m) => <span key={m}>{m}</span>) : <span className="muted">{table.framework ? 'framework table' : 'no model'}</span>}
+                    {data.models.length > 0 ? data.models.map((m) => <span key={m}>{m}</span>) : <span className="muted">{table.framework ? 'framework table' : table.package ? 'package table' : 'no model'}</span>}
                     {data.pivot && <span className="tag">pivot</span>}
                     {table.package && <span className="tag">{table.package}</span>}
                 </div>

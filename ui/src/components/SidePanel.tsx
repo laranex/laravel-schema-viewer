@@ -329,7 +329,7 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                             </SourceLink>
                         ))
                     ) : (
-                        <span className="chip chip--none">No Eloquent model uses this table</span>
+                        <span className="chip chip--none">{table.package && !table.framework ? 'A package table' : 'No Eloquent model uses this table'}</span>
                     )}
                 </div>
                 <div className="details__actions">
