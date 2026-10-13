@@ -244,6 +244,8 @@ export class Schema {
             haystack = [
                 table.name,
                 ...table.columns.map((c) => c.name),
+                table.note ?? '',
+                ...table.columns.map((c) => c.note ?? ''),
                 ...this.modelsFor(connection, table.name).map((m) => m.class),
                 ...this.relationsOf(connection, table.name).map((r) => r.name),
             ].map((s) => s.toLowerCase());

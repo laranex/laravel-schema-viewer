@@ -308,6 +308,7 @@ const links: Link[] = [
 export const schema: SchemaDocument = {
     version: 1,
     generatedAt: '2026-10-12T09:00:00Z',
+    note: 'The blog and its analytics. Posts are written by users and filed under categories.',
     connections: [
         { name: 'pgsql', driver: 'pgsql', tables: pgsqlTables },
         { name: 'analytics', driver: 'pgsql', tables: analyticsTables },

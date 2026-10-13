@@ -150,6 +150,12 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
                                                     {c.comment}
                                                 </>
                                             )}
+                                            {c.note && (
+                                                <>
+                                                    <br />
+                                                    <b>Note</b> {c.note}
+                                                </>
+                                            )}
                                         </>
                                     }
                                     side="right"

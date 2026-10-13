@@ -31,6 +31,7 @@ final class SchemaDocument implements JsonSerializable
         public readonly array $links,
         public readonly array $derivedLinks,
         public readonly array $hints,
+        public readonly ?string $note = null,
     ) {}
 
     public function connection(string $name): ?ConnectionSchema
@@ -52,6 +53,7 @@ final class SchemaDocument implements JsonSerializable
         return [
             'version' => self::VERSION,
             'generatedAt' => $this->generatedAt,
+            'note' => $this->note,
             'connections' => $this->connections,
             'models' => $this->models,
             'relations' => $this->relations,

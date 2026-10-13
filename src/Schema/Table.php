@@ -16,6 +16,7 @@ final class Table implements JsonSerializable
      * @param  list<Column>  $columns
      * @param  list<Index>  $indexes
      * @param  list<ForeignKey>  $foreignKeys
+     * @param  string|null  $note  From the notes config, beside the database's own comment.
      * @param  bool  $indexDetails  Whether the indexes' partial, expression and included details could be read; not part of the JSON.
      */
     public function __construct(
@@ -27,6 +28,7 @@ final class Table implements JsonSerializable
         public readonly array $foreignKeys,
         public readonly ?string $package = null,
         public readonly bool $indexDetails = true,
+        public readonly ?string $note = null,
     ) {}
 
     public function column(string $name): ?Column
@@ -79,13 +81,14 @@ final class Table implements JsonSerializable
     }
 
     /**
-     * @return array{name: string, comment: string|null, framework: bool, package: string|null, columns: list<Column>, indexes: list<Index>, foreignKeys: list<ForeignKey>}
+     * @return array{name: string, comment: string|null, note: string|null, framework: bool, package: string|null, columns: list<Column>, indexes: list<Index>, foreignKeys: list<ForeignKey>}
      */
     public function jsonSerialize(): array
     {
         return [
             'name' => $this->name,
             'comment' => $this->comment,
+            'note' => $this->note,
             'framework' => $this->framework,
             'package' => $this->package,
             'columns' => $this->columns,

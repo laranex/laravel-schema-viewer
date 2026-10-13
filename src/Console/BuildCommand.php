@@ -6,6 +6,7 @@ namespace Laranex\LaravelSchemaViewer\Console;
 
 use Illuminate\Console\Command;
 use Laranex\LaravelSchemaViewer\Schema\ConnectionSchema;
+use Laranex\LaravelSchemaViewer\SchemaViewer;
 use Laranex\LaravelSchemaViewer\Snapshot;
 use Throwable;
 
@@ -16,7 +17,7 @@ final class BuildCommand extends Command
 
     protected $description = 'Read the database and the Eloquent models and write the schema snapshot the viewer serves';
 
-    public function handle(Snapshot $snapshot): int
+    public function handle(Snapshot $snapshot, SchemaViewer $viewer): int
     {
         if ($this->option('check')) {
             return $this->check($snapshot);
@@ -39,6 +40,12 @@ final class BuildCommand extends Command
             count($document->models), count($document->models) === 1 ? 'model' : 'models',
             count($document->relations), count($document->relations) === 1 ? 'relation' : 'relations',
         ));
+
+        $unmatched = $viewer->unmatchedNotes($document);
+
+        if ($unmatched !== []) {
+            $this->components->warn(sprintf('%d %s nothing: %s.', count($unmatched), count($unmatched) === 1 ? 'note matches' : 'notes match', implode(', ', $unmatched)));
+        }
 
         return self::SUCCESS;
     }

@@ -225,13 +225,21 @@ export function SidePanel({ schema, connections, tables, selected, highlight, on
                             onCopyLink={onCopyLink}
                         />
                     ) : (
-                        <p className="panel__empty">
-                            Select a table, a line or a column on the diagram, or pick one in{' '}
-                            <button type="button" className="link-button" onClick={() => onTab('browse')}>
-                                Browse
-                            </button>
-                            , to see its details here.
-                        </p>
+                        <>
+                            {schema.doc.note && (
+                                <div className="project-note">
+                                    <h2 className="project-note__title">About this schema</h2>
+                                    <p>{schema.doc.note}</p>
+                                </div>
+                            )}
+                            <p className="panel__empty">
+                                Select a table, a line or a column on the diagram, or pick one in{' '}
+                                <button type="button" className="link-button" onClick={() => onTab('browse')}>
+                                    Browse
+                                </button>
+                                , to see its details here.
+                            </p>
+                        </>
                     )}
                 </TabPanel>
                 <TabPanel value="hints" className="panel__body">
@@ -419,6 +427,11 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                     {connection} · {table.columns.length} columns{table.framework ? ' · framework table' : ''}{table.package ? ` · from ${table.package}` : ''}
                 </p>
                 {table.comment && <p className="details__comment">{table.comment}</p>}
+                {table.note && (
+                    <p className="details__comment details__note">
+                        <b>Note</b> {table.note}
+                    </p>
+                )}
                 <div className="chips">
                     {models.length ? (
                         models.map((m) => (

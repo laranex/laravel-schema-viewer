@@ -160,12 +160,13 @@ class SchemaViewer
             $whileReadingRelations !== null ? $whileReadingRelations($read) : $read();
         });
 
+        $notes = $this->notes();
         $connections = array_map(
-            fn (string $name) => $this->database->inspect($name, $this->strings('schema-viewer.exclude_tables'), $this->strings('schema-viewer.framework_tables'), $this->packageTables()),
+            fn (string $name) => $this->database->inspect($name, $this->strings('schema-viewer.exclude_tables'), $this->strings('schema-viewer.framework_tables'), $this->packageTables(), $notes),
             $this->connectionNames($models),
         );
 
-        return $this->graph->build($connections, $models, $relations, $unresolved, $this->ignoreRules());
+        return $this->graph->build($connections, $models, $relations, $unresolved, $this->ignoreRules(), note: $notes['project']);
     }
 
     /**
@@ -263,6 +264,84 @@ class SchemaViewer
         }
 
         return array_values(array_map(IgnoreRule::fromConfig(...), $rules));
+    }
+
+    /**
+     * The notes config: a note on the project, and notes on tables and columns by table name. A table name may start
+     * with a connection name and a colon (analytics:events), which wins over the plain name on that connection.
+     *
+     * @return array{project: string|null, tables: array<string, string>, columns: array<string, array<string, string>>}
+     *
+     * @throws InvalidArgumentException When a note is not a string.
+     */
+    public function notes(): array
+    {
+        $notes = $this->config->get('schema-viewer.notes', []);
+        $notes = is_array($notes) ? $notes : throw new InvalidArgumentException('schema-viewer.notes must be an array with project, tables and columns.');
+        $project = $notes['project'] ?? null;
+        $tables = $notes['tables'] ?? [];
+        $columns = $notes['columns'] ?? [];
+
+        if ($project !== null && ! is_string($project)) {
+            throw new InvalidArgumentException('schema-viewer.notes.project must be a string or null.');
+        }
+
+        if (! is_array($tables) || array_filter($tables, fn (mixed $note): bool => ! is_string($note)) !== []) {
+            throw new InvalidArgumentException('schema-viewer.notes.tables must map table names to strings, such as [\'orders\' => \'One row per checkout.\'].');
+        }
+
+        if (! is_array($columns) || array_filter($columns, fn (mixed $notes): bool => ! is_array($notes) || array_filter($notes, fn (mixed $note): bool => ! is_string($note)) !== []) !== []) {
+            throw new InvalidArgumentException('schema-viewer.notes.columns must map table names to column notes, such as [\'orders\' => [\'status\' => \'…\']].');
+        }
+
+        /** @var array<string, string> $tables */
+        /** @var array<string, array<string, string>> $columns */
+        return [
+            'project' => $project !== '' ? $project : null,
+            'tables' => array_combine(array_map('strval', array_keys($tables)), $tables),
+            'columns' => array_combine(array_map('strval', array_keys($columns)), array_map(fn (array $notes): array => array_combine(array_map('strval', array_keys($notes)), $notes), $columns)),
+        ];
+    }
+
+    /**
+     * The table and column notes that name nothing in the document, such as orders.stauts, so the build can say so.
+     *
+     * @return list<string>
+     */
+    public function unmatchedNotes(SchemaDocument $document): array
+    {
+        $notes = $this->notes();
+        $unmatched = [];
+        $find = function (string $key) use ($document): array {
+            [$connection, $table] = str_contains($key, ':') ? explode(':', $key, 2) : [null, $key];
+            $found = [];
+
+            foreach ($document->connections as $schema) {
+                if (($connection === null || $schema->name === $connection) && ($match = $schema->table($table)) !== null) {
+                    $found[] = $match;
+                }
+            }
+
+            return $found;
+        };
+
+        foreach (array_keys($notes['tables']) as $key) {
+            if ($find($key) === []) {
+                $unmatched[] = $key;
+            }
+        }
+
+        foreach ($notes['columns'] as $key => $columns) {
+            $tables = $find($key);
+
+            foreach (array_keys($columns) as $column) {
+                if (array_filter($tables, fn (Schema\Table $table): bool => $table->hasColumn($column)) === []) {
+                    $unmatched[] = $key.'.'.$column;
+                }
+            }
+        }
+
+        return $unmatched;
     }
 
     /**

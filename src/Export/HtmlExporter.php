@@ -81,8 +81,8 @@ final class HtmlExporter
         foreach ($document->connections as $connection) {
             $downloads[$connection->name] = [
                 'mermaid' => (new MermaidExporter)->export($connection),
-                'dbml' => (new DbmlExporter)->export($connection),
-                'markdown' => (new MarkdownExporter)->export($connection),
+                'dbml' => (new DbmlExporter)->export($connection, $document->note),
+                'markdown' => (new MarkdownExporter)->export($connection, $document->note),
             ];
         }
 

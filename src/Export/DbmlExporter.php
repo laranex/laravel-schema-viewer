@@ -12,9 +12,16 @@ use Laranex\LaravelSchemaViewer\Schema\Table;
  */
 final class DbmlExporter
 {
-    public function export(ConnectionSchema $connection): string
+    /**
+     * @param  string|null  $note  The project's note, written as the Project block's.
+     */
+    public function export(ConnectionSchema $connection, ?string $note = null): string
     {
         $blocks = [];
+
+        if ($note !== null) {
+            $blocks[] = 'Project '.$this->name($connection->name)." {\n  Note: '".$this->escape($note)."'\n}";
+        }
 
         foreach ($connection->tables as $table) {
             $primary = [];
@@ -37,7 +44,7 @@ final class DbmlExporter
                     $this->isUniqueColumn($table, $column->name) ? 'unique' : '',
                     // An auto-increment column's default (PostgreSQL's nextval(...)) is the increment itself.
                     $column->default !== null && ! $column->autoIncrement ? 'default: `'.str_replace('`', "'", $column->default).'`' : '',
-                    $column->comment !== null ? "note: '".$this->escape($column->comment)."'" : '',
+                    $column->comment !== null || $column->note !== null ? "note: '".$this->escape($this->joined($column->comment, $column->note))."'" : '',
                 ]);
                 $lines[] = '  '.$this->name($column->name).' '.$this->type($column->type).($settings !== [] ? ' ['.implode(', ', $settings).']' : '');
             }
@@ -56,8 +63,8 @@ final class DbmlExporter
                 $lines[] = '  }';
             }
 
-            if ($table->comment !== null) {
-                $lines[] = "  Note: '".$this->escape($table->comment)."'";
+            if ($table->comment !== null || $table->note !== null) {
+                $lines[] = "  Note: '".$this->escape($this->joined($table->comment, $table->note))."'";
             }
 
             $lines[] = '}';
@@ -82,6 +89,14 @@ final class DbmlExporter
         }
 
         return implode("\n\n", $blocks).($refs !== [] ? "\n\n".implode("\n", $refs) : '')."\n";
+    }
+
+    /**
+     * The database's comment and the config's note in DBML's one note: "comment · note".
+     */
+    private function joined(?string $comment, ?string $note): string
+    {
+        return implode(' · ', array_filter([$comment, $note], fn (?string $text): bool => $text !== null));
     }
 
     private function isUniqueColumn(Table $table, string $column): bool

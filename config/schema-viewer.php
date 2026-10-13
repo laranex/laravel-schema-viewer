@@ -123,6 +123,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Notes
+    |--------------------------------------------------------------------------
+    |
+    | Your own notes, shown in the viewer beside the database's comments and
+    | written into the exports: one on the project, and notes on tables and
+    | columns by table name. A table name applies on every connection that
+    | has the table; prefix it with a connection to pick one, which wins:
+    |
+    |   'tables' => ['orders' => 'One row per checkout.',
+    |                'analytics:events' => 'Raw tracking events.'],
+    |   'columns' => ['orders' => ['status' => 'pending, paid or refunded.']],
+    |
+    | schema-viewer:build warns about notes that match no table or column.
+    |
+    */
+
+    'notes' => [
+        'project' => null,
+        'tables' => [],
+        'columns' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Hints
     |--------------------------------------------------------------------------
     |

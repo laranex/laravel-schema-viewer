@@ -46,8 +46,9 @@ final class SchemaGraph
      * @param  list<RelationInfo>  $relations
      * @param  list<UnresolvedRelation>  $unresolved
      * @param  list<IgnoreRule>  $ignore  Hints to leave out.
+     * @param  string|null  $note  The project's note, from the notes config.
      */
-    public function build(array $connections, array $models, array $relations, array $unresolved, array $ignore = [], ?string $generatedAt = null): SchemaDocument
+    public function build(array $connections, array $models, array $relations, array $unresolved, array $ignore = [], ?string $generatedAt = null, ?string $note = null): SchemaDocument
     {
         $this->models = [];
 
@@ -64,7 +65,7 @@ final class SchemaGraph
         }
 
         try {
-            return $this->document($connections, $models, $relations, $unresolved, $ignore, $generatedAt);
+            return $this->document($connections, $models, $relations, $unresolved, $ignore, $generatedAt, $note);
         } finally {
             $this->models = $this->morphTargets = [];
         }
@@ -77,7 +78,7 @@ final class SchemaGraph
      * @param  list<UnresolvedRelation>  $unresolved
      * @param  list<IgnoreRule>  $ignore  Hints to leave out.
      */
-    private function document(array $connections, array $models, array $relations, array $unresolved, array $ignore, ?string $generatedAt): SchemaDocument
+    private function document(array $connections, array $models, array $relations, array $unresolved, array $ignore, ?string $generatedAt, ?string $note): SchemaDocument
     {
         $this->pairInverses($relations);
 
@@ -161,6 +162,7 @@ final class SchemaGraph
             links: $built,
             derivedLinks: $derived,
             hints: $hints,
+            note: $note,
         );
     }
 

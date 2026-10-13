@@ -47,6 +47,7 @@ JSON covers every connection and adds the Laravel side: `models` (table, casts, 
 - Where is it declared? Each model and relation has a `source`: a file relative to the app's root and a line.
 - What does a model add on top of its table? `models[]` lists `casts`, `fillable`, `guarded`, `hidden`, `appends`, `scopes`, `globalScopes` and `observers`.
 - Through relations (has-one-through, has-many-through) are in `derivedLinks`, with the tables they pass `via`.
+- What did the team write about it? The document's `note`, and each table's and column's `note`, come from the app's notes config, next to the database's own `comment`; read both before naming or changing something.
 
 ### Find where the database and the models disagree
 

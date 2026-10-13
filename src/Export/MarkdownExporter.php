@@ -13,9 +13,18 @@ use Laranex\LaravelSchemaViewer\Schema\Table;
  */
 final class MarkdownExporter
 {
-    public function export(ConnectionSchema $connection): string
+    /**
+     * @param  string|null  $note  The project's note, written under the title.
+     */
+    public function export(ConnectionSchema $connection, ?string $note = null): string
     {
-        $out = ['# Database schema: '.$this->text($connection->name).' ('.$this->text($connection->driver).')', '', count($connection->tables).' tables.'];
+        $out = ['# Database schema: '.$this->text($connection->name).' ('.$this->text($connection->driver).')', ''];
+
+        if ($note !== null) {
+            array_push($out, $this->text($note), '');
+        }
+
+        $out[] = count($connection->tables).' tables.';
 
         foreach ($connection->tables as $table) {
             array_push($out, '', ...$this->table($table));
@@ -47,6 +56,10 @@ final class MarkdownExporter
         if ($table->comment !== null) {
             array_push($out, '', $this->text($table->comment));
         }
+
+        if ($table->note !== null) {
+            array_push($out, '', 'Note: '.$this->text($table->note));
+        }
         array_push($out, '', '| Column | Type | Null | Default | Key | Comment |', '| --- | --- | --- | --- | --- | --- |');
 
         foreach ($table->columns as $column) {
@@ -57,7 +70,7 @@ final class MarkdownExporter
                 $column->nullable ? 'yes' : '',
                 $column->default !== null ? '`'.$this->code($column->default).'`' : '',
                 in_array($column->name, $primary, true) ? 'PK' : (isset($foreign[$column->name]) ? 'FK → '.$foreign[$column->name] : ''),
-                $column->comment !== null ? $this->text($column->comment) : '',
+                $this->text(implode(' · ', array_filter([$column->comment, $column->note], fn (?string $text): bool => $text !== null))),
             );
         }
 

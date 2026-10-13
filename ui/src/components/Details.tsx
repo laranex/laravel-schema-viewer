@@ -252,6 +252,11 @@ function ColumnDetails({ schema, highlight, onOpen, onHighlight, focusedOn, onFo
                     {column.nullable ? ' · nullable' : ''}
                 </p>
                 {column.comment && <p className="details__comment">{column.comment}</p>}
+                {column.note && (
+                    <p className="details__comment details__note">
+                        <b>Note</b> {column.note}
+                    </p>
+                )}
                 <Actions highlight={highlight} focusedOn={focusedOn} onFocus={onFocus} onLeaveFocus={onLeaveFocus} onCopyLink={onCopyLink}>
                     <button type="button" className="button button--small" onClick={() => onOpen(connection, name)}>
                         Open {name}

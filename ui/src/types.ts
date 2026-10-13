@@ -8,6 +8,8 @@ export type Column = {
     default: string | null;
     autoIncrement: boolean;
     comment: string | null;
+    // From the notes config, beside the database's own comment.
+    note?: string | null;
 };
 
 export type Index = {
@@ -38,6 +40,8 @@ export type ForeignKey = {
 export type Table = {
     name: string;
     comment: string | null;
+    // From the notes config, beside the database's own comment.
+    note?: string | null;
     framework: boolean;
     // The Composer package that owns the table, such as laravel/passport; null for the application's own tables.
     package?: string | null;
@@ -163,6 +167,8 @@ export type SchemaDocument = {
     version: 1;
     // When the JSON export was made; a snapshot leaves it out so it changes only with the schema.
     generatedAt?: string;
+    // The project's note, from the notes config.
+    note?: string | null;
     connections: Connection[];
     models: Model[];
     relations: Relation[];

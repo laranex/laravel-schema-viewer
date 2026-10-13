@@ -147,5 +147,9 @@ function reasonFor(schema: Schema, connection: string, table: Table, q: string):
         return `relation ${relation.name}()`;
     }
     const model = schema.modelsFor(connection, table.name).find((m) => m.class.toLowerCase().includes(q));
-    return model ? `model ${shortClass(model.class)}` : null;
+    if (model) {
+        return `model ${shortClass(model.class)}`;
+    }
+    const noted = table.columns.find((c) => c.note?.toLowerCase().includes(q));
+    return noted ? `note on ${noted.name}` : table.note?.toLowerCase().includes(q) ? 'its note' : null;
 }

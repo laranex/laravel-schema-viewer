@@ -26,8 +26,9 @@ final class DatabaseInspector
      * @param  list<string>  $exclude  Table name patterns never shown.
      * @param  list<string>  $framework  Table name patterns tagged as framework tables.
      * @param  array<string, list<string>>  $packages  Table name patterns tagged with the package that owns them, by package name.
+     * @param  array{tables: array<string, string>, columns: array<string, array<string, string>>}  $notes  Notes by table name, plain or prefixed with a connection name and a colon, which wins.
      */
-    public function inspect(string $name, array $exclude = [], array $framework = [], array $packages = []): ConnectionSchema
+    public function inspect(string $name, array $exclude = [], array $framework = [], array $packages = [], array $notes = ['tables' => [], 'columns' => []]): ConnectionSchema
     {
         /** @var Connection $connection */
         $connection = $this->connections->connection($name);
@@ -62,11 +63,12 @@ final class DatabaseInspector
                 name: $qualified,
                 comment: isset($row['comment']) && $row['comment'] !== '' ? (string) $row['comment'] : null,
                 framework: Str::is($framework, $qualified),
-                columns: $this->columns($builder->getColumns($qualified)),
+                columns: $this->columns($builder->getColumns($qualified), [...$notes['columns'][$qualified] ?? [], ...$notes['columns'][$name.':'.$qualified] ?? []]),
                 indexes: $this->indexes($builder->getIndexes($qualified), $details),
                 foreignKeys: $this->foreignKeys($qualified, $builder->getForeignKeys($qualified), $prefix, is_string($defaultSchema) ? $defaultSchema : null),
                 package: $this->package($qualified, $packages),
                 indexDetails: $details !== null,
+                note: $notes['tables'][$name.':'.$qualified] ?? $notes['tables'][$qualified] ?? null,
             );
         }
 
@@ -116,9 +118,10 @@ final class DatabaseInspector
 
     /**
      * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, string>  $notes  By column name.
      * @return list<Column>
      */
-    private function columns(array $rows): array
+    private function columns(array $rows, array $notes = []): array
     {
         return array_values(array_map(fn (array $row): Column => new Column(
             name: (string) $row['name'],
@@ -128,6 +131,7 @@ final class DatabaseInspector
             default: isset($row['default']) ? (string) $row['default'] : null,
             autoIncrement: (bool) ($row['auto_increment'] ?? false),
             comment: isset($row['comment']) && $row['comment'] !== '' ? (string) $row['comment'] : null,
+            note: $notes[(string) $row['name']] ?? null,
         ), $rows));
     }
 
