@@ -24,7 +24,7 @@ use Illuminate\Support\Testing\Fakes\EventFake;
  * Keeps the application's code from reaching the outside world while schema-viewer:build reads the models: jobs,
  * queued jobs, mail and notifications are faked, HTTP calls answered by a fake, the default cache kept in memory and,
  * while relation methods run, events faked. Everything is put back afterwards, so a build run from a long-running
- * process (Artisan::call(), the after-migrate build) leaves the application as it found it.
+ * process (Artisan::call()) leaves the application as it found it.
  */
 final class Isolation
 {

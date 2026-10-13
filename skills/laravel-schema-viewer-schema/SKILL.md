@@ -21,7 +21,7 @@ The app needs the package (`composer require laranex/laravel-schema-viewer --dev
 
 ### Read the snapshot
 
-When `schema-viewer.json` exists in the project root, read it first: it is what the viewer shows, written by `php artisan schema-viewer:build`. `document` holds the same JSON as `schema-viewer:export --format=json` below, and `downloads.<connection>` the Mermaid, DBML and Markdown of each connection. It is as fresh as its last build (after `migrate` in `local`, or when someone ran the build); if a migration or model changed since, run `php artisan schema-viewer:build` or use the export commands.
+When `schema-viewer.json` exists in the project root, read it first: it is what the viewer shows, written by `php artisan schema-viewer:build`. `document` holds the same JSON as `schema-viewer:export --format=json` below, and `downloads.<connection>` the Mermaid, DBML and Markdown of each connection. It is as fresh as the last time someone ran the build; if a migration or model changed since, run `php artisan schema-viewer:build` or use the export commands.
 
 ### Read the database
 
