@@ -118,7 +118,7 @@ export type MenuChoice = { label: string; value: string; options: SelectOption[]
 export type MenuToggle = { label: string; checked: boolean; onChange: () => void; icon?: ReactNode; hotkey?: string };
 
 // A labeled single choice: the selected option is checked.
-function ChoiceGroup({ choice, tour }: { choice: MenuChoice; tour?: string }) {
+function ChoiceGroup({ choice, tour, separator = true }: { choice: MenuChoice; tour?: string; separator?: boolean }) {
     return (
         <MenuPrimitive.Group data-tour={tour}>
             <MenuPrimitive.Label className="ui-menu__label">
@@ -140,7 +140,7 @@ function ChoiceGroup({ choice, tour }: { choice: MenuChoice; tour?: string }) {
                     </MenuPrimitive.RadioItem>
                 ))}
             </MenuPrimitive.RadioGroup>
-            <MenuPrimitive.Separator className="ui-menu__separator" />
+            {separator && <MenuPrimitive.Separator className="ui-menu__separator" />}
         </MenuPrimitive.Group>
     );
 }
@@ -215,7 +215,7 @@ export function Menu({
                             {(afterToggles || items.length > 0) && <MenuPrimitive.Separator className="ui-menu__separator" />}
                         </MenuPrimitive.Group>
                     )}
-                    {afterToggles && <ChoiceGroup choice={afterToggles} tour={afterToggles.tour} />}
+                    {afterToggles && <ChoiceGroup choice={afterToggles} tour={afterToggles.tour} separator={items.length > 0} />}
                     {items.length > 0 && (
                     <MenuPrimitive.Group data-tour="menu-actions">
                         {itemsLabel && <MenuPrimitive.Label className="ui-menu__label">{itemsLabel}</MenuPrimitive.Label>}

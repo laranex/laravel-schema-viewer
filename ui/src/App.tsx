@@ -1191,17 +1191,27 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 <div className="float-bar" role="group" aria-label="Show on the diagram" data-tour="layers">
                                     <ViewMenu label="Lines" toggles={lineToggles} cosmetic={['Relation names']} />
                                     <ViewMenu label="Tables" toggles={tableToggles} />
-                                    <div className="segmented" role="radiogroup" aria-label="Columns" aria-keyshortcuts="C" data-tour="columns">
-                                        <span className="segmented__label">Columns</span>
-                                        {FOLDS.map((f) => (
-                                            <Tooltip key={f} content={<>{COLUMN_CHOICES[f].hint} <kbd>C</kbd></>} side="bottom">
-                                                <button type="button" role="radio" aria-checked={columns === f} className="segmented__option" onClick={() => setColumns(f)}>
-                                                    {COLUMN_CHOICES[f].label}
-                                                </button>
-                                            </Tooltip>
-                                        ))}
-                                        <kbd className="kbd-hint">C</kbd>
-                                    </div>
+                                    <Menu
+                                        label="Columns"
+                                        triggerClass="button button--with-icon"
+                                        tour="columns"
+                                        trigger={
+                                            <>
+                                                Columns <span className="float-bar__value">{COLUMN_CHOICES[columns].label}</span>
+                                                <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className="ui-icon">
+                                                    <path d="M4 6 L8 10 L12 6" />
+                                                </svg>
+                                            </>
+                                        }
+                                        items={[]}
+                                        afterToggles={{
+                                            label: 'Columns',
+                                            value: columns,
+                                            options: FOLDS.map((f) => ({ value: f, label: COLUMN_CHOICES[f].label, hint: COLUMN_CHOICES[f].hint })),
+                                            onChange: (v) => setColumns(v as Fold),
+                                            hint: <kbd className="kbd-hint">C</kbd>,
+                                        }}
+                                    />
                                 </div>
                             )}
                             {focus && (
