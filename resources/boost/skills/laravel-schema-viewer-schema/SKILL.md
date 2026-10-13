@@ -52,7 +52,10 @@ JSON covers every connection and adds the Laravel side: `models` (table, casts, 
 
 ```bash
 php artisan schema-viewer:check
+php artisan schema-viewer:check --format=json
 ```
+
+Read `--format=json` rather than the text: one JSON document with `passed`, `failOn`, a `summary` (counts by severity, certainty and kind) and every hint with its `kind`, `severity`, `certainty`, `connection`, `table`, `columns`, `relation`, `message`, `fails` and the `ignorePhp` rule. The exit code stays 0 (passed), 1 (a failing hint) or 2 (invalid options or config, with an `error` field).
 
 Hint kinds:
 

@@ -195,3 +195,84 @@ function unpackedScript(string $html, string $id): string
 
     return (string) gzdecode((string) base64_decode($match[1] ?? '', true));
 }
+
+/**
+ * schema-viewer:check --format=json: the exit code and the decoded document.
+ *
+ * @param  array<string, mixed>  $options
+ * @return array{int, array<string, mixed>, string}
+ */
+function checkJson(array $options = []): array
+{
+    $code = Artisan::call('schema-viewer:check', ['--format' => 'json', '--ansi' => true, ...$options]);
+    $output = Artisan::output();
+
+    return [$code, json_decode($output, true, 512, JSON_THROW_ON_ERROR), $output];
+}
+
+it('prints the check as JSON for scripts and agents', function (): void {
+    [$code, $json, $output] = checkJson();
+    $hints = app(SchemaViewer::class)->document()->hints;
+
+    expect($code)->toBe(1)
+        ->and($output)->not->toContain("\e[")
+        ->and($output)->toEndWith("}\n")
+        ->and(array_keys($json))->toBe(['version', 'passed', 'failOn', 'summary', 'hints'])
+        ->and($json['version'])->toBe(1)
+        ->and($json['passed'])->toBeFalse()
+        ->and($json['failOn'])->toBe(['foreign_key_without_index', 'unresolved_relation', 'model_without_table'])
+        ->and($json['summary']['hints'])->toBe(count($hints))
+        ->and($json['summary']['failing'])->toBe(count(array_filter($json['hints'], fn (array $hint): bool => $hint['fails'])))
+        ->and(array_sum($json['summary']['bySeverity']))->toBe(count($hints))
+        ->and(array_sum($json['summary']['byCertainty']))->toBe(count($hints))
+        ->and(array_sum($json['summary']['byKind']))->toBe(count($hints))
+        ->and($json['summary']['byKind']['model_without_table'])->toBe(1)
+        ->and(array_keys($json['hints'][0]))->toBe(['kind', 'severity', 'certainty', 'connection', 'table', 'columns', 'relation', 'message', 'fails', 'ignore', 'ignorePhp'])
+        ->and(array_column($json['hints'], 'message'))->toBe(array_map(fn ($hint): string => $hint->message, $hints));
+
+    Artisan::call('schema-viewer:check');
+    $text = Artisan::output();
+
+    foreach ($json['hints'] as $hint) {
+        expect($text)->toContain('Ignore it: '.$hint['ignorePhp'])
+            ->and($hint['fails'])->toBe(in_array($hint['kind'], $json['failOn'], true));
+    }
+});
+
+it('marks the failing hints by --fail-on in the JSON', function (): void {
+    [$code, $json] = checkJson(['--fail-on' => ['morph_without_map']]);
+
+    expect($code)->toBe(1)
+        ->and($json['failOn'])->toBe(['morph_without_map'])
+        ->and(collect($json['hints'])->where('fails', true)->pluck('kind')->unique()->values()->all())->toBe(['morph_without_map']);
+
+    config()->set('schema-viewer.hints.ignore', [['connection' => 'test*'], ['table' => 'ghosts']]);
+    [$code, $json, $output] = checkJson();
+
+    expect($code)->toBe(0)
+        ->and($json['passed'])->toBeTrue()
+        ->and($json['hints'])->toBe([])
+        ->and($output)->toContain('"bySeverity": {}');
+});
+
+it('reports a check that cannot run as JSON', function (array $config, array $options, int $code, string $error): void {
+    foreach ($config as $key => $value) {
+        config()->set($key, $value);
+    }
+
+    [$exit, $json, $output] = checkJson($options);
+
+    expect($exit)->toBe($code)
+        ->and($json)->toBe(['version' => 1, 'passed' => false, 'error' => $error])
+        ->and($output)->not->toContain("\e[");
+})->with([
+    'an unknown kind' => [[], ['--fail-on' => ['made_up']], 2, 'Unknown hint kind [made_up].'],
+    'a bad ignore rule' => [['schema-viewer.hints.ignore' => [['tabel' => 'posts']]], [], 2, 'Unknown hints.ignore field [tabel]; use connection, table, kind, columns, relation, certainty.'],
+    'a schema that cannot be read' => [['schema-viewer.package_tables' => 'oauth_*'], [], 1, 'The schema could not be read: schema-viewer.package_tables must be false or a list of table patterns by package name.'],
+]);
+
+it('rejects an unknown check format', function (): void {
+    $this->artisan('schema-viewer:check', ['--format' => 'xml'])
+        ->expectsOutputToContain('Unknown format [xml]. Use text or json.')
+        ->assertExitCode(2);
+});
