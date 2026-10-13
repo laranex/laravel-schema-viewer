@@ -413,7 +413,7 @@ final class RelationResolver
     }
 
     /**
-     * One condition, with its bound values as ? so no literal from the code reaches the page.
+     * One condition, with its bound values (and the literals in raw SQL) as ? so no literal from the code reaches the page.
      *
      * @param  array<string, mixed>  $where
      */
@@ -428,9 +428,20 @@ final class RelationResolver
             'NotNull' => $column.' is not null',
             'In', 'NotIn' => $column.($not ? ' not in (' : ' in (').implode(', ', array_fill(0, max(1, is_array($where['values'] ?? null) ? count($where['values']) : 0), '?')).')',
             'Column' => (is_string($where['first'] ?? null) ? $this->column($where['first']) : $column).' '.(is_string($where['operator'] ?? null) ? $where['operator'] : '=').' '.(is_string($where['second'] ?? null) ? $this->column($where['second']) : ''),
-            'raw' => is_string($where['sql'] ?? null) ? $where['sql'] : 'raw condition',
+            'raw' => is_string($where['sql'] ?? null) ? $this->masked($where['sql']) : 'raw condition',
             default => strtolower((string) ($where['type'] ?? 'condition')).($column !== '' ? ' on '.$column : ''),
         };
+    }
+
+    /**
+     * Raw SQL with its literals, quoted strings and numbers, written as ?, as bound values are.
+     */
+    private function masked(string $sql): string
+    {
+        return (string) preg_replace([
+            "/'(?:[^'\\\\]|\\\\.|'')*'/s",
+            '/(?<![\w.$])-?\d+(?:\.\d+)?(?![\w.])/',
+        ], '?', $sql);
     }
 
     /**

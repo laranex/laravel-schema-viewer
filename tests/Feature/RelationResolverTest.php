@@ -222,6 +222,17 @@ it('shows bound values in constraints as placeholders', function (): void {
     ]);
 });
 
+it('shows the literals in raw conditions as placeholders', function (): void {
+    Models\Post::resolveRelationUsing('rawComments', fn (Models\Post $post) => $post->morphMany(Models\Comment::class, 'commentable')
+        ->whereRaw("body <> 'it''s s3cret' and approved = 1 and score > -2.5")
+        ->whereRaw('"comments"."id" > ? and id2 = 7', [10]));
+
+    expect(resolveRelations(new Models\Post)['relations']['rawComments']->constraints)->toBe([
+        'body <> ? and approved = ? and score > ?',
+        '"comments"."id" > ? and id2 = ?',
+    ]);
+});
+
 it('keeps unresolved reasons short and free of paths, connection details and credentials', function (): void {
     app()->setBasePath('/srv/app');
     $fail = fn (string $message) => fn (Models\Post $post) => throw new RuntimeException($message);
