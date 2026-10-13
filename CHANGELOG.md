@@ -2,6 +2,23 @@
 
 All notable changes to `laravel-schema-viewer` will be documented in this file.
 
+## v1.2.0 - 2026-10-13
+
+### Added
+- `php artisan schema-viewer:build` reads the database and the models and writes `schema-viewer.json` in the project root: the schema and each connection's downloads, as readable JSON that changes only when the schema does. Commit it if the repository is private, or ignore it and build it on each machine and in your deploy script.
+- While it builds, jobs, mail, notifications, HTTP calls, events and the cache are faked, every database connection pretends and model events are off, so the models' side effects stay out of the outside world.
+- `SchemaViewer::auth(fn (Request $request) => …)` decides who may open the viewer, as Telescope's `auth()` does; it replaces the default check.
+
+### Changed
+- The viewer page carries the snapshot itself, as the downloaded HTML file does; it never reads the database or runs model code in a web request, and the `api/schema` and `api/export` routes are gone. Without a snapshot the page says to run the build. The refresh button and the `cache` settings are gone with them.
+- In the local environment the viewer answers only on `APP_URL`'s host, `localhost`, `127.0.0.1` and `::1`, which keeps out tunnels and DNS rebinding; `SchemaViewer::auth()` opens it to other hosts.
+- A model whose constructor or casts throw becomes a hint instead of failing the whole schema.
+- Literals in raw relation conditions show as `?`.
+
+### Fixed
+- Reading a model that throws no longer leaves database connections pretending or logging queries on Laravel 10, 11 and 12 before 12.41, which in a long-running worker silently dropped every later write.
+- Connections that relation methods open for the first time pretend too.
+
 ## v1.1.0 - 2026-10-13
 
 ### Added
