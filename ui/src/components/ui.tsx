@@ -212,10 +212,11 @@ export function Menu({
                                     </span>
                                 </MenuPrimitive.CheckboxItem>
                             ))}
-                            <MenuPrimitive.Separator className="ui-menu__separator" />
+                            {(afterToggles || items.length > 0) && <MenuPrimitive.Separator className="ui-menu__separator" />}
                         </MenuPrimitive.Group>
                     )}
                     {afterToggles && <ChoiceGroup choice={afterToggles} tour={afterToggles.tour} />}
+                    {items.length > 0 && (
                     <MenuPrimitive.Group data-tour="menu-actions">
                         {itemsLabel && <MenuPrimitive.Label className="ui-menu__label">{itemsLabel}</MenuPrimitive.Label>}
                         {items.map((item) => (
@@ -228,6 +229,7 @@ export function Menu({
                             </MenuPrimitive.Item>
                         ))}
                     </MenuPrimitive.Group>
+                    )}
                     {groups.map((group, i) => (
                         <MenuPrimitive.Group key={i}>
                             <MenuPrimitive.Separator className="ui-menu__separator" />

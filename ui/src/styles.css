@@ -164,6 +164,54 @@ code {
     gap: 6px;
 }
 
+.toolbar__note {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 500;
+}
+
+.toolbar__view {
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+.toolbar__off {
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--warn-soft);
+    color: var(--warn);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 16px;
+}
+
+/* Narrower desktops keep the toolbar on one row: the brand keeps its mark, and the search gives way first. */
+@media (max-width: 1179px) {
+    .toolbar__brand > span:not(.toolbar__note),
+    .toolbar__view .segmented__label {
+        display: none;
+    }
+    .field--search {
+        flex-basis: 180px;
+        min-width: 150px;
+    }
+}
+
+/* Below a wide screen the shortcuts button keeps only its icon; its tooltip names it. */
+@media (max-width: 1399px) {
+    .button__text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+}
+
 .toolbar__spacer {
     flex: 1 1 0;
 }
@@ -203,7 +251,6 @@ code {
     pointer-events: none;
 }
 
-
 .button,
 .toggle {
     height: 34px;
@@ -233,52 +280,7 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* Layer toggles double as the legend */
-
-.layers {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 4px;
-    padding: 8px 16px;
-    background: var(--surface-2);
-    border-bottom: 1px solid var(--line);
-}
-
-.chip-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    height: 28px;
-    padding: 0 10px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    cursor: pointer;
-}
-
-.chip-toggle[aria-pressed='false'] {
-    color: var(--muted);
-    background: transparent;
-}
-
-.chip-toggle[aria-pressed='false'] .swatch {
-    opacity: 0.35;
-}
-
-.chip-toggle .check {
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
-    border: 1.5px solid var(--line-strong);
-}
-
-.chip-toggle[aria-pressed='true'] .check {
-    background: var(--accent);
-    border-color: var(--accent);
-}
+/* Line swatches: the legend in the Lines menu */
 
 .swatch path {
     stroke-width: 2.4;
@@ -302,20 +304,6 @@ button:disabled {
     stroke: var(--through);
     stroke-dasharray: 1.5 3;
     stroke-linecap: round;
-}
-
-.layers__divider {
-    width: 1px;
-    height: 18px;
-    margin: 0 4px;
-    background: var(--line);
-}
-
-.layers__note {
-    margin-left: auto;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
 }
 
 /* Diagram and panel */
@@ -362,10 +350,6 @@ button:disabled {
     }
     .toolbar__spacer {
         display: none;
-    }
-    .layers__note {
-        margin-left: 0;
-        width: 100%;
     }
 }
 
@@ -647,14 +631,14 @@ button:disabled {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    height: 24px;
-    padding: 0 8px;
+    gap: 4px;
+    height: 18px;
+    padding: 0 6px;
     border: 1px solid var(--line);
     border-radius: 999px;
     background: var(--surface);
     box-shadow: var(--shadow);
-    font-size: var(--text-xs);
+    font-size: 10px;
     white-space: nowrap;
     pointer-events: auto;
     z-index: 5;
@@ -674,11 +658,12 @@ button:disabled {
 
 .edge-label__chip {
     flex: none;
-    padding: 0 5px;
-    border-radius: 4px;
+    padding: 0 4px;
+    border-radius: 3px;
     background: var(--through-soft);
     color: var(--through);
-    font-size: 10px;
+    font-size: 8.5px;
+    line-height: 13px;
     font-weight: 600;
 }
 
@@ -695,7 +680,6 @@ button:disabled {
 }
 
 /* Details panel */
-
 
 .count {
     min-width: 18px;
@@ -1086,13 +1070,11 @@ button:disabled {
     z-index: 20;
 }
 
-
 @media (prefers-reduced-motion: reduce) {
     * {
         transition: none !important;
     }
 }
-
 
 /* Bottom sheet bar (phones) */
 
@@ -1201,7 +1183,6 @@ button:disabled {
         min-width: 0;
     }
 
-
     .field input,
     .ui-select,
     .button,
@@ -1211,26 +1192,6 @@ button:disabled {
     }
 
     .toolbar__spacer {
-        display: none;
-    }
-
-    .layers {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        padding: 8px 12px;
-        scrollbar-width: none;
-    }
-
-    .layers::-webkit-scrollbar {
-        display: none;
-    }
-
-    .chip-toggle {
-        flex: none;
-        height: 32px;
-    }
-
-    .layers__note {
         display: none;
     }
 
@@ -1329,11 +1290,6 @@ button:disabled {
 }
 
 /* Keys */
-
-
-
-
-
 
 kbd {
     min-width: 22px;
@@ -1937,10 +1893,6 @@ kbd {
     opacity: 0.85;
 }
 
-.chip-toggle .kbd-hint {
-    margin-left: 2px;
-}
-
 .ui-select .kbd-hint + .kbd-hint {
     margin-left: -6px;
 }
@@ -1954,7 +1906,6 @@ kbd {
     right: 8px;
     pointer-events: none;
 }
-
 
 /* Keyboard shortcuts list */
 

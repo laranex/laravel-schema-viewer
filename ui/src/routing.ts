@@ -3,7 +3,7 @@ import { HEADER_HEIGHT, NODE_WIDTH, ROW_HEIGHT } from './graph';
 // Space between layout columns. Edges run vertically in these gaps and their labels sit there too.
 export const GAP = 240;
 export const LABEL_WIDTH = GAP - 28;
-const LABEL_HEIGHT = 24;
+const LABEL_HEIGHT = 18;
 const LANE_STEP = 8;
 
 // rows: the column rows the card shows, top to bottom. With folded: true, a column not among them is folded away and

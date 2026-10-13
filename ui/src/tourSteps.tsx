@@ -114,6 +114,9 @@ export const TOUR_STEPS: TourStep[] = [
                 <li>
                     <b>Blue dots</b>: a through relation.
                 </li>
+                <li>
+                    <b>Lines</b> shows or hides each kind and the relation names; <b>Tables</b> hides framework and package tables.
+                </li>
             </ul>
         ),
     },

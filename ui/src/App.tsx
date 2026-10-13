@@ -17,7 +17,7 @@ import { EdgeHover, EdgeMarkers, HoverStore, LinkEdgeView, type EdgeKind, type L
 import { SearchBox } from './components/SearchBox';
 import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
-import { Dialog, Menu, Select, Tooltip, TooltipProvider } from './components/ui';
+import { Dialog, Menu, Select, Tooltip, TooltipProvider, type MenuToggle } from './components/ui';
 import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
@@ -298,6 +298,16 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         () => (scopeConnections.some((c) => schema.tables(c).some((t) => t.package)) ? LAYER_TOGGLES : LAYER_TOGGLES.filter((t) => t.key !== 'package')),
         [schema, scopeConnections],
     );
+    // The diagram's switches, in two menus: which lines show, and which tables.
+    const asMenuToggle = (t: (typeof LAYER_TOGGLES)[number]) => ({
+        label: t.label,
+        checked: layers[t.key],
+        onChange: () => toggle(t.key),
+        icon: t.swatch ? <Swatch kind={t.swatch} /> : undefined,
+        hotkey: t.hotkey,
+    });
+    const lineToggles = layerToggles.filter((t) => t.swatch || t.key === 'allLabels').map(asMenuToggle);
+    const tableToggles = layerToggles.filter((t) => t.key === 'framework' || t.key === 'package').map(asMenuToggle);
     const tablesById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), e])), [visibleTables]);
 
     // In focus mode the diagram holds only the focused table and its neighbors; search still finds every table.
@@ -983,7 +993,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         window.addEventListener('keydown', listener);
         return () => window.removeEventListener('keydown', listener);
     }, []);
-    const hintCount = scopeConnections.reduce((n, c) => n + schema.hints(c).length, 0);
 
     return (
         <EdgeHover.Provider value={hover}>
@@ -998,8 +1007,26 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 <path d="M10.5 7 H14 a2 2 0 0 1 2 2 V13.5" />
                             </svg>
                             <span>Schema Viewer</span>
+                            {example && <span className="toolbar__note">example data</span>}
                         </div>
                         <SearchBox schema={schema} tables={visibleTables} multiple={scopeConnections.length > 1} query={query} onQuery={setQuery} onPick={open} inputRef={searchRef} />
+                        {!narrow && (
+                            <div className="toolbar__group toolbar__view" role="group" aria-label="Show on the diagram" data-tour="layers">
+                                <ViewMenu label="Lines" toggles={lineToggles} cosmetic={['Relation names']} />
+                                <ViewMenu label="Tables" toggles={tableToggles} />
+                                <div className="segmented" role="radiogroup" aria-label="Columns" aria-keyshortcuts="C" data-tour="columns">
+                                    <span className="segmented__label">Columns</span>
+                                    {FOLDS.map((f) => (
+                                        <Tooltip key={f} content={<>{COLUMN_CHOICES[f].hint} <kbd>C</kbd></>} side="bottom">
+                                            <button type="button" role="radio" aria-checked={columns === f} className="segmented__option" onClick={() => setColumns(f)}>
+                                                {COLUMN_CHOICES[f].label}
+                                            </button>
+                                        </Tooltip>
+                                    ))}
+                                    <kbd className="kbd-hint">C</kbd>
+                                </div>
+                            </div>
+                        )}
                         <div className="toolbar__spacer" />
                         {narrow ? (
                             <Menu
@@ -1088,37 +1115,12 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                             <rect x="1.5" y="2" width="17" height="12" rx="2" />
                                             <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
                                         </svg>
-                                        Keyboard shortcuts
+                                        <span className="button__text">Keyboard shortcuts</span>
                                     </button>
                                 </Tooltip>
                             </div>
                         )}
                     </header>
-
-                    {!narrow && (
-                        <div className="layers" role="group" aria-label="Show on the diagram" data-tour="layers">
-                            {layerToggles.map((t) => (
-                                <LayerToggle key={t.key} on={layers[t.key]} onClick={() => toggle(t.key)} swatch={t.swatch} label={t.label} hotkey={t.hotkey} divider={t.key === 'framework'} />
-                            ))}
-                            <span className="layers__divider" aria-hidden="true" />
-                            <div className="segmented" role="radiogroup" aria-label="Columns" aria-keyshortcuts="C" data-tour="columns">
-                                <span className="segmented__label">Columns</span>
-                                {FOLDS.map((f) => (
-                                    <Tooltip key={f} content={<>{COLUMN_CHOICES[f].hint} <kbd>C</kbd></>} side="bottom">
-                                        <button type="button" role="radio" aria-checked={columns === f} className="segmented__option" onClick={() => setColumns(f)}>
-                                            {COLUMN_CHOICES[f].label}
-                                        </button>
-                                    </Tooltip>
-                                ))}
-                                <kbd className="kbd-hint">C</kbd>
-                            </div>
-                            <span className="layers__note">
-                                {scopeConnections.length > 1 ? `${scopeConnections.length} connections · ` : ''}
-                                {visibleTables.length} tables · {hintCount} {hintCount === 1 ? 'hint' : 'hints'}
-                                {example ? ' · example data' : ''}
-                            </span>
-                        </div>
-                    )}
 
                     <main
                         className={`main${sideBySide && panelWidth !== null ? ' has-panel-width' : ''}`}
@@ -1338,16 +1340,26 @@ function Swatch({ kind }: { kind: EdgeKind }) {
     );
 }
 
-function LayerToggle({ on, onClick, label, swatch, hotkey, divider }: { on: boolean; onClick: () => void; label: string; swatch?: EdgeKind; hotkey: string; divider?: boolean }) {
+// A toolbar menu of switches, such as which lines show. It notes how many layers are hidden, so one is not forgotten;
+// switches that only change how things look, such as relation names, don't count.
+function ViewMenu({ label, toggles, cosmetic = [] }: { label: string; toggles: MenuToggle[]; cosmetic?: string[] }) {
+    const off = toggles.filter((t) => !t.checked && !cosmetic.includes(t.label)).length;
     return (
-        <>
-            {divider && <span className="layers__divider" aria-hidden="true" />}
-            <button type="button" className="chip-toggle" aria-pressed={on} onClick={onClick} aria-keyshortcuts={hotkey}>
-                {swatch ? <Swatch kind={swatch} /> : <span className="check" aria-hidden="true" />}
-                {label}
-                <kbd className="kbd-hint">{hotkey}</kbd>
-            </button>
-        </>
+        <Menu
+            label={label}
+            triggerClass="button button--with-icon"
+            trigger={
+                <>
+                    {label}
+                    {off > 0 && <span className="toolbar__off">{off} off</span>}
+                    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className="ui-icon">
+                        <path d="M4 6 L8 10 L12 6" />
+                    </svg>
+                </>
+            }
+            items={[]}
+            toggles={{ label, items: toggles }}
+        />
     );
 }
 

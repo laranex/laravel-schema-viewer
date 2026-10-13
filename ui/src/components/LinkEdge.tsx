@@ -117,7 +117,7 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: Ed
                     >
                         <div
                             className={`edge-label edge-label--${kind}${emphasized ? ' is-emphasized' : ''} nodrag nopan`}
-                            style={{ width: LABEL_WIDTH, transform: `translate(-50%, -50%) translate(${route.labelX}px, ${route.labelY}px)` }}
+                            style={{ maxWidth: LABEL_WIDTH, transform: `translate(-50%, -50%) translate(${route.labelX}px, ${route.labelY}px)` }}
                         >
                             <span className="edge-label__text">{data.label}</span>
                             <span className="edge-label__chip">{data.relationship}</span>
