@@ -97,7 +97,9 @@ it('raises each kind of hint where it applies', function (): void {
         ->and(in_array('role_user', hintsOf($document, HintKind::ForeignKeyWithoutIndex), true))->toBe(! in_array(testDriver(), ['mysql', 'mariadb'], true))
         ->and(hintsOf($document, HintKind::ModelWithoutTable))->toBe(['ghosts'])
         ->and(hintsOf($document, HintKind::MorphWithoutMap))->toContain('comments', 'taggables')
-        ->and(hintsOf($document, HintKind::UnresolvedRelation))->toBe(['posts']);
+        ->and(hintsOf($document, HintKind::UnresolvedRelation))->toBe(['posts'])
+        // The shared blog's pivot for tags has no primary key, on every database.
+        ->and(hintsOf($document, HintKind::TableWithoutPrimaryKey))->toBe(['taggables']);
 });
 
 it('gives no morph map hint for a framework table or a table that does not exist', function (): void {

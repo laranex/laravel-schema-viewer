@@ -1248,6 +1248,12 @@ button:disabled {
     color: var(--through);
 }
 
+.badges--inline {
+    display: inline-flex;
+    margin-left: 6px;
+    vertical-align: 1px;
+}
+
 .badge--likely {
     border: 1px dashed var(--line-strong);
     background: transparent;

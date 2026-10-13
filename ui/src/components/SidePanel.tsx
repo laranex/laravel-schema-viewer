@@ -3,7 +3,7 @@ import { relationKind, relationLabel, shortClass, type Schema } from '../graph';
 import { Browse, type BrowseMode, type Highlight } from './Browse';
 import { HighlightDetails } from './Details';
 import { Dialog, Tab, TabList, TabPanel, Tabs, Tooltip } from './ui';
-import type { Hint, IgnoreRule, Relation, Source, Table } from '../types';
+import type { Hint, IgnoreRule, Index, Relation, Source, Table } from '../types';
 
 export type PanelTab = 'browse' | 'details' | 'hints';
 
@@ -75,6 +75,13 @@ export const HINT_TITLE: Record<Hint['kind'], string> = {
     unresolved_relation: 'Relation could not be resolved',
     unresolved_package_relation: 'Package relation could not be resolved',
     custom_relation: 'Custom relation, foreign key not checked',
+    table_without_primary_key: 'Table without a primary key',
+    foreign_key_type_mismatch: 'Foreign key type differs from what it references',
+    foreign_key_name_mismatch: 'Foreign key named after another table',
+    index_duplicates_primary_key: 'Index on the primary key columns',
+    duplicate_index: 'Duplicate indexes',
+    redundant_index: 'Index covered by another',
+    morph_without_index: 'Polymorphic columns without an index',
 };
 
 // A small "likely" mark on a hint inferred from names or conventions; nothing on a certain one.
@@ -88,6 +95,42 @@ export function Certainty({ hint }: { hint: Hint }) {
                 likely
             </span>
         </Tooltip>
+    );
+}
+
+// One index: its name, key columns and kind, with what makes it more than a plain index.
+export function IndexLine({ index: i }: { index: Index }) {
+    const included = i.included ?? [];
+    const key = i.columns.filter((c) => !included.includes(c));
+    const type = i.type && !['btree', 'clustered', 'nonclustered'].includes(i.type) ? i.type : null;
+    return (
+        <li>
+            <code>{i.name}</code>
+            <span className="muted">
+                {' '}
+                ({key.length ? key.join(', ') : 'expression'}){i.primary ? ' primary' : i.unique ? ' unique' : ''}
+                {included.length > 0 && ` + includes ${included.join(', ')}`}
+            </span>
+            {(i.partial || i.expression || type) && (
+                <span className="badges badges--inline">
+                    {type && <span className="badge">{type}</span>}
+                    {i.partial && (
+                        <Tooltip content="Covers only the rows its WHERE clause picks">
+                            <span className="badge" tabIndex={0}>
+                                partial
+                            </span>
+                        </Tooltip>
+                    )}
+                    {i.expression && (
+                        <Tooltip content="A key part is an expression or a prefix, so the columns shown are not its whole key">
+                            <span className="badge" tabIndex={0}>
+                                expression
+                            </span>
+                        </Tooltip>
+                    )}
+                </span>
+            )}
+        </li>
     );
 }
 
@@ -208,6 +251,13 @@ const KIND_LABEL: Record<Hint['kind'], string> = {
     unresolved_relation: 'unresolved relation',
     unresolved_package_relation: 'package relation',
     custom_relation: 'custom relation',
+    table_without_primary_key: 'no primary key',
+    foreign_key_type_mismatch: 'FK type mismatch',
+    foreign_key_name_mismatch: 'FK name mismatch',
+    index_duplicates_primary_key: 'index on primary key',
+    duplicate_index: 'duplicate index',
+    redundant_index: 'redundant index',
+    morph_without_index: 'morph without index',
 };
 
 // A rule as the PHP array to paste into hints.ignore in config/schema-viewer.php.
@@ -512,13 +562,7 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                 <h3>Indexes</h3>
                 <ul className="plain">
                     {table.indexes.map((i) => (
-                        <li key={i.name}>
-                            <code>{i.name}</code>
-                            <span className="muted">
-                                {' '}
-                                ({i.columns.join(', ')}){i.primary ? ' primary' : i.unique ? ' unique' : ''}
-                            </span>
-                        </li>
+                        <IndexLine key={i.name} index={i} />
                     ))}
                 </ul>
             </section>

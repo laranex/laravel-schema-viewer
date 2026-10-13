@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 
@@ -150,12 +152,19 @@ it('fails the check on the configured hint kinds', function (): void {
 });
 
 it('marks only likely hints as likely in the check', function (): void {
+    Schema::create('attachments', function (Blueprint $table): void {
+        $table->id();
+        $table->string('attachable_type');
+        $table->unsignedBigInteger('attachable_id');
+    });
+
     Artisan::call('schema-viewer:check');
     $lines = explode("\n", Artisan::output());
     $marked = array_values(array_filter($lines, fn (string $line): bool => str_contains($line, '· likely')));
     $likely = array_filter(app(SchemaViewer::class)->document()->hints, fn ($hint): bool => $hint->kind->certainty() === 'likely');
 
-    expect($marked)->toHaveCount(count($likely));
+    expect($marked)->toHaveCount(count($likely))
+        ->and($marked)->not->toBeEmpty();
 
     foreach ($marked as $line) {
         expect(collect($likely)->contains(fn ($hint): bool => str_contains($line, $hint->kind->value)))->toBeTrue();

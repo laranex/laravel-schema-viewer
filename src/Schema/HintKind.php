@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Schema;
 
 /**
- * Things in a schema worth a second look.
+ * Things in a schema worth a second look: where the database and the models disagree, and where the database itself
+ * could be better.
  */
 enum HintKind: string
 {
@@ -17,11 +18,19 @@ enum HintKind: string
     case UnresolvedRelation = 'unresolved_relation';
     case UnresolvedPackageRelation = 'unresolved_package_relation';
     case CustomRelation = 'custom_relation';
+    case TableWithoutPrimaryKey = 'table_without_primary_key';
+    case ForeignKeyTypeMismatch = 'foreign_key_type_mismatch';
+    case ForeignKeyNameMismatch = 'foreign_key_name_mismatch';
+    case IndexDuplicatesPrimaryKey = 'index_duplicates_primary_key';
+    case DuplicateIndex = 'duplicate_index';
+    case RedundantIndex = 'redundant_index';
+    case MorphWithoutIndex = 'morph_without_index';
 
     public function severity(): string
     {
         return match ($this) {
-            self::ForeignKeyWithoutRelation, self::MorphWithoutMap, self::UnresolvedPackageRelation, self::CustomRelation => 'info',
+            self::ForeignKeyWithoutRelation, self::MorphWithoutMap, self::UnresolvedPackageRelation, self::CustomRelation,
+            self::ForeignKeyNameMismatch, self::RedundantIndex => 'info',
             default => 'warning',
         };
     }
@@ -34,6 +43,9 @@ enum HintKind: string
      */
     public function certainty(): string
     {
-        return 'certain';
+        return match ($this) {
+            self::ForeignKeyNameMismatch, self::RedundantIndex, self::MorphWithoutIndex => 'likely',
+            default => 'certain',
+        };
     }
 }

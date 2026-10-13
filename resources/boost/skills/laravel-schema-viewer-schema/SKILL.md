@@ -1,7 +1,7 @@
 ---
 name: laravel-schema-viewer-schema
 description: >
-  Learn a Laravel app's real database before changing it, using laranex/laravel-schema-viewer: every table, column, index and foreign key on every connection together with the Eloquent models and relations that use them, the hints where the two disagree, and where each model and relation is declared. Use it before writing a migration, a model, a relation or a query.
+  Learn a Laravel app's real database before changing it, using laranex/laravel-schema-viewer: every table, column, index and foreign key on every connection together with the Eloquent models and relations that use them, the hints where the two disagree or the database itself could be better, and where each model and relation is declared. Use it before writing a migration, a model, a relation or a query.
 license: MIT
 metadata:
   author: Nay Thu Khant
@@ -64,6 +64,18 @@ Hint kinds:
 - `unresolved_relation`: a relation method of the app threw when called on a blank model (no row loaded); fix the method.
 - `unresolved_package_relation` (note): the same for a method inherited from a package, such as Passport's `Token::user()`; usually nothing to do.
 - `custom_relation` (note): a relation without a foreign key that joins other tables or matches a column that is not unique, so its foreign key is not checked.
+
+Hints about the database itself (framework tables get none):
+
+- `table_without_primary_key`: a table with no primary key; the message names a unique index that could become one, or the composite key a pivot table needs.
+- `foreign_key_type_mismatch`: a foreign key column whose type, sign or length differs from the column it references; give them the same type.
+- `foreign_key_name_mismatch` (note, likely): a `<name>_id` column whose foreign key references another table than the `<name>` table that exists; rename the column or point the key at that table.
+- `index_duplicates_primary_key`: an index on exactly the primary key's columns; drop it.
+- `duplicate_index`: several indexes on the same columns; keep one.
+- `redundant_index` (note, likely): an index whose columns another index starts with; drop it only after checking the queries that use it.
+- `morph_without_index` (likely): a `<name>_type` and `<name>_id` pair that no index covers; add `$table->index(['<name>_type', '<name>_id'])`.
+
+Partial, expression, prefix and `INCLUDE` indexes, and indexes of another structure (full-text, GIN, hash), are never called duplicate or redundant; each index in the JSON says `type`, `partial`, `expression` and `included`.
 
 Each hint has a `severity` (`warning` or `info`) and a `certainty`: `certain` hints state a fact read from the database or the models; `likely` hints are inferred from names or conventions (the check marks them `· likely`), so verify them against the code and the queries before acting on one. Each hint names its connection, table and columns or relation. Fix the cause in a migration or the model when the task touches it; mention the others to the person rather than changing them unasked.
 

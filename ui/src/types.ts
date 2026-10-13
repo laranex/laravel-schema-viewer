@@ -12,9 +12,18 @@ export type Column = {
 
 export type Index = {
     name: string;
+    // As the database reports them: expression key parts left out, included columns listed too.
     columns: string[];
     unique: boolean;
     primary: boolean;
+    // The index method, lowercased (btree, hash, gin, fulltext, clustered, …); null when the database does not say.
+    type?: string | null;
+    // Covers only the rows a WHERE clause picks.
+    partial?: boolean;
+    // A key part is an expression, such as lower(email), or a MySQL prefix, such as name(10).
+    expression?: boolean;
+    // Stored in the index but not part of its key (INCLUDE).
+    included?: string[];
 };
 
 export type ForeignKey = {
@@ -127,7 +136,14 @@ export type Hint = {
         | 'morph_without_map'
         | 'unresolved_relation'
         | 'unresolved_package_relation'
-        | 'custom_relation';
+        | 'custom_relation'
+        | 'table_without_primary_key'
+        | 'foreign_key_type_mismatch'
+        | 'foreign_key_name_mismatch'
+        | 'index_duplicates_primary_key'
+        | 'duplicate_index'
+        | 'redundant_index'
+        | 'morph_without_index';
     severity: 'warning' | 'info';
     // certain: a fact read from the database or the models; likely: inferred from names or conventions. Missing means
     // certain (snapshots built before hints carried it).

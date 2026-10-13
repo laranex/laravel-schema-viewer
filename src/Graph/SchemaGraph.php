@@ -38,6 +38,8 @@ final class SchemaGraph
      */
     private array $morphTargets = [];
 
+    public function __construct(private readonly StructuralHints $structural = new StructuralHints) {}
+
     /**
      * @param  list<ConnectionSchema>  $connections
      * @param  list<ModelInfo>  $models
@@ -293,6 +295,24 @@ final class SchemaGraph
             $byId[$relation->id()] ??= [$i, $relation];
         }
 
+        $pivots = [];
+
+        foreach ($relations as $relation) {
+            $model = $relation->pivot !== null ? $this->model($relation->model) : null;
+
+            if ($relation->pivot !== null && $model !== null) {
+                $keys = [$relation->pivot->foreignPivotKey, $relation->pivot->relatedPivotKey];
+
+                // A polymorphic pivot row is told apart by its type column too, next to the id it goes with.
+                if ($relation->morph !== null && ! in_array($relation->morph->type, $keys, true)) {
+                    $at = array_search($relation->morph->id, $keys, true);
+                    array_splice($keys, $at === false ? count($keys) : (int) $at, 0, [$relation->morph->type]);
+                }
+
+                $pivots[$model->connection][$relation->pivot->table] ??= $keys;
+            }
+        }
+
         foreach ($connections as $connection) {
             $inspected[$connection->name] = $connection;
 
@@ -306,6 +326,8 @@ final class SchemaGraph
                     }
                 }
             }
+
+            array_push($hints, ...$this->structural->hints($connection, $pivots[$connection->name] ?? []));
         }
 
         foreach ($links as $link) {

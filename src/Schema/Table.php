@@ -16,6 +16,7 @@ final class Table implements JsonSerializable
      * @param  list<Column>  $columns
      * @param  list<Index>  $indexes
      * @param  list<ForeignKey>  $foreignKeys
+     * @param  bool  $indexDetails  Whether the indexes' partial, expression and included details could be read; not part of the JSON.
      */
     public function __construct(
         public readonly string $name,
@@ -25,17 +26,23 @@ final class Table implements JsonSerializable
         public readonly array $indexes,
         public readonly array $foreignKeys,
         public readonly ?string $package = null,
+        public readonly bool $indexDetails = true,
     ) {}
 
-    public function hasColumn(string $name): bool
+    public function column(string $name): ?Column
     {
         foreach ($this->columns as $column) {
             if ($column->name === $name) {
-                return true;
+                return $column;
             }
         }
 
-        return false;
+        return null;
+    }
+
+    public function hasColumn(string $name): bool
+    {
+        return $this->column($name) !== null;
     }
 
     /**
@@ -55,14 +62,15 @@ final class Table implements JsonSerializable
     }
 
     /**
-     * Whether a unique index covers exactly these columns.
+     * Whether a unique index covers exactly these columns, on every row: a partial index or one with an expression key
+     * part, whose reported columns are not its whole key, does not count.
      *
      * @param  list<string>  $columns
      */
     public function isUnique(array $columns): bool
     {
         foreach ($this->indexes as $index) {
-            if (($index->unique || $index->primary) && $index->columns === $columns) {
+            if (($index->unique || $index->primary) && ! $index->partial && ! $index->expression && $index->keyColumns() === $columns) {
                 return true;
             }
         }

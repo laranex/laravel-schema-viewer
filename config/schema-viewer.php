@@ -147,7 +147,11 @@ return [
     |
     | Kinds: relation_without_foreign_key, foreign_key_without_relation,
     | foreign_key_without_index, model_without_table, morph_without_map,
-    | unresolved_relation, unresolved_package_relation, custom_relation.
+    | unresolved_relation, unresolved_package_relation, custom_relation,
+    | and, about the database alone: table_without_primary_key,
+    | foreign_key_type_mismatch, foreign_key_name_mismatch,
+    | index_duplicates_primary_key, duplicate_index, redundant_index,
+    | morph_without_index.
     |
     */
 

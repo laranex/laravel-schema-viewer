@@ -102,4 +102,5 @@ expect(collect($document->hints)->pluck('kind'))->not->toContain(\Laranex\Larave
 - Relation methods that do more than build the relation: the build runs them, with jobs, mail, HTTP, events and the cache faked, but file writes and other clients still run.
 - Writing `hints.ignore` rules by hand: copy the rule `schema-viewer:check` prints or the JSON export's `ignore` field.
 - Ignoring `relation_without_foreign_key` on a regular `belongsTo`: add the foreign key unless the relation crosses connections.
+- Dropping an index the check calls redundant without checking the queries that use it.
 - Publishing an HTML export where the schema should not be seen.

@@ -1,6 +1,6 @@
 import { linkKind, relationKind, shortClass, type Schema } from '../graph';
 import { columnHints, linkHints, type Highlight } from './Browse';
-import { Certainty, HINT_TITLE, IgnoreRules, RelationKeys, SourceLink } from './SidePanel';
+import { Certainty, HINT_TITLE, IgnoreRules, IndexLine, RelationKeys, SourceLink } from './SidePanel';
 import { Tooltip } from './ui';
 import type { Hint, Link, Relation } from '../types';
 
@@ -302,13 +302,7 @@ function ColumnDetails({ schema, highlight, onOpen, onHighlight, focusedOn, onFo
                 {indexes.length ? (
                     <ul className="plain">
                         {indexes.map((i) => (
-                            <li key={i.name}>
-                                <code>{i.name}</code>
-                                <span className="muted">
-                                    {' '}
-                                    ({i.columns.join(', ')}){i.primary ? ' primary' : i.unique ? ' unique' : ''}
-                                </span>
-                            </li>
+                            <IndexLine key={i.name} index={i} />
                         ))}
                     </ul>
                 ) : (

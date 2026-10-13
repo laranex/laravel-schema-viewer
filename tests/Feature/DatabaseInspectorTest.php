@@ -57,5 +57,26 @@ it('serializes to the shape the viewer reads', function (): void {
     expect($json)->toHaveKeys(['name', 'driver', 'tables'])
         ->and($json['driver'])->toBe(testDriver())
         ->and($json['tables'][0])->toHaveKeys(['name', 'comment', 'framework', 'columns', 'indexes', 'foreignKeys'])
-        ->and($json['tables'][0]['columns'][0])->toHaveKeys(['name', 'type', 'typeName', 'nullable', 'default', 'autoIncrement', 'comment']);
+        ->and($json['tables'][0]['columns'][0])->toHaveKeys(['name', 'type', 'typeName', 'nullable', 'default', 'autoIncrement', 'comment'])
+        ->and(array_keys($json['tables'][0]['indexes'][0]))->toBe(['name', 'columns', 'unique', 'primary', 'type', 'partial', 'expression', 'included']);
+});
+
+it('reads each index\'s type and details', function (): void {
+    $posts = collect(inspectTesting()->table('posts')?->indexes)->keyBy('name');
+    $primary = $posts->first(fn ($index): bool => $index->primary);
+    $category = $posts['posts_category_id_index'];
+
+    expect($primary->type)->toBe(match (testDriver()) {
+        'sqlite' => null,
+        'sqlsrv' => 'clustered',
+        default => 'btree',
+    })
+        ->and($category->columns)->toBe(['category_id'])
+        ->and($category->keyColumns())->toBe(['category_id'])
+        ->and($category->partial)->toBeFalse()
+        ->and($category->expression)->toBeFalse()
+        ->and($category->included)->toBe([])
+        ->and($category->plain())->toBeTrue()
+        ->and($category->typeFamily())->toBe('btree')
+        ->and(inspectTesting()->table('posts')?->indexDetails)->toBeTrue();
 });
