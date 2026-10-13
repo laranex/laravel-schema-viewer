@@ -30,7 +30,7 @@ beforeEach(function (): void {
     DB::connection('audit')->statement('create table audit (note text)');
     DB::purge('audit');
 
-    DB::table('users')->insert(['id' => 1, 'name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    DB::table('users')->insert(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     Noisy::$calls = [];
     Http::fake();
 });
