@@ -40,7 +40,7 @@ const DENSE = 60;
 // The narrowest the panel may leave the diagram: room for the floating bar with every control in it.
 const DIAGRAM_ROOM = 480;
 
-type Layers = Record<EdgeKind, boolean> & { framework: boolean; package: boolean; allLabels: boolean };
+type Layers = Record<EdgeKind, boolean> & { app: boolean; framework: boolean; package: boolean; allLabels: boolean };
 
 const nodeTypes = { table: TableNodeView, external: ExternalNodeView, region: RegionNodeView };
 const edgeTypes = { link: LinkEdgeView };
@@ -241,6 +241,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
         relation: true,
         foreign_key: true,
         through: true,
+        app: true,
         framework: true,
         package: true,
         allLabels: doc.connections.reduce((n, c) => n + schema.tables(c.name).length, 0) <= DENSE,
@@ -421,16 +422,22 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
             scopeConnections.flatMap((c) =>
                 schema
                     .tables(c)
-                    .filter((t) => (layers.framework || !t.framework) && (layers.package || !t.package))
+                    .filter((t) => (t.framework ? layers.framework : t.package ? layers.package : layers.app))
                     .map((table) => ({ connection: c, table })),
             ),
-        [schema, scopeConnections, layers.framework, layers.package],
+        [schema, scopeConnections, layers.app, layers.framework, layers.package],
     );
-    // The Package tables toggle only shows when a package owns tables here.
-    const layerToggles = useMemo(
-        () => (scopeConnections.some((c) => schema.tables(c).some((t) => t.package)) ? LAYER_TOGGLES : LAYER_TOGGLES.filter((t) => t.key !== 'package')),
-        [schema, scopeConnections],
-    );
+    const layerToggles = LAYER_TOGGLES;
+    // How many tables of each kind the connections in view hold, shown beside each Tables switch.
+    const tableCounts = useMemo(() => {
+        const counts = { app: 0, framework: 0, package: 0 };
+        for (const c of scopeConnections) {
+            for (const t of schema.tables(c)) {
+                counts[t.framework ? 'framework' : t.package ? 'package' : 'app'] += 1;
+            }
+        }
+        return counts;
+    }, [schema, scopeConnections]);
     // The diagram's switches, in two menus: which lines show, and which tables.
     const asMenuToggle = (t: (typeof LAYER_TOGGLES)[number]) => ({
         label: t.label,
@@ -441,7 +448,9 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
     });
     const lineToggles = layerToggles.filter((t) => t.swatch).map(asMenuToggle);
     const showToggles = [...layerToggles.filter((t) => t.key === 'allLabels').map(asMenuToggle), { label: 'Grid', checked: grid, onChange: switchGrid }];
-    const tableToggles = layerToggles.filter((t) => t.key === 'framework' || t.key === 'package').map(asMenuToggle);
+    const tableToggles = layerToggles
+        .filter((t) => t.key === 'app' || t.key === 'framework' || t.key === 'package')
+        .map((t) => ({ ...asMenuToggle(t), icon: <span className="ui-item__count">{tableCounts[t.key as keyof typeof tableCounts]}</span> }));
     const tablesById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), e])), [visibleTables]);
 
     // In focus mode the diagram holds only the focused table and its neighbors; search still finds every table.
@@ -1209,6 +1218,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor }: 
             '=': () => flow.zoomIn({ duration: 150 }),
             '-': () => flow.zoomOut({ duration: 150 }),
             l: () => toggle('allLabels'),
+            y: () => toggle('app'),
             g: () => toggle('framework'),
             p: () => toggle('package'),
             '1': () => toggle('both'),
@@ -1611,6 +1621,7 @@ const LAYER_TOGGLES: { key: keyof Layers; label: string; swatch?: EdgeKind; hotk
     { key: 'relation', label: 'Relation only', swatch: 'relation', hotkey: '2' },
     { key: 'foreign_key', label: 'FK only', swatch: 'foreign_key', hotkey: '3' },
     { key: 'through', label: 'Through', swatch: 'through', hotkey: '4' },
+    { key: 'app', label: 'Your tables', hotkey: 'Y' },
     { key: 'framework', label: 'Framework tables', hotkey: 'G' },
     { key: 'package', label: 'Package tables', hotkey: 'P' },
     { key: 'allLabels', label: 'Relation names', hotkey: 'L' },
@@ -1785,6 +1796,7 @@ const SHORTCUTS: [string[], string][] = [
     [['Space'], 'Hold to pan: drag anywhere, even over a table'],
     [['L'], 'Show relation names on every edge, or only on the selected table'],
     [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
+    [['Y'], 'Show or hide your own tables'],
     [['G'], 'Show or hide framework tables'],
     [['P'], 'Show or hide package tables, such as Passport\'s oauth_*'],
     [['A', 'D', 'H'], 'Open the Browse, Details or Hints tab'],
