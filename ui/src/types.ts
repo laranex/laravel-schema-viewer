@@ -142,7 +142,8 @@ export type IgnoreRule = Partial<Record<'connection' | 'table' | 'kind' | 'colum
 
 export type SchemaDocument = {
     version: 1;
-    generatedAt: string;
+    // When the JSON export was made; a snapshot leaves it out so it changes only with the schema.
+    generatedAt?: string;
     connections: Connection[];
     models: Model[];
     relations: Relation[];

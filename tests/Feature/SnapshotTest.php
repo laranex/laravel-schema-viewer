@@ -60,14 +60,15 @@ it('builds the snapshot as readable JSON with the document and every download', 
         ->and($data['downloads']['testing']['mermaid'])->toStartWith('erDiagram');
 });
 
-it('writes the same file for the same schema, apart from when it was built', function (): void {
+it('writes the same file for the same schema, without when it was built', function (): void {
     $read = function (): string {
         buildSnapshot();
 
-        return (string) preg_replace('/"generatedAt": "[^"]+"/', '', (string) file_get_contents($this->snapshot));
+        return (string) file_get_contents($this->snapshot);
     };
 
-    expect($read())->toBe($read());
+    expect($read())->toBe($read())
+        ->and($read())->not->toContain('generatedAt');
 });
 
 it('replaces the snapshot in one step and leaves no temporary file', function (): void {
@@ -126,7 +127,8 @@ it('answers 304 when the browser already has the snapshot, and compresses it wit
 });
 
 it('keeps empty objects and the exact document when serving the snapshot', function (): void {
-    $document = buildSnapshot();
+    $document = buildSnapshot()->jsonSerialize();
+    unset($document['generatedAt']);
 
     expect($this->getJson('/schema-viewer/api/schema')->getContent())->toBe(json_encode($document, JSON_UNESCAPED_SLASHES));
 });

@@ -73,9 +73,13 @@ final class Snapshot
     {
         $document = $this->isolation->run(fn (): SchemaDocument => $this->viewer->document($this->isolation->events(...)));
 
+        // Without when it was built, the file changes only when the schema does, so a committed snapshot diffs cleanly.
+        $written = $document->jsonSerialize();
+        unset($written['generatedAt']);
+
         $contents = json_encode([
             'format' => self::FORMAT,
-            'document' => $document,
+            'document' => $written,
             'downloads' => HtmlExporter::downloads($document),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n";
 
