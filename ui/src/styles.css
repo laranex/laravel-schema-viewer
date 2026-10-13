@@ -26,29 +26,7 @@
     --text-lg: 17px;
 }
 
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme='light']) {
-        --bg: #0c1412;
-        --surface: #141e1c;
-        --surface-2: #192624;
-        --line: #273633;
-        --line-strong: #3a4c48;
-        --fg: #e3ebe9;
-        --muted: #93a39f;
-        --accent: #2cc9ad;
-        --accent-ink: #62dcc5;
-        --accent-soft: #11362f;
-        --warn: #f0a347;
-        --warn-soft: #382812;
-        --fk: #8e9c99;
-        --through: #93a5e0;
-        --through-soft: #1d2440;
-        --dot: #26332f;
-        --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 18px rgb(0 0 0 / 28%);
-        color-scheme: dark;
-    }
-}
-
+/* Light by default; dark when chosen with the theme switch, or when an embedding page sets data-theme. */
 :root[data-theme='dark'] {
     --bg: #0c1412;
     --surface: #141e1c;

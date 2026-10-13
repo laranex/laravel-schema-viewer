@@ -206,16 +206,15 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const [spacePan, setSpacePan] = useState(false);
     const panning = panMode || spacePan;
     const narrow = useNarrow();
-    // Light or dark: the system's until the person picks one, then remembered in this browser. A page that embeds the
-    // viewer can still set data-theme on it.
+    // Light by default, or dark once the person picks it, remembered in this browser. A page that embeds the viewer can
+    // still set data-theme on it.
     const [theme, setTheme] = useState<'light' | 'dark' | null>(() => stored('schema-viewer.theme', null, (v) => v === 'light' || v === 'dark'));
-    const systemDark = useMedia('(prefers-color-scheme: dark)');
     useEffect(() => {
         if (theme) {
             document.documentElement.dataset.theme = theme;
         }
     }, [theme]);
-    const dark = theme ? theme === 'dark' : document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : systemDark;
+    const dark = theme ? theme === 'dark' : document.documentElement.dataset.theme === 'dark';
     const switchTheme = () => {
         const next = dark ? 'light' : 'dark';
         setTheme(next);
