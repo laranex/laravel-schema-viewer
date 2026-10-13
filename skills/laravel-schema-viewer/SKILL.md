@@ -1,7 +1,7 @@
 ---
 name: laravel-schema-viewer
 description: >
-  Understand a Laravel app's database before changing it, using laranex/laravel-schema-viewer: read every table, column, index and foreign key together with the Eloquent models and relations that use them, find mismatches between the two, and export the schema as Markdown, JSON, Mermaid, DBML or a standalone HTML viewer.
+  Install, configure and share laranex/laravel-schema-viewer in a Laravel app: who may open the viewer, which connections and models it reads, editor links, caching, accepting hints with hints.ignore, failing CI with schema-viewer:check, and exporting a standalone HTML viewer. To read the schema itself before changing the database, use the laravel-schema-viewer-schema skill.
 license: MIT
 metadata:
   author: Nay Thu Khant
@@ -11,7 +11,7 @@ metadata:
 
 ## When to use
 
-Use this skill before writing a migration, a model, a relation or a query in a Laravel app that has `laranex/laravel-schema-viewer` installed, and when someone asks how tables relate. The package reads the live database and the Eloquent models together, so its output is the source of truth for what exists: prefer it over guessing from migration files, which may not match the database.
+Use this skill to add `laranex/laravel-schema-viewer` to a Laravel app, change its settings, open it to a team or a server, accept or enforce its hints, or publish the viewer as one HTML file. To learn the app's tables and relations before writing a migration, a model or a query, use the `laravel-schema-viewer-schema` skill instead.
 
 ## Install
 
@@ -19,7 +19,7 @@ Use this skill before writing a migration, a model, a relation or a query in a L
 composer require laranex/laravel-schema-viewer --dev
 ```
 
-Requires PHP 8.1+ and Laravel 10.36 to 13. The service provider registers itself. Install it as a dev dependency unless the team wants the viewer on a server.
+Requires PHP 8.1+ and Laravel 10.36 to 13. The service provider registers itself; open `/schema-viewer` in the local environment. Install it as a dev dependency unless the team wants the viewer on a server.
 
 ## Configure
 
@@ -46,22 +46,14 @@ In `local` there is no gate: anyone who can reach the app opens the viewer. Set 
 
 ## Use
 
-### Read the schema before changing it
+### Enforce the hints in CI
 
 ```bash
-php artisan schema-viewer:export --format=markdown
-php artisan schema-viewer:export --format=markdown --connection=analytics --output=storage/schema.md
+php artisan schema-viewer:check
+php artisan schema-viewer:check --fail-on=foreign_key_without_index --fail-on=unresolved_relation
 ```
 
-Markdown lists every table of one connection with its columns (type, null, default, key, comment), indexes and foreign keys: read it before adding a column, an index or a foreign key so names, types and conventions match.
-
-```bash
-php artisan schema-viewer:export --format=json
-```
-
-JSON covers every connection and adds the Laravel side: `models` (table, casts, fillable, hidden, scopes, observers), `relations` (type, keys, pivot, morph columns, constraints, inverse), `links` (one per pair of columns, with `state` `both`, `relation` or `foreign_key`) and `hints`. Use it to answer "which relation uses this column" or "is this relation backed by a foreign key".
-
-`--format=mermaid` and `--format=dbml` produce an ER diagram of one connection's database for a README, a pull request or dbdiagram.io.
+The command lists every hint and exits non-zero when one of a `hints.fail_on` kind remains (or of the kinds passed with `--fail-on`). Under each hint it prints the narrowest `hints.ignore` rule that leaves it out; add that rule to the config when the team accepts the hint, rather than lowering `fail_on`.
 
 ### Share the viewer without the app
 
@@ -69,35 +61,11 @@ JSON covers every connection and adds the Laravel side: `models` (table, casts, 
 php artisan schema-viewer:export --format=html --output=build/schema-viewer
 ```
 
-Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer with the schema and the downloads inlined. It opens from disk or any static host without the Laravel app or its API, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. Host it only where the schema may be seen.
+Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer with the schema and the downloads inlined. It opens from disk or any static host without the Laravel app, its database or its API, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. Host it only where the schema may be seen.
 
-### Check the schema and the models agree
+### Open it on a server
 
-```bash
-php artisan schema-viewer:check
-php artisan schema-viewer:check --fail-on=foreign_key_without_index --fail-on=unresolved_relation
-```
-
-Hint kinds:
-
-- `relation_without_foreign_key`: a relation uses columns with no foreign key; add one in a migration, or ignore it when intended (polymorphic and cross-connection relations never get this hint).
-- `foreign_key_without_relation`: a foreign key no model declares; add the `belongsTo` / `hasMany` pair.
-- `foreign_key_without_index`: a foreign key column with no index starting with it; add the index.
-- `model_without_table`: a model whose table does not exist on its connection.
-- `morph_without_map`: morph columns store class names; register `Relation::enforceMorphMap()`.
-- `unresolved_relation`: a relation method of the app threw when called on a blank model (no row loaded); fix the method.
-- `unresolved_package_relation` (note): the same for a method inherited from a package, such as Passport's `Token::user()`; usually nothing to do.
-- `custom_relation` (note): a relation without a foreign key that joins other tables or matches a column that is not unique, so its foreign key is not checked.
-
-The command exits non-zero when a hint of a `fail_on` kind remains, so it fits CI.
-
-### Open the viewer
-
-Visit `/schema-viewer` in the local environment: every table of the connection, the models on them, and each relation drawn as an edge with its methods and kind (one-to-many, many-to-many, polymorphic, has-many-through).
-
-To point someone at one table, link to it: `/schema-viewer#connection=all&table=mysql:orders&focus=1` opens every connection with the `orders` table of the `mysql` connection selected and focus mode on it and its direct neighbors (`focus` takes 1 to 3 links; leave it out to show the whole diagram). To point at a column instead, use `column=mysql:orders.user_id`; the link button in the viewer (Shift C) copies a link to exactly what is on screen, relationships included. The same hash works on a static HTML export.
-
-JSON exports record where each model class and relation method is declared (`source`: a file relative to the app's root and a line); use it to find the code behind a relation.
+Set `SCHEMA_VIEWER_ENABLED=true` and define the `viewSchema` gate (above); without the gate the viewer answers 403 outside `local`. Use `path` or `domain` to move it, and `middleware` to add your own (the gate is always added).
 
 ## Test your app
 
@@ -111,8 +79,8 @@ expect(collect($document->hints)->pluck('kind'))->not->toContain(\Laranex\Larave
 
 ## Avoid
 
-- Guessing a table's columns from old migrations: export the schema instead.
 - Enabling the viewer in production without the `viewSchema` gate; schema details help attackers.
 - Sharing a local app (Herd Share, Expose, ngrok) with the viewer on: in `local`, anyone who reaches the app can open it.
+- Writing `hints.ignore` rules by hand: copy the rule `schema-viewer:check` prints or the JSON export's `ignore` field.
 - Ignoring `relation_without_foreign_key` on a regular `belongsTo`: add the foreign key unless the relation crosses connections.
-- Expecting the exports to include data: they describe structure only.
+- Publishing an HTML export where the schema should not be seen.

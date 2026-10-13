@@ -2,16 +2,42 @@
 
 declare(strict_types=1);
 
-it('ships the same agent skill to Laravel Boost and to npx skills', function (): void {
+dataset('skills', [
+    'setup' => ['laravel-schema-viewer', [
+        '# Laravel Schema Viewer',
+        '## When to use',
+        '## Install',
+        '## Configure',
+        '## Use',
+        '### Enforce the hints in CI',
+        '### Share the viewer without the app',
+        '### Open it on a server',
+        '## Test your app',
+        '## Avoid',
+    ]],
+    'schema' => ['laravel-schema-viewer-schema', [
+        '# Laravel Schema Viewer: read the schema',
+        '## When to use',
+        '## Install',
+        '## Use',
+        '### Read the database',
+        '### Answer questions from the JSON',
+        '### Find where the database and the models disagree',
+        '### Point a person at a table, relationship or column',
+        '## Avoid',
+    ]],
+]);
+
+it('ships the same agent skill to Laravel Boost and to npx skills', function (string $name): void {
     $root = dirname(__DIR__, 2);
 
-    expect($root.'/skills/laravel-schema-viewer/SKILL.md')->toBeFile()
-        ->and(file_get_contents($root.'/skills/laravel-schema-viewer/SKILL.md'))
-        ->toBe(file_get_contents($root.'/resources/boost/skills/laravel-schema-viewer/SKILL.md'));
-});
+    expect($root."/skills/{$name}/SKILL.md")->toBeFile()
+        ->and(file_get_contents($root."/skills/{$name}/SKILL.md"))
+        ->toBe(file_get_contents($root."/resources/boost/skills/{$name}/SKILL.md"));
+})->with('skills');
 
-it('keeps the usage-only structure', function (): void {
-    $skill = (string) file_get_contents(dirname(__DIR__, 2).'/skills/laravel-schema-viewer/SKILL.md');
+it('keeps the usage-only structure', function (string $name, array $expected): void {
+    $skill = (string) file_get_contents(dirname(__DIR__, 2)."/skills/{$name}/SKILL.md");
     $headings = [];
     $inCode = false;
 
@@ -25,18 +51,6 @@ it('keeps the usage-only structure', function (): void {
         }
     }
 
-    expect($skill)->toStartWith("---\nname: laravel-schema-viewer\n")
-        ->and($headings)->toBe([
-            '# Laravel Schema Viewer',
-            '## When to use',
-            '## Install',
-            '## Configure',
-            '## Use',
-            '### Read the schema before changing it',
-            '### Share the viewer without the app',
-            '### Check the schema and the models agree',
-            '### Open the viewer',
-            '## Test your app',
-            '## Avoid',
-        ]);
-});
+    expect($skill)->toStartWith("---\nname: {$name}\n")
+        ->and($headings)->toBe($expected);
+})->with('skills');
