@@ -24,3 +24,24 @@ function buildSnapshot(): SchemaDocument
 {
     return app(Snapshot::class)->build();
 }
+
+/**
+ * What the viewer page hands the app: window.__SCHEMA_VIEWER__, with the schema and the downloads when the snapshot is
+ * readable.
+ *
+ * @param  array<string, string>  $headers
+ * @return array<string, mixed>
+ */
+function viewerConfig(mixed $test, array $headers = []): array
+{
+    $response = $test->get('/schema-viewer', $headers)->assertOk();
+    $html = (string) $response->getContent();
+
+    if ($response->headers->get('Content-Encoding') === 'gzip') {
+        $html = (string) gzdecode($html);
+    }
+
+    preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/s', $html, $match);
+
+    return json_decode($match[1] ?? 'null', true, 512, JSON_THROW_ON_ERROR);
+}

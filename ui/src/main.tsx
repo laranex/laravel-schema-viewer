@@ -4,7 +4,7 @@ import '@fontsource/ibm-plex-sans/latin-400.css';
 import '@fontsource/ibm-plex-sans/latin-500.css';
 import '@fontsource/ibm-plex-sans/latin-600.css';
 import '@xyflow/react/dist/style.css';
-import { StrictMode, useCallback, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import type { ServerConfig } from './layout';
@@ -19,26 +19,13 @@ declare global {
 
 const server = window.__SCHEMA_VIEWER__;
 
-// In the package the page carries the server's URLs; without them (the prototype) the viewer shows example data.
+// The page carries the schema and the downloads: the app's page from the snapshot php artisan schema-viewer:build wrote,
+// a static export from the file itself. Without a page config (the prototype) the viewer shows example data.
 function Root() {
-    const [doc, setDoc] = useState<SchemaDocument | null>(null);
+    const [doc, setDoc] = useState<SchemaDocument | null>(server?.schema ?? null);
     const [error, setError] = useState<string | null>(null);
     // The app has no snapshot yet (or cannot read it): php artisan schema-viewer:build writes it.
-    const [missing, setMissing] = useState<string | null>(server?.missing ?? null);
-
-    // The server serves the snapshot php artisan schema-viewer:build wrote; it never reads the models itself.
-    const read = useCallback(async () => {
-        const r = await fetch(server?.schemaUrl ?? '', { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
-        if (!r.ok) {
-            const body = (await r.json().catch(() => ({}))) as { message?: string };
-            if (r.status === 503) {
-                setMissing(body.message ?? 'Run php artisan schema-viewer:build.');
-                return;
-            }
-            throw new Error(body.message ?? `The schema could not be read (HTTP ${r.status}).`);
-        }
-        setDoc((await r.json()) as SchemaDocument);
-    }, []);
+    const missing = server?.missing ?? null;
 
     useEffect(() => {
         if (!server) {
@@ -50,20 +37,10 @@ function Root() {
             }
             return;
         }
-        // A static export carries the schema in the page itself.
-        if (server.schema) {
-            setDoc(server.schema);
-            return;
+        if (!server.schema && !server.missing) {
+            setError('This page carries no schema. Run php artisan schema-viewer:build, or export it again with php artisan schema-viewer:export --format=html.');
         }
-        if (!server.schemaUrl) {
-            setError('This page carries no schema. Export it again with php artisan schema-viewer:export --format=html.');
-            return;
-        }
-        if (server.missing) {
-            return;
-        }
-        read().catch((e: Error) => setError(e.message));
-    }, [read]);
+    }, []);
 
     if (missing) {
         return (
@@ -82,7 +59,7 @@ function Root() {
             <div className="status" role="alert">
                 <h1>The schema could not be read</h1>
                 <p>{error}</p>
-                <p className="muted">Check the database connection and the application log, then reload this page.</p>
+                <p className="muted">Reload this page, or build the snapshot again with <code>php artisan schema-viewer:build</code>.</p>
             </div>
         );
     }
@@ -96,7 +73,7 @@ function Root() {
         );
     }
 
-    return <App doc={doc} example={!server} exportUrl={server?.exportUrl} downloads={server?.downloads} defaultConnection={server?.defaultConnection} editor={server?.editor} />;
+    return <App doc={doc} example={!server} downloads={server?.downloads} defaultConnection={server?.defaultConnection} editor={server?.editor} />;
 }
 
 createRoot(document.getElementById('root')!).render(

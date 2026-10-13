@@ -165,10 +165,9 @@ export async function layoutConnections(
     return { positions, regions };
 }
 
-// What the page hands the viewer: the server's URLs, or, in a static export, the schema and every download itself.
+// What the page hands the viewer: the schema and every connection's downloads, in the app's page (from the snapshot
+// php artisan schema-viewer:build wrote) and in a static export alike.
 export type ServerConfig = {
-    schemaUrl?: string;
-    exportUrl?: string;
     schema?: SchemaDocument;
     downloads?: StaticDownloads;
     // What the viewer opens on: 'all' or one connection's name (config schema-viewer.default_connection).
@@ -179,5 +178,5 @@ export type ServerConfig = {
     missing?: string | null;
 };
 
-// Each connection's Mermaid, DBML and Markdown files, written by schema-viewer:export --format=html.
+// Each connection's Mermaid, DBML and Markdown files, carried by the page.
 export type StaticDownloads = Record<string, Record<'mermaid' | 'dbml' | 'markdown', string>>;

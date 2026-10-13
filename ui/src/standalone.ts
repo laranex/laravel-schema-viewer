@@ -1,8 +1,6 @@
 import type { StaticDownloads } from './layout';
 import type { SchemaDocument } from './types';
 
-const FORMATS = ['mermaid', 'dbml', 'markdown'] as const;
-
 // Inflates the config and the app, then starts the app. Kept identical to HtmlExporter::LOADER.
 const LOADER = `const unpack = async (id) => new Response(new Blob([Uint8Array.from(atob(document.getElementById(id).textContent.trim()), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
 try {
@@ -13,12 +11,12 @@ try {
 }`;
 
 // The whole viewer as one HTML file: the same file `php artisan schema-viewer:export --format=html` writes (see
-// HtmlExporter), built from what this page already has. Its own script and stylesheet with the fonts inlined, the
-// schema it shows, and each connection's downloads, from the export URL or, in a static export, from the page itself.
-// The script and the schema are gzipped and base64 encoded, and the page's loader inflates them.
-export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownloads | undefined, exportUrl: string | undefined, defaultConnection = 'all'): Promise<string> {
-    const [css, js, files] = await Promise.all([styles(), script(), downloads ?? fetchDownloads(doc, exportUrl)]);
-    const [config, app] = await Promise.all([pack(JSON.stringify({ schema: doc, downloads: files, defaultConnection })), pack(js)]);
+// HtmlExporter), built from what this page already has: its own script and stylesheet with the fonts inlined, the
+// schema it shows, and each connection's downloads. The script and the schema are gzipped and base64 encoded, and the
+// page's loader inflates them.
+export async function standaloneHtml(doc: SchemaDocument, downloads: StaticDownloads, defaultConnection = 'all'): Promise<string> {
+    const [css, js] = await Promise.all([styles(), script()]);
+    const [config, app] = await Promise.all([pack(JSON.stringify({ schema: doc, downloads, defaultConnection })), pack(js)]);
 
     return `<!doctype html>
 <html lang="en">
@@ -55,23 +53,6 @@ async function pack(text: string): Promise<string> {
 async function unpack(data: string): Promise<string> {
     const bytes = Uint8Array.from(atob(data.trim()), (c) => c.charCodeAt(0));
     return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
-}
-
-// Every connection's files in one request (format all), so the server reads the schema once for the whole page.
-async function fetchDownloads(doc: SchemaDocument, exportUrl: string | undefined): Promise<StaticDownloads> {
-    if (!exportUrl) {
-        throw new Error('This page has no export URL to read the downloads from.');
-    }
-    const all = JSON.parse(await text(`${exportUrl}?format=all`)) as Partial<StaticDownloads>;
-    const files: StaticDownloads = {};
-    for (const c of doc.connections) {
-        const own = all[c.name];
-        if (!own || FORMATS.some((format) => typeof own[format] !== 'string')) {
-            throw new Error(`The downloads of the ${c.name} connection are missing.`);
-        }
-        files[c.name] = own;
-    }
-    return files;
 }
 
 // The app's script: packed in a static export, otherwise loaded from the package's asset route.

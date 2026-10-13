@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Vite;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 
@@ -15,8 +17,8 @@ it('is open in the local environment', function (): void {
     $this->get('/schema-viewer')
         ->assertOk()
         ->assertHeader('Content-Type', 'text/html; charset=utf-8')
-        ->assertSee('window.__SCHEMA_VIEWER__', false)
-        ->assertSee('/schema-viewer/api/schema', false);
+        ->assertHeader('Cache-Control', 'no-store, private')
+        ->assertSee('window.__SCHEMA_VIEWER__', false);
 });
 
 it('tells the page which connection to open on', function (): void {
@@ -116,14 +118,56 @@ it('needs the viewSchema gate when enabled outside the local environment', funct
     $this->actingAs($admin)->get('/schema-viewer')->assertOk();
 });
 
-it('serves the schema document', function (): void {
+it('carries the schema document and every connection\'s downloads in the page', function (): void {
     buildSnapshot();
 
-    $this->getJson('/schema-viewer/api/schema')
+    $config = viewerConfig($this);
+
+    expect($config['schema']['version'])->toBe(1)
+        ->and($config['schema']['connections'][0]['name'])->toBe('testing')
+        ->and($config['schema'])->toHaveKeys(['connections', 'models', 'relations', 'links', 'derivedLinks', 'hints'])
+        ->and(array_keys($config['downloads']['testing']))->toBe(['mermaid', 'dbml', 'markdown']);
+});
+
+it('registers the page and its assets only, no API', function (): void {
+    $uris = collect(app('router')->getRoutes()->getRoutes())->map(fn ($route): string => $route->uri())
+        ->filter(fn (string $uri): bool => str_starts_with($uri, 'schema-viewer'))->sort()->values()->all();
+
+    expect($uris)->toBe(['schema-viewer', 'schema-viewer/assets/{file}']);
+
+    $this->get('/schema-viewer/api/schema')->assertNotFound();
+    $this->get('/schema-viewer/api/export?format=dbml')->assertNotFound();
+});
+
+it('compresses the page with gzip when the browser takes it', function (): void {
+    buildSnapshot();
+
+    $plain = $this->get('/schema-viewer')->assertOk()->assertHeader('Vary', 'Accept-Encoding');
+    $gzip = $this->get('/schema-viewer', ['Accept-Encoding' => 'gzip, deflate, br'])
         ->assertOk()
-        ->assertJsonPath('version', 1)
-        ->assertJsonPath('connections.0.name', 'testing')
-        ->assertJsonStructure(['connections', 'models', 'relations', 'links', 'derivedLinks', 'hints']);
+        ->assertHeader('Content-Encoding', 'gzip')
+        ->assertHeader('Vary', 'Accept-Encoding');
+
+    expect($plain->headers->has('Content-Encoding'))->toBeFalse()
+        ->and(gzdecode((string) $gzip->getContent()))->toBe($plain->getContent())
+        ->and(strlen((string) $gzip->getContent()))->toBeLessThan(strlen((string) $plain->getContent()));
+});
+
+it('keeps the schema from ending the script it is carried in', function (): void {
+    $attack = '</script><script>alert(1)</script><!-- & \u{2028}';
+    Schema::table('posts', function (Blueprint $table) use ($attack): void {
+        $table->string('note')->default($attack);
+    });
+    buildSnapshot();
+
+    $html = (string) $this->get('/schema-viewer')->getContent();
+    $posts = collect(viewerConfig($this)['schema']['connections'][0]['tables'])->firstWhere('name', 'posts');
+
+    expect(substr_count($html, '</script>'))->toBe(2)
+        ->and($html)->not->toContain('<script>alert(1)')
+        ->and($html)->not->toContain('<!--')
+        ->and($html)->not->toContain("\u{2028}")
+        ->and(collect($posts['columns'])->firstWhere('name', 'note')['default'])->toContain('</script><script>alert(1)</script>');
 });
 
 it('serves the built assets and nothing else', function (): void {
@@ -142,32 +186,6 @@ it('can live on another path', function (): void {
 
     $this->get('/internal/schema')->assertOk();
     $this->get('/schema-viewer')->assertNotFound();
-});
-
-it('downloads the database schema as Mermaid, DBML, Markdown or JSON', function (): void {
-    buildSnapshot();
-
-    expect($this->get('/schema-viewer/api/export?format=mermaid&connection=testing')
-        ->assertOk()
-        ->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.mmd"')
-        ->getContent())->toStartWith('erDiagram');
-
-    $this->get('/schema-viewer/api/export?format=dbml')->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.dbml"');
-    $this->get('/schema-viewer/api/export?format=markdown')->assertOk()->assertHeader('Content-Type', 'text/markdown; charset=utf-8');
-    $this->get('/schema-viewer/api/export?format=json')
-        ->assertOk()
-        ->assertHeader('Content-Disposition', 'attachment; filename="schema-testing.json"')
-        ->assertJsonPath('name', 'testing')
-        ->assertJsonMissingPath('models');
-    $this->get('/schema-viewer/api/export?format=png')->assertStatus(422);
-    $this->get('/schema-viewer/api/export?format=dbml&connection=nope')->assertNotFound();
-});
-
-it('rejects a format or connection given as a list', function (): void {
-    buildSnapshot();
-
-    $this->getJson('/schema-viewer/api/export?format[]=dbml')->assertStatus(422)->assertJsonPath('message', 'Use format mermaid, dbml, markdown or json.');
-    $this->getJson('/schema-viewer/api/export?format=dbml&connection[]=testing')->assertStatus(422)->assertJsonPath('message', 'Name one connection.');
 });
 
 it('gives its scripts the CSP nonce the application set for Vite', function (): void {

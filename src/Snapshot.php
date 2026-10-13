@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer;
 
-use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
 use Laranex\LaravelSchemaViewer\Build\Isolation;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
@@ -13,10 +12,9 @@ use RuntimeException;
 use stdClass;
 
 /**
- * The schema snapshot: the file schema-viewer:build writes (by default schema-viewer.json in the project root) and the
- * viewer's routes only read. It holds the schema document and each connection's Mermaid, DBML and Markdown downloads
- * as readable JSON, so it can be committed and diffed. Building it runs the application's models; reading it runs
- * nothing.
+ * The schema snapshot: schema-viewer.json in the project root, which schema-viewer:build writes and the viewer's page
+ * only reads. It holds the schema document and each connection's Mermaid, DBML and Markdown downloads as readable
+ * JSON, so it can be committed and diffed. Building it runs the application's models; reading it runs nothing.
  */
 final class Snapshot
 {
@@ -28,30 +26,23 @@ final class Snapshot
     /**
      * The file read last, kept for the requests that follow until it changes on disk.
      *
-     * @var array{stamp: string, json: string, etag: string, gzip: string|null, files: array<string, array{mermaid: string, dbml: string, markdown: string, json: string}>}|null
+     * @var array{stamp: string, json: string, files: array<string, array{mermaid: string, dbml: string, markdown: string}>}|null
      */
     private ?array $loaded = null;
 
     public function __construct(
         private readonly Application $app,
-        private readonly Config $config,
         private readonly SchemaViewer $viewer,
         private readonly Isolation $isolation,
     ) {}
 
     /**
-     * Where the snapshot lives: the configured path (relative paths start at the project root), or schema-viewer.json in
-     * the project root.
+     * Where the snapshot lives: always schema-viewer.json in the project root, so it never lands where the web server
+     * serves files.
      */
     public function path(): string
     {
-        $path = $this->config->get('schema-viewer.snapshot');
-
-        if (! is_string($path) || $path === '') {
-            return $this->app->basePath('schema-viewer.json');
-        }
-
-        return preg_match('#^([a-zA-Z]:)?[\\\\/]#', $path) === 1 ? $path : $this->app->basePath($path);
+        return $this->app->basePath('schema-viewer.json');
     }
 
     /**
@@ -90,7 +81,7 @@ final class Snapshot
     }
 
     /**
-     * The schema document as JSON, as the viewer's API serves it.
+     * The schema document as JSON, exactly as it was built (empty objects stay {}), for the viewer's page.
      *
      * @throws SnapshotUnavailable
      */
@@ -100,36 +91,9 @@ final class Snapshot
     }
 
     /**
-     * An entity tag for the document: it changes whenever the snapshot does.
+     * Each connection's downloads, by connection name: Mermaid, DBML and Markdown.
      *
-     * @throws SnapshotUnavailable
-     */
-    public function etag(): string
-    {
-        return $this->load()['etag'];
-    }
-
-    /**
-     * The document's JSON compressed with gzip, compressed once per snapshot.
-     *
-     * @throws SnapshotUnavailable
-     */
-    public function gzip(): string
-    {
-        $loaded = $this->load();
-
-        if ($loaded['gzip'] === null) {
-            $loaded['gzip'] = (string) gzencode($loaded['json'], 6);
-            $this->loaded = $loaded;
-        }
-
-        return $loaded['gzip'];
-    }
-
-    /**
-     * Each connection's downloads, by connection name: Mermaid, DBML, Markdown and the connection's own JSON.
-     *
-     * @return array<string, array{mermaid: string, dbml: string, markdown: string, json: string}>
+     * @return array<string, array{mermaid: string, dbml: string, markdown: string}>
      *
      * @throws SnapshotUnavailable
      */
@@ -139,7 +103,7 @@ final class Snapshot
     }
 
     /**
-     * @return array{stamp: string, json: string, etag: string, gzip: string|null, files: array<string, array{mermaid: string, dbml: string, markdown: string, json: string}>}
+     * @return array{stamp: string, json: string, files: array<string, array{mermaid: string, dbml: string, markdown: string}>}
      *
      * @throws SnapshotUnavailable
      */
@@ -181,17 +145,12 @@ final class Snapshot
                 'mermaid' => $downloads->mermaid,
                 'dbml' => $downloads->dbml,
                 'markdown' => $downloads->markdown,
-                'json' => json_encode($connection, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n",
             ];
         }
 
-        $json = (string) json_encode($data->document, JSON_UNESCAPED_SLASHES);
-
         return $this->loaded = [
             'stamp' => $stamp,
-            'json' => $json,
-            'etag' => substr(hash('sha256', $json), 0, 32),
-            'gzip' => null,
+            'json' => (string) json_encode($data->document, JSON_UNESCAPED_SLASHES),
             'files' => $files,
         ];
     }

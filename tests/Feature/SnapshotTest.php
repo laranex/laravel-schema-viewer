@@ -12,34 +12,21 @@ use Laranex\LaravelSchemaViewer\Snapshot;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\SideEffects\Noisy;
 
 /**
- * The schema the viewer's API serves.
+ * The tables of the first connection in the schema the viewer page carries.
  *
  * @return list<string>
  */
 function servedTables(mixed $test): array
 {
-    return collect($test->getJson('/schema-viewer/api/schema')->assertOk()->json('connections.0.tables'))->pluck('name')->all();
+    return collect(viewerConfig($test)['schema']['connections'][0]['tables'])->pluck('name')->all();
 }
 
-/**
- * What the viewer page hands the app.
- *
- * @return array<string, mixed>
- */
-function pageConfig(mixed $test): array
-{
-    preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', (string) $test->get('/schema-viewer')->assertOk()->getContent(), $match);
+it('writes the snapshot to schema-viewer.json in the project root', function (): void {
+    buildSnapshot();
 
-    return json_decode($match[1], true);
-}
-
-it('writes the snapshot to schema-viewer.json in the project root unless told otherwise', function (): void {
-    config()->set('schema-viewer.snapshot', null);
-    expect(app(Snapshot::class)->path())->toBe(base_path('schema-viewer.json'));
-
-    config()->set('schema-viewer.snapshot', 'storage/schema.json');
-    expect(app(Snapshot::class)->path())->toBe(base_path('storage/schema.json'))
-        ->and(app(Snapshot::class)->displayPath())->toBe('storage/schema.json');
+    expect(app(Snapshot::class)->path())->toBe(base_path('schema-viewer.json'))
+        ->and(app(Snapshot::class)->displayPath())->toBe('schema-viewer.json')
+        ->and(base_path('schema-viewer.json'))->toBeFile();
 });
 
 it('builds the snapshot as readable JSON with the document and every download', function (): void {
@@ -94,71 +81,53 @@ it('runs no model code in any web request', function (): void {
     buildSnapshot();
     Noisy::$calls = [];
 
-    $this->get('/schema-viewer')->assertOk();
-    $this->getJson('/schema-viewer/api/schema')->assertOk()->assertJsonPath('models.0.class', Noisy::class);
-    $this->get('/schema-viewer/api/export?format=dbml')->assertOk();
-    $this->getJson('/schema-viewer/api/export?format=all')->assertOk();
+    $config = viewerConfig($this);
+    viewerConfig($this, ['Accept-Encoding' => 'gzip']);
 
-    expect(Noisy::$calls)->toBe([]);
+    expect($config['schema']['models'][0]['class'])->toBe(Noisy::class)
+        ->and(Noisy::$calls)->toBe([]);
 });
 
-it('answers 304 when the browser already has the snapshot, and compresses it with gzip', function (): void {
-    buildSnapshot();
-
-    $first = $this->getJson('/schema-viewer/api/schema')->assertOk();
-    $etag = (string) $first->headers->get('ETag');
-
-    $this->withHeaders(['If-None-Match' => $etag])->get('/schema-viewer/api/schema')->assertStatus(304);
-
-    $gzip = $this->withHeaders(['Accept-Encoding' => 'gzip, deflate, br'])->get('/schema-viewer/api/schema')
-        ->assertOk()
-        ->assertHeader('Content-Encoding', 'gzip')
-        ->assertHeader('Vary', 'Accept-Encoding');
-
-    expect(gzdecode((string) $gzip->getContent()))->toBe($first->getContent())
-        ->and($gzip->headers->get('ETag'))->not->toBe($etag);
-
-    buildSnapshot();
-
-    $this->withHeaders(['If-None-Match' => $etag])->get('/schema-viewer/api/schema')->assertOk();
-});
-
-it('keeps empty objects and the exact document when serving the snapshot', function (): void {
+it('carries the exact document, empty objects included', function (): void {
     $document = buildSnapshot()->jsonSerialize();
     unset($document['generatedAt']);
 
-    expect($this->getJson('/schema-viewer/api/schema')->getContent())->toBe(json_encode($document, JSON_UNESCAPED_SLASHES));
+    $html = (string) $this->get('/schema-viewer')->getContent();
+    $expected = strtr((string) json_encode($document, JSON_UNESCAPED_SLASHES), ['<' => '\\u003c', '>' => '\\u003e', '&' => '\\u0026']);
+
+    expect($html)->toContain('"schema":'.$expected.',"downloads":');
 });
 
-it('serves each connection\'s downloads from the snapshot', function (): void {
+it('carries each connection\'s Mermaid, DBML and Markdown downloads', function (): void {
     buildSnapshot();
 
-    $all = $this->getJson('/schema-viewer/api/export?format=all')->assertOk()->json();
+    $downloads = viewerConfig($this)['downloads'];
 
-    expect(array_keys($all['testing']))->toBe(['mermaid', 'dbml', 'markdown'])
-        ->and($this->get('/schema-viewer/api/export?format=json')->assertOk()->json('name'))->toBe('testing');
+    expect(array_keys($downloads))->toBe(['testing'])
+        ->and(array_keys($downloads['testing']))->toBe(['mermaid', 'dbml', 'markdown'])
+        ->and($downloads['testing']['mermaid'])->toStartWith('erDiagram');
 });
 
 it('tells how to build the snapshot when there is none', function (): void {
-    $message = 'No schema snapshot at ['.str_replace('\\', '/', $this->snapshot).'] yet. Run php artisan schema-viewer:build.';
-
-    $this->getJson('/schema-viewer/api/schema')->assertStatus(503)->assertJsonPath('message', $message);
-    $this->getJson('/schema-viewer/api/export?format=all')->assertStatus(503)->assertJsonPath('message', $message);
-
-    expect(pageConfig($this)['missing'])->toBe($message);
+    expect(viewerConfig($this))->toBe([
+        'defaultConnection' => 'all',
+        'editor' => null,
+        'missing' => 'No schema snapshot at [schema-viewer.json] yet. Run php artisan schema-viewer:build.',
+    ]);
 
     buildSnapshot();
 
-    expect(pageConfig($this)['missing'])->toBeNull();
+    expect(viewerConfig($this))->toHaveKeys(['schema', 'downloads'])
+        ->and(viewerConfig($this)['missing'])->toBeNull();
 });
 
 it('tells how to build the snapshot again when it is damaged or from another version', function (string $contents): void {
-    mkdir(dirname($this->snapshot), 0755, true);
     file_put_contents($this->snapshot, $contents);
 
-    $this->getJson('/schema-viewer/api/schema')
-        ->assertStatus(503)
-        ->assertJsonPath('message', 'The schema snapshot at ['.str_replace('\\', '/', $this->snapshot).'] cannot be read: it is damaged or was written by another version. Run php artisan schema-viewer:build.');
+    $config = viewerConfig($this);
+
+    expect($config['missing'])->toBe('The schema snapshot at [schema-viewer.json] cannot be read: it is damaged or was written by another version. Run php artisan schema-viewer:build.')
+        ->and($config)->not->toHaveKey('schema');
 })->with([
     'not JSON' => '{"format": 2, "docu',
     'another format' => '{"format": 1, "document": {"connections": []}, "downloads": {}}',
@@ -193,14 +162,10 @@ it('keeps the application\'s jobs, events, cache and HTTP calls from the outside
 });
 
 it('reports a build that fails', function (): void {
-    $file = tempnam(sys_get_temp_dir(), 'not-a-folder');
-    config()->set('schema-viewer.snapshot', $file.DIRECTORY_SEPARATOR.'schema-viewer.json');
+    // A folder where the file goes cannot be replaced by it.
+    mkdir($this->snapshot);
 
-    try {
-        $this->artisan('schema-viewer:build')
-            ->expectsOutputToContain('The schema snapshot could not be built')
-            ->assertFailed();
-    } finally {
-        @unlink($file);
-    }
+    $this->artisan('schema-viewer:build')
+        ->expectsOutputToContain('The schema snapshot could not be built')
+        ->assertFailed();
 });

@@ -6,22 +6,33 @@ namespace Laranex\LaravelSchemaViewer\Http\Controllers;
 
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Routing\UrlGenerator;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 use Laranex\LaravelSchemaViewer\Snapshot;
 use Laranex\LaravelSchemaViewer\SnapshotUnavailable;
 
 /**
- * The viewer page: the built app plus the URLs it talks to, or, without a readable snapshot, what to run to build it.
+ * The viewer page: the built app plus the schema and every connection's downloads from the snapshot, as a static
+ * export carries them, or, without a readable snapshot, what to run to build it. No model code runs here.
  */
 final class ViewerController
 {
-    public function __invoke(UrlGenerator $url, SchemaViewer $viewer, Snapshot $snapshot, Application $app): Response
+    /**
+     * Characters escaped in the page's JSON so it cannot end the script element or open a comment in it. They only ever
+     * appear inside JSON strings, where the escapes mean the same.
+     */
+    private const SCRIPT_SAFE = ['<' => '\\u003c', '>' => '\\u003e', '&' => '\\u0026', "\u{2028}" => '\\u2028', "\u{2029}" => '\\u2029'];
+
+    public function __invoke(Request $request, UrlGenerator $url, SchemaViewer $viewer, Snapshot $snapshot, Application $app): Response
     {
         try {
-            $snapshot->etag();
+            // The document as it was built, so empty objects stay {}.
+            $schema = $snapshot->json();
+            $downloads = json_encode((object) $snapshot->files(), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             $missing = null;
         } catch (SnapshotUnavailable $e) {
+            $schema = $downloads = null;
             $missing = $e->getMessage();
         }
 
@@ -29,12 +40,16 @@ final class ViewerController
         $asset = fn (string $file): string => $url->route('schema-viewer.asset', ['file' => $file]).'?v='.$version;
 
         $config = json_encode([
-            'schemaUrl' => $url->route('schema-viewer.schema'),
-            'exportUrl' => $url->route('schema-viewer.export'),
             'defaultConnection' => $viewer->defaultConnection(),
             'editor' => $viewer->editorHref(),
             'missing' => $missing,
-        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+        if ($schema !== null) {
+            $config = substr($config, 0, -1).',"schema":'.$schema.',"downloads":'.$downloads.'}';
+        }
+
+        $config = strtr($config, self::SCRIPT_SAFE);
 
         $css = htmlspecialchars($asset('app.css'), ENT_QUOTES);
         $js = htmlspecialchars($asset('app.js'), ENT_QUOTES);
@@ -59,7 +74,14 @@ final class ViewerController
             </html>
             HTML;
 
-        return new Response($html, 200, ['Content-Type' => 'text/html; charset=utf-8', 'Cache-Control' => 'no-store']);
+        $headers = ['Content-Type' => 'text/html; charset=utf-8', 'Cache-Control' => 'no-store', 'Vary' => 'Accept-Encoding'];
+
+        // A large schema makes a large page; it compresses well.
+        if (str_contains(strtolower((string) $request->header('Accept-Encoding')), 'gzip') && ($compressed = gzencode($html, 6)) !== false) {
+            return new Response($compressed, 200, [...$headers, 'Content-Encoding' => 'gzip']);
+        }
+
+        return new Response($html, 200, $headers);
     }
 
     /**

@@ -10,10 +10,14 @@ return [
     | Unset, the viewer is on in the local environment and off everywhere
     | else. Set it to true or false to decide for every environment.
     |
-    | In the local environment there is no gate: anyone who can reach the
-    | app opens the viewer. Keep APP_ENV=local off shared machines, and set
-    | this to false before exposing the app with Herd Share, Expose or ngrok,
-    | or decide who may open it with SchemaViewer::auth() in a provider.
+    | In the local environment there is no gate, only a host check: the
+    | viewer answers on APP_URL's host, localhost, 127.0.0.1 and ::1, so a
+    | tunnel (Herd Share, Expose, ngrok) or another hostname gets a 403.
+    | Decide yourself with SchemaViewer::auth() in a provider, e.g. for
+    | Docker or a remote machine with its own hostname.
+    |
+    | The viewer shows schema-viewer.json in the project root, which php
+    | artisan schema-viewer:build writes. No model code runs in a request.
     |
     */
 
@@ -75,22 +79,6 @@ return [
     */
 
     'editor' => env('SCHEMA_VIEWER_EDITOR'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Snapshot
-    |--------------------------------------------------------------------------
-    |
-    | php artisan schema-viewer:build reads the database and the models and
-    | writes the snapshot the viewer serves: readable JSON you can commit or
-    | ignore. The viewer's routes only read it; no model code runs in a web
-    | request. Null writes schema-viewer.json in the project root; a relative
-    | path starts there too. Run the build again after changing migrations or
-    | models, and in your deploy script.
-    |
-    */
-
-    'snapshot' => env('SCHEMA_VIEWER_SNAPSHOT'),
 
     /*
     |--------------------------------------------------------------------------

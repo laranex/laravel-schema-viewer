@@ -90,8 +90,9 @@ class SchemaViewer
     ) {}
 
     /**
-     * Decide who may open the viewer, in every environment. The callback replaces the default check entirely: everyone
-     * in the local environment, elsewhere the users the viewSchema gate allows. Call it in a service provider's boot().
+     * Decide who may open the viewer, in every environment. The callback replaces the default check entirely, host rule
+     * included: in the local environment every request on a host of this machine (see localHost()), elsewhere the users
+     * the viewSchema gate allows. Call it in a service provider's boot().
      *
      * @param  Closure(Request): bool  $callback
      */
@@ -101,8 +102,8 @@ class SchemaViewer
     }
 
     /**
-     * Whether the request may open the viewer: the auth() callback when one is set, otherwise everyone in the local
-     * environment and, elsewhere, the users the viewSchema gate allows.
+     * Whether the request may open the viewer: the auth() callback when one is set, otherwise, in the local environment,
+     * every request on a host of this machine and, elsewhere, the users the viewSchema gate allows.
      */
     public static function check(Request $request, ?Application $app = null): bool
     {
@@ -117,7 +118,7 @@ class SchemaViewer
         }
 
         if ($app->environment('local')) {
-            return true;
+            return self::localHost($request, $app);
         }
 
         if (! $app->bound(Gate::class)) {
@@ -127,6 +128,22 @@ class SchemaViewer
         $gate = $app->make(Gate::class);
 
         return $gate->has('viewSchema') && $gate->forUser($request->user())->allows('viewSchema');
+    }
+
+    /**
+     * Whether a local request came in on a host of this machine: APP_URL's host, localhost, 127.0.0.1 or ::1. Any other
+     * host, such as a tunnel's (Herd Share, Expose, ngrok) or one a web page rebinds to this machine, is refused.
+     */
+    public static function localHost(Request $request, Application $app): bool
+    {
+        $url = $app->bound('config') ? $app->make('config')->get('app.url') : null;
+        $hosts = ['localhost', '127.0.0.1', '::1', '[::1]'];
+
+        if (is_string($url) && is_string($host = parse_url($url, PHP_URL_HOST))) {
+            $hosts[] = strtolower($host);
+        }
+
+        return in_array(strtolower($request->getHost()), $hosts, true);
     }
 
     /**

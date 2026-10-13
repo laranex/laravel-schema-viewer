@@ -183,7 +183,6 @@ const useNarrow = () => useMedia('(max-width: 760px)');
 type ViewerProps = {
     doc: SchemaDocument;
     example?: boolean;
-    exportUrl?: string;
     downloads?: StaticDownloads;
     defaultConnection?: string;
     editor?: string | null;
@@ -199,7 +198,7 @@ export default function App(props: ViewerProps) {
     );
 }
 
-function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection, editor }: ViewerProps) {
+function Viewer({ doc, example = false, downloads, defaultConnection, editor }: ViewerProps) {
     const schema = useMemo(() => new Schema(doc), [doc]);
     const flow = useReactFlow<AppNode, LinkEdgeType>();
     const [linked] = useState(() => readHash(doc));
@@ -1117,35 +1116,30 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         setPending(null);
     };
 
-    // The server builds the file, so a large schema never has to fit in the clipboard or the page's memory. A static
-    // export has no server: it carries the files, and JSON is the connection itself, as the server writes it.
+    // The page carries every connection's files, built with the snapshot; JSON is the connection itself.
     const download = (format: ExportFormat, connection: string) => {
-        if (downloads) {
-            const content = format === 'json' ? `${JSON.stringify(doc.connections.find((c) => c.name === connection), null, 4)}\n` : downloads[connection]?.[format];
-            if (content === undefined) {
-                notify('This export has no such file. Export it again to include it.');
-                return;
-            }
-            const url = URL.createObjectURL(new Blob([content], { type: format === 'json' ? 'application/json' : 'text/plain' }));
-            save(url, `schema-${connection.replace(/[^A-Za-z0-9_-]/g, '-')}.${EXTENSIONS[format]}`);
-            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-            return;
-        }
-        if (!exportUrl) {
+        if (!downloads) {
             notify('Downloads are blocked in this preview. In your app the file downloads.');
             return;
         }
-        save(`${exportUrl}?${new URLSearchParams({ format, connection })}`, '');
+        const content = format === 'json' ? `${JSON.stringify(doc.connections.find((c) => c.name === connection), null, 4)}\n` : downloads[connection]?.[format];
+        if (content === undefined) {
+            notify('This page has no such file. Build the snapshot again to include it.');
+            return;
+        }
+        const url = URL.createObjectURL(new Blob([content], { type: format === 'json' ? 'application/json' : 'text/plain' }));
+        save(url, `schema-${connection.replace(/[^A-Za-z0-9_-]/g, '-')}.${EXTENSIONS[format]}`);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
 
     // The standalone viewer: every connection in one HTML file that opens without the app, built from this page.
     const downloadHtml = () => {
-        if (!exportUrl && !downloads) {
+        if (!downloads) {
             notify('Downloads are blocked in this preview. In your app the file downloads.');
             return;
         }
         notify('Building the standalone viewer…');
-        standaloneHtml(doc, downloads, exportUrl, defaultConnection).then(
+        standaloneHtml(doc, downloads, defaultConnection).then(
             (html) => {
                 const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
                 save(url, 'schema-viewer.html');
