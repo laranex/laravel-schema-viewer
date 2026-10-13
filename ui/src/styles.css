@@ -2532,21 +2532,18 @@ a.source--link:focus-visible .ui-icon {
     outline: none;
 }
 
-/* The handle in the middle of the edge, so it reads as something to drag. */
+/* Two short sticks in the middle of the edge, so it reads as something to drag. */
 .panel-resizer__grip {
     position: absolute;
     top: 50%;
-    left: -5px;
+    left: -4px;
     z-index: 1;
-    width: 10px;
-    height: 40px;
+    width: 8px;
+    height: 22px;
     transform: translateY(-50%);
-    border: 1px solid var(--line-strong);
-    border-radius: 6px;
-    background:
-        radial-gradient(circle, var(--muted) 1px, transparent 1.4px) 1.5px 6px / 4px 6px repeat-y,
-        var(--surface);
-    box-shadow: var(--shadow);
+    border-left: 2px solid var(--line-strong);
+    border-right: 2px solid var(--line-strong);
+    box-sizing: border-box;
     transition: border-color 0.12s ease;
     pointer-events: none;
 }
