@@ -1776,9 +1776,9 @@ kbd {
    it stays noticeable. */
 .tour-fab {
     position: absolute;
-    left: 14px;
-    /* Above the zoom controls: four buttons, five with the refresh button. */
-    bottom: calc(15px + var(--controls-height, 104px) + 14px);
+    /* Bottom left: on larger screens the zoom controls are in the floating bar. */
+    left: 18px;
+    bottom: 22px;
     z-index: 8;
     display: grid;
     place-items: center;

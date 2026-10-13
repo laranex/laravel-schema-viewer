@@ -10,12 +10,16 @@ const layouts = new WeakMap<Schema, Map<string, Positions>>();
 const KEEP = 24;
 // Above this many tables a connection is always packed into columns; from PACKABLE on, when layers come out tall.
 const LARGE = 40;
+// The shape a packed layout aims for: a desktop's, and a phone held upright.
+export const WIDE = 1.6;
+export const TALL = 0.6;
 const PACKABLE = 12;
 
 // Layered layout, referenced tables to the left of the tables that point at them.
-export async function autoLayout(schema: Schema, connection: string, visible: Set<string>, sizes: Record<string, number>): Promise<Positions> {
+// aspect: the width:height a packed layout aims for, wide on a desktop and tall on a phone.
+export async function autoLayout(schema: Schema, connection: string, visible: Set<string>, sizes: Record<string, number>, aspect = WIDE): Promise<Positions> {
     const ids = [...visible];
-    const key = `${connection}#${ids.map((id) => `${id}:${sizes[id] ?? 120}`).join('|')}`;
+    const key = `${connection}@${aspect}#${ids.map((id) => `${id}:${sizes[id] ?? 120}`).join('|')}`;
     const cache = layouts.get(schema) ?? new Map<string, Positions>();
     layouts.set(schema, cache);
     const known = cache.get(key);
@@ -51,7 +55,7 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
         positions[c.id] = { x: c.x ?? 0, y: c.y ?? 0 };
     });
     if (ids.length > LARGE || (ids.length >= PACKABLE && tallerThanWide(positions, sizes))) {
-        positions = packColumns(positions, sizes);
+        positions = packColumns(positions, sizes, aspect);
     }
     cache.set(key, positions);
     if (cache.size > KEEP) {
@@ -73,15 +77,15 @@ const STACK_GAP = 48;
 // A large schema laid out in layers puts dozens of tables in the column beside a table most others point at (users,
 // say), and the diagram becomes one tall strip. Packed columns keep the layered order, so referenced tables stay to the
 // left and related tables stay close, but fill evenly sized columns until the diagram is about a screen's shape.
-function packColumns(layered: Positions, sizes: Record<string, number>): Positions {
+function packColumns(layered: Positions, sizes: Record<string, number>, aspect: number): Positions {
     const order = Object.entries(layered)
         .sort(([, a], [, b]) => a.x - b.x || a.y - b.y)
         .map(([id]) => id);
     const heightOf = (id: string) => (sizes[id] ?? 120) + STACK_GAP;
     const total = order.reduce((sum, id) => sum + heightOf(id), 0);
     const step = NODE_WIDTH + GAP;
-    // Columns for a width about 1.6 times the height.
-    const columns = Math.max(1, Math.round(Math.sqrt((1.6 * total) / step)));
+    // Columns for a width about `aspect` times the height.
+    const columns = Math.max(1, Math.round(Math.sqrt((aspect * total) / step)));
     const target = total / columns;
 
     const positions: Positions = {};
@@ -112,9 +116,10 @@ export async function layoutConnections(
     connections: string[],
     ids: Set<string>,
     sizes: Record<string, number>,
+    aspect = WIDE,
 ): Promise<{ positions: Positions; regions: Region[] }> {
     if (connections.length === 1) {
-        return { positions: await autoLayout(schema, connections[0], ids, sizes), regions: [] };
+        return { positions: await autoLayout(schema, connections[0], ids, sizes, aspect), regions: [] };
     }
     const blocks: { connection: string; placed: Positions; width: number; height: number }[] = [];
     for (const connection of connections) {
@@ -122,7 +127,7 @@ export async function layoutConnections(
         if (own.size === 0) {
             continue;
         }
-        const raw = await autoLayout(schema, connection, own, sizes);
+        const raw = await autoLayout(schema, connection, own, sizes, aspect);
         const boxes = Object.entries(raw).map(([id, p]) => ({ id, ...p, bottom: p.y + (sizes[id] ?? 120) }));
         const minX = Math.min(...boxes.map((b) => b.x));
         const minY = Math.min(...boxes.map((b) => b.y));
@@ -137,7 +142,8 @@ export async function layoutConnections(
     }
 
     const area = blocks.reduce((sum, b) => sum + b.width * b.height, 0);
-    const rowLimit = Math.max(...blocks.map((b) => b.width), Math.sqrt(area) * 1.7);
+    // Rows of regions about as wide as the screen is shaped: several side by side on a desktop, stacked on a phone.
+    const rowLimit = Math.max(...blocks.map((b) => b.width), Math.sqrt(area) * (aspect >= 1 ? 1.7 : 0.6));
     const positions: Positions = {};
     const regions: Region[] = [];
     let x = 0;

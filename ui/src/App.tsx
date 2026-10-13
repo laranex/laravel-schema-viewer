@@ -23,7 +23,7 @@ import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
 import { boxWidth, route, type Box, type Route } from './routing';
-import { layoutConnections, type StaticDownloads } from './layout';
+import { layoutConnections, TALL, WIDE, type StaticDownloads } from './layout';
 import { standaloneHtml } from './standalone';
 import type { SchemaDocument, Table } from './types';
 
@@ -206,6 +206,21 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const [spacePan, setSpacePan] = useState(false);
     const panning = panMode || spacePan;
     const narrow = useNarrow();
+    // Light or dark: the system's until the person picks one, then remembered in this browser. A page that embeds the
+    // viewer can still set data-theme on it.
+    const [theme, setTheme] = useState<'light' | 'dark' | null>(() => stored('schema-viewer.theme', null, (v) => v === 'light' || v === 'dark'));
+    const systemDark = useMedia('(prefers-color-scheme: dark)');
+    useEffect(() => {
+        if (theme) {
+            document.documentElement.dataset.theme = theme;
+        }
+    }, [theme]);
+    const dark = theme ? theme === 'dark' : document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : systemDark;
+    const switchTheme = () => {
+        const next = dark ? 'light' : 'dark';
+        setTheme(next);
+        store('schema-viewer.theme', next);
+    };
     const roomy = useMedia('(min-width: 1100px)');
     // The panel sits beside the diagram, so its width can be dragged.
     const sideBySide = useMedia('(min-width: 961px)');
@@ -357,7 +372,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         externals.forEach((_, id) => (sizes[id] = EXTERNAL_HEIGHT));
 
         const place = async () => {
-            const { positions, regions } = await layoutConnections(schema, scopeConnections, ids, sizes);
+            const { positions, regions } = await layoutConnections(schema, scopeConnections, ids, sizes, narrow ? TALL : WIDE);
             if (cancelled) {
                 return;
             }
@@ -408,7 +423,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [schema, scopeConnections, shownTables, externals, layoutVersion]);
+    }, [schema, scopeConnections, shownTables, externals, layoutVersion, narrow]);
 
     const neighbors = useMemo(() => (selected ? schema.neighbors(selected.connection, selected.table, 1) : null), [schema, selected]);
     const pivots = useMemo(() => new Set(scopeConnections.flatMap((c) => [...schema.pivotTables(c)].map((t) => nodeId(c, t)))), [schema, scopeConnections]);
@@ -1052,7 +1067,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 }
                                 itemsLabel={downloadHeading}
                                 items={actions.map((a) => ({ label: a.label, hint: a.hint, onSelect: a.run, tour: a.tour }))}
-                                groups={[allConnectionsGroup, { items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
+                                groups={[allConnectionsGroup, { items: [{ label: dark ? 'Light mode' : 'Dark mode', onSelect: switchTheme }, { label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
                                 open={menuOpen || tourMenu === 'phone'}
                                 onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
                                 choice={{
@@ -1121,6 +1136,11 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                         groups={[allConnectionsGroup]}
                                     />
                                 </div>
+                                <Tooltip content={dark ? 'Light mode' : 'Dark mode'} side="bottom">
+                                    <button type="button" className="button button--icon" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={switchTheme}>
+                                        <ThemeIcon dark={dark} />
+                                    </button>
+                                </Tooltip>
                                 <Tooltip content={<>Keyboard shortcuts <kbd>S</kbd></>} side="bottom">
                                     <button type="button" className="button button--with-icon" data-tour="shortcuts" aria-keyshortcuts="S" onClick={() => setHelpOpen(true)}>
                                         <svg viewBox="0 0 20 16" width="18" height="15" aria-hidden="true" className="ui-icon">
@@ -1165,7 +1185,8 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     }
                                 }}
                                 nodesConnectable={false}
-                                nodesDraggable={!panning}
+                                // On a phone a drag moves the diagram, so a finger on a card scrolls instead of moving it.
+                                nodesDraggable={!panning && !narrow}
                                 edgesFocusable={false}
                                 minZoom={0.02}
                                 maxZoom={2}
@@ -1407,6 +1428,19 @@ function Swatch({ kind }: { kind: EdgeKind }) {
     return (
         <svg width="22" height="8" viewBox="0 0 22 8" aria-hidden="true" className={`swatch swatch--${kind}`}>
             <path d="M1 4 H21" />
+        </svg>
+    );
+}
+
+// A sun in dark mode (to switch to light), a moon in light mode.
+function ThemeIcon({ dark }: { dark: boolean }) {
+    return (
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" className="ui-icon">
+            {dark ? (
+                <path d="M8 5 a3 3 0 1 0 0.01 0 Z M8 1.5 V3 M8 13 V14.5 M1.5 8 H3 M13 8 H14.5 M3.4 3.4 L4.5 4.5 M11.5 11.5 L12.6 12.6 M3.4 12.6 L4.5 11.5 M11.5 4.5 L12.6 3.4" />
+            ) : (
+                <path d="M13.5 9.5 A5.5 5.5 0 1 1 6.5 2.5 A4.5 4.5 0 0 0 13.5 9.5 Z" />
+            )}
         </svg>
     );
 }
