@@ -37,13 +37,14 @@ composer require laranex/laravel-schema-viewer --dev
 The full documentation lives at **[laranex.vercel.app/laravel-schema-viewer](https://laranex.vercel.app/laravel-schema-viewer)**:
 
 - [Laravel Schema Viewer introduction and live demo](https://laranex.vercel.app/laravel-schema-viewer/introduction): why use it, with a live demo of a 200-table schema
-- [Installing Laravel Schema Viewer](https://laranex.vercel.app/laravel-schema-viewer/installation): Composer, opening the viewer and who may see it
+- [Installing Laravel Schema Viewer](https://laranex.vercel.app/laravel-schema-viewer/installation): Composer, the schema snapshot, opening the viewer and who may see it
 - [Laravel Schema Viewer configuration](https://laranex.vercel.app/laravel-schema-viewer/configuration): every setting and its default
 - [Using the schema viewer](https://laranex.vercel.app/laravel-schema-viewer/viewer): the floating bar, Browse, Details and Hints, focus mode, shared links and shortcuts
 - [Relationships in the schema diagram](https://laranex.vercel.app/laravel-schema-viewer/relationships): how foreign keys and Eloquent relations become lines
 - [Schema hints](https://laranex.vercel.app/laravel-schema-viewer/hints): where the database and the models disagree, and how to act on each
 - [Schema downloads and commands](https://laranex.vercel.app/laravel-schema-viewer/exports): Mermaid, DBML, Markdown, JSON and HTML exports, and the CI check
 - [Laravel Schema Viewer AI agent skills](https://laranex.vercel.app/laravel-schema-viewer/ai-agent-skill): the skills for Claude Code, Codex, Cursor and other coding agents
+- [Upgrading Laravel Schema Viewer](https://laranex.vercel.app/laravel-schema-viewer/upgrading): from v1 to v2
 
 ## License
 

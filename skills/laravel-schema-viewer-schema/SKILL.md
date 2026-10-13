@@ -15,9 +15,13 @@ Use this skill before writing a migration, a model, a relation, a factory or a q
 
 ## Install
 
-The app needs the package (`composer require laranex/laravel-schema-viewer --dev`); see the `laravel-schema-viewer` skill to install or configure it. The commands below read the database fresh every time and never read rows.
+The app needs the package (`composer require laranex/laravel-schema-viewer --dev`); see the `laravel-schema-viewer` skill to install or configure it. The export commands below read the database fresh every time and never read rows.
 
 ## Use
+
+### Read the snapshot
+
+When `schema-viewer.json` exists in the project root (or the path in `config('schema-viewer.snapshot')`), read it first: it is what the viewer shows, written by `php artisan schema-viewer:build`. `document` holds the same JSON as `schema-viewer:export --format=json` below, and `downloads.<connection>` the Mermaid, DBML and Markdown of each connection. It is as fresh as its last build (after `migrate` in `local`, or when someone ran the build); if a migration or model changed since, run `php artisan schema-viewer:build` or use the export commands.
 
 ### Read the database
 
@@ -65,13 +69,13 @@ Each hint names its connection, table and columns or relation. Fix the cause in 
 
 ### Point a person at a table, relationship or column
 
-Visit `/schema-viewer` in the local environment: every table of the connection, the models on them, and each relation drawn as an edge with its methods and kind (one-to-many, many-to-many, polymorphic, has-many-through).
+Visit `/schema-viewer` in the local environment (after `php artisan schema-viewer:build`): every table of the connection, the models on them, and each relation drawn as an edge with its methods and kind (one-to-many, many-to-many, polymorphic, has-many-through).
 
 To point someone at one table, link to it: `/schema-viewer#connection=all&table=mysql:orders&focus=1` opens every connection with the `orders` table of the `mysql` connection selected and focus mode on it and its direct neighbors (`focus` takes 1 to 3 links; leave it out to show the whole diagram). To point at a column instead, use `column=mysql:orders.user_id`; Copy link in the viewer's details panel (Shift C) copies a link to exactly what is on screen, relationships included. The same hash works on a static HTML export.
 
 ## Avoid
 
-- Guessing a table's columns from old migrations: export the schema instead.
+- Guessing a table's columns from old migrations: read `schema-viewer.json` or export the schema instead.
 - Adding a relation without checking whether a foreign key already backs it, or a foreign key without an index.
 - Expecting the exports to include data: they describe structure only.
 - Changing the package's settings to make a hint go away; fix the schema or the model, or accept the hint with the rule the check prints.

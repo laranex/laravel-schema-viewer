@@ -20,6 +20,7 @@ dataset('skills', [
         '## When to use',
         '## Install',
         '## Use',
+        '### Read the snapshot',
         '### Read the database',
         '### Answer questions from the JSON',
         '### Find where the database and the models disagree',
