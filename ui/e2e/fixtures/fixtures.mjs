@@ -64,4 +64,26 @@ function changes() {
     return snapshot;
 }
 
-export const fixtures = { blog, multi, large, changes };
+// The blog with a hint inferred from names, beside the certain ones.
+function likely() {
+    const snapshot = blog();
+    snapshot.document.hints.push({
+        kind: 'redundant_index',
+        severity: 'info',
+        certainty: 'likely',
+        connection: 'testing',
+        table: 'posts',
+        columns: 'category_id',
+        relation: null,
+        message: 'posts.posts_category_id_index on (category_id) is covered by posts_category_id_status_index on (category_id, status), which starts with the same columns, so it adds work to every write. Drop it unless a query needs the smaller index.',
+        ignore: {
+            hint: { connection: 'testing', table: 'posts', kind: 'redundant_index', columns: 'category_id' },
+            kindOnTable: { connection: 'testing', table: 'posts', kind: 'redundant_index' },
+            table: { connection: 'testing', table: 'posts' },
+            kind: { kind: 'redundant_index' },
+        },
+    });
+    return snapshot;
+}
+
+export const fixtures = { blog, multi, large, changes, likely };

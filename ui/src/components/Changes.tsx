@@ -86,7 +86,7 @@ export function ChangeList({ schema, changes, connections, onOpen, onHighlight }
         if (c.change === 'removed') {
             return null;
         }
-        if (c.type === 'column' && c.connection && c.table && c.name && schema.table(c.connection, c.table)) {
+        if (c.type === 'column' && c.connection && c.table && c.name && schema.table(c.connection, c.table)?.columns.some((col) => col.name === c.name)) {
             return () => onHighlight({ kind: 'column', connection: c.connection!, table: c.table!, column: c.name! });
         }
         if (c.type === 'link' && c.connection && c.id && schema.links(c.connection).some((l) => l.id === c.id)) {
