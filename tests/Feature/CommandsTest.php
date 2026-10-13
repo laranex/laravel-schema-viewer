@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 
@@ -43,6 +44,24 @@ it('exports DBML with refs, delete rules and composite keys', function (): void 
         ->and($dbml)->toMatch('/Ref posts_user_id_foreign: posts\.user_id > users\.id \[delete: cascade(, update: restrict)?\]/')
         ->and($dbml)->not->toContain('category_id > categories')
         ->and($dbml)->not->toContain('Post::');
+});
+
+it('exports DBML for a table with an index on an expression', function (): void {
+    $statement = match (testDriver()) {
+        'mysql' => 'create index users_lower_email_index on users ((lower(email)))',
+        'sqlite', 'pgsql' => 'create index users_lower_email_index on users (lower(email))',
+        // MariaDB and SQL Server index computed columns, not expressions.
+        default => null,
+    };
+
+    if ($statement === null) {
+        $this->markTestSkipped(testDriver().' has no expression indexes.');
+    }
+
+    DB::statement($statement);
+
+    expect(exportAs('dbml'))->toContain('Table users {')
+        ->not->toContain('users_lower_email_index');
 });
 
 it('exports Markdown that describes the database only', function (): void {

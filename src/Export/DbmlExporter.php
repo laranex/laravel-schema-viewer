@@ -22,7 +22,8 @@ final class DbmlExporter
             foreach ($table->indexes as $index) {
                 if ($index->primary) {
                     $primary = $index->columns;
-                } elseif (count($index->columns) > 1 || ! $index->unique) {
+                } elseif ($index->columns !== [] && (count($index->columns) > 1 || ! $index->unique)) {
+                    // An index on expressions only, such as lower(email), reports no columns; DBML cannot name it.
                     $extraIndexes[] = $index;
                 }
             }
