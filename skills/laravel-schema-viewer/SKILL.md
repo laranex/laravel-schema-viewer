@@ -27,7 +27,7 @@ php artisan schema-viewer:build
 
 Install it as a dev dependency unless the team wants the viewer on a server.
 
-`schema-viewer:build` reads the database and the models and writes `schema-viewer.json` in the project root (readable JSON: `format`, the schema `document`, each connection's `downloads`). The viewer's page, API and downloads only read that file; no model code runs in a web request. Without it, the page says to run the build and the API answers 503. Run it again after migrating or changing a model; on a server, run it in the deploy script after `migrate`. The team either commits the file (every clone and server has the viewer; schema changes show as a diff) or adds `/schema-viewer.json` to `.gitignore` and builds it on each machine.
+`schema-viewer:build` reads the database and the models and writes `schema-viewer.json` in the project root, always there (readable JSON: `format`, the schema `document`, each connection's `downloads`). The viewer has no API: its page carries the schema and the downloads from that file, and no model code runs in a web request. Without the file, the page says to run the build. Run it again after migrating or changing a model; on a server, run it in the deploy script after `migrate`. Commit the file only when the repository is private, since it lists every table and column, the models' fillable, hidden, casts and scopes, and source file paths; then every clone and server has the viewer and schema changes show as a diff. Otherwise add `/schema-viewer.json` to `.gitignore` and build it on each machine.
 
 Building constructs every model and calls its relation methods with every connection pretending, model events off, and jobs, mail, notifications, HTTP calls, events and the cache faked; everything is put back afterwards.
 
@@ -40,7 +40,6 @@ Every setting has a default, so most apps configure nothing. Publish `config/sch
 - `connections`: null reads the default connection plus every connection a model uses; a list reads exactly those.
 - `default_connection` (`SCHEMA_VIEWER_DEFAULT_CONNECTION`): what the viewer opens on, `all` (every connection on one diagram) or one connection's name.
 - `editor` (`SCHEMA_VIEWER_EDITOR`): `phpstorm`, `vscode`, `cursor`, `zed` or another name Laravel's `app.editor` takes, or `['href' => '…{file}…{line}']`, plus `base_path` when the editor sees the project elsewhere (Docker, WSL); null uses `app.editor` in `local`. Links with a `javascript:`, `data:` or similar scheme are dropped. Models and relations in the viewer then open at their line.
-- `snapshot` (`SCHEMA_VIEWER_SNAPSHOT`): where the build writes; null is `schema-viewer.json` in the project root, a relative path starts there.
 - `models`: folders scanned for models; null scans `app/Models`.
 - `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed. `package_tables` (default `true`) tags the tables of installed Passport, spatie/laravel-permission and Filament Breezy with their package; they still get hints.
 - `hints.ignore`: a list of rules; a hint is left out when it matches every field a rule names (`connection` and `table` take wildcards, plus `kind`, `columns`, `relation`), e.g. `['kind' => 'morph_without_map']`, `['connection' => 'mysql', 'table' => 'audit_logs']`, `['table' => 'oauth_*']`, `['connection' => 'mysql', 'table' => 'comments', 'kind' => 'relation_without_foreign_key', 'columns' => 'user_id']`. Each hint in the JSON export carries its rules in `ignore` (`hint`, `kindOnTable`, `table`, `kind`), and `schema-viewer:check` prints the narrowest one; copy those rather than writing rules by hand. Unknown fields or kinds are rejected.
@@ -61,7 +60,7 @@ use Laranex\LaravelSchemaViewer\SchemaViewer;
 SchemaViewer::auth(fn (Request $request): bool => $request->user()?->isAdmin() ?? false);
 ```
 
-Without a callback, `local` has no gate: anyone who can reach the app opens the viewer. Set `SCHEMA_VIEWER_ENABLED=false` before sharing a local app with Herd Share, Expose or ngrok, or use `SchemaViewer::auth()`.
+Without a callback, `local` has no gate, only a host check: the viewer opens on `APP_URL`'s host, `localhost`, `127.0.0.1` and `::1`, and answers 403 on any other host, such as a tunnel's (Herd Share, Expose, ngrok) or a name a web page rebinds to the machine. For Docker or a remote machine reached under another hostname, use `SchemaViewer::auth()`; it replaces the host check too.
 
 ## Use
 
@@ -80,7 +79,7 @@ The command lists every hint and exits non-zero when one of a `hints.fail_on` ki
 php artisan schema-viewer:export --format=html --output=build/schema-viewer
 ```
 
-Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer with the schema and the downloads inlined. It opens from disk or any static host without the Laravel app, its database or its API, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. Host it only where the schema may be seen.
+Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer with the schema and the downloads inlined. It opens from disk or any static host without the Laravel app or its database, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. Host it only where the schema may be seen.
 
 ### Open it on a server
 
