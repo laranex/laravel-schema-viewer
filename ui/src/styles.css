@@ -877,6 +877,10 @@ button:disabled {
 
 /* Download dialog */
 
+.ui-dialog:focus {
+    outline: none;
+}
+
 .downloads {
     display: grid;
     gap: 18px;
@@ -897,32 +901,9 @@ button:disabled {
     letter-spacing: 0;
 }
 
-.downloads__connections {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.downloads__connection {
-    display: grid;
-    gap: 1px;
-    padding: 7px 12px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface);
-    color: inherit;
-    font-size: var(--text-sm);
-    text-align: left;
-    cursor: pointer;
-}
-
-.downloads__connection .muted {
-    font-size: var(--text-xs);
-}
-
-.downloads__connection[aria-checked='true'] {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+.downloads__connection-select .ui-select,
+.downloads__connection-select button {
+    width: 100%;
 }
 
 .downloads__grid {
@@ -1699,7 +1680,8 @@ kbd {
 }
 
 .ui-popover {
-    z-index: 50;
+    /* Above dialogs (70), so a select inside one opens on top; below the tour (90). */
+    z-index: 80;
     min-width: var(--radix-select-trigger-width, 200px);
     max-height: var(--radix-select-content-available-height, 60vh);
     overflow-y: auto;
@@ -1844,6 +1826,12 @@ kbd {
     margin: 0;
     color: var(--muted);
     font-size: var(--text-sm);
+}
+
+.button--icon {
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
 }
 
 .button--ghost {
@@ -2660,7 +2648,6 @@ a.source--link:focus-visible .ui-icon {
     font-size: var(--text-sm);
     min-width: 0;
 }
-
 
 .callout .ignore__open {
     display: block;

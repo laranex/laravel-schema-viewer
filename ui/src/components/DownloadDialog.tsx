@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Dialog } from './ui';
+import { Dialog, Select } from './ui';
 
 export type ExportFormat = 'mermaid' | 'dbml' | 'markdown' | 'json';
 
@@ -33,16 +33,15 @@ export function DownloadDialog({ open, onOpenChange, connections, initial, onDow
         <Dialog open={open} onOpenChange={onOpenChange} title="Download">
             <div className="downloads" data-tour="download-dialog">
                 {connections.length > 1 && (
-                    <section>
+                    <section className="downloads__connection-select">
                         <h3 className="downloads__heading">Connection</h3>
-                        <div className="downloads__connections" role="radiogroup" aria-label="Connection">
-                            {connections.map((c) => (
-                                <button key={c.name} type="button" role="radio" aria-checked={connection === c.name} className="downloads__connection" onClick={() => setConnection(c.name)}>
-                                    <code>{c.name}</code>
-                                    <span className="muted">{c.tables} tables</span>
-                                </button>
-                            ))}
-                        </div>
+                        <Select
+                            id="download-connection"
+                            label="Connection"
+                            value={connection}
+                            onChange={setConnection}
+                            options={connections.map((c) => ({ value: c.name, label: c.name, hint: `${c.tables} tables` }))}
+                        />
                     </section>
                 )}
                 <section>

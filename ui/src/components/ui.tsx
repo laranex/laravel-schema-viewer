@@ -255,7 +255,16 @@ export function Dialog({ open, onOpenChange, title, description, children, wide 
         <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
             <DialogPrimitive.Portal>
                 <DialogPrimitive.Overlay className="ui-overlay" />
-                <DialogPrimitive.Content className={`ui-dialog${wide ? ' ui-dialog--wide' : ''}`} {...(description ? {} : { 'aria-describedby': undefined })}>
+                <DialogPrimitive.Content
+                    className={`ui-dialog${wide ? ' ui-dialog--wide' : ''}`}
+                    {...(description ? {} : { 'aria-describedby': undefined })}
+                    // The dialog itself takes focus, not its close button, so it opens without a focus ring on ×.
+                    tabIndex={-1}
+                    onOpenAutoFocus={(e) => {
+                        e.preventDefault();
+                        (e.currentTarget as HTMLElement | null)?.focus();
+                    }}
+                >
                     <div className="ui-dialog__head">
                         <DialogPrimitive.Title className="ui-dialog__title">{title}</DialogPrimitive.Title>
                         <DialogPrimitive.Close className="button button--icon button--ghost" aria-label="Close">
