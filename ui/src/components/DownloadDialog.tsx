@@ -18,11 +18,16 @@ type Props = {
     initial: string;
     onDownload: (format: ExportFormat, connection: string) => void;
     onDownloadHtml: () => void;
+    // The diagram as an image: as it is shown, the whole of it or what is on screen.
+    onDownloadImage: (format: 'svg' | 'png', area: 'whole' | 'screen') => void;
+    // How many tables the diagram shows now.
+    shownTables: number;
 };
 
 // Downloads: one connection's database schema in a format, or the whole viewer as one offline HTML page.
-export function DownloadDialog({ open, onOpenChange, connections, initial, onDownload, onDownloadHtml }: Props) {
+export function DownloadDialog({ open, onOpenChange, connections, initial, onDownload, onDownloadHtml, onDownloadImage, shownTables }: Props) {
     const [connection, setConnection] = useState(initial);
+    const [area, setArea] = useState<'whole' | 'screen'>('whole');
     useEffect(() => {
         if (open) {
             setConnection(initial);
@@ -48,6 +53,7 @@ export function DownloadDialog({ open, onOpenChange, connections, initial, onDow
                     <h3 className="downloads__heading">
                         Database schema of <code>{connection}</code>
                     </h3>
+                    {connections.length > 1 && <p className="muted downloads__note">The connection applies to these files; the image shows the diagram as it is.</p>}
                     <div className="downloads__grid">
                         {EXPORTS.map((e) => (
                             <button key={e.format} type="button" className="downloads__item" onClick={() => onDownload(e.format, connection)}>
@@ -55,6 +61,36 @@ export function DownloadDialog({ open, onOpenChange, connections, initial, onDow
                                 <span className="muted">{e.hint}</span>
                             </button>
                         ))}
+                    </div>
+                </section>
+                <section>
+                    <h3 className="downloads__heading">Diagram image</h3>
+                    <div className="downloads__image-options">
+                        <span className="segmented" role="radiogroup" aria-label="Image area">
+                            {(
+                                [
+                                    ['whole', 'Whole diagram'],
+                                    ['screen', "What's on screen"],
+                                ] as const
+                            ).map(([value, label]) => (
+                                <button key={value} type="button" role="radio" aria-checked={area === value} className="segmented__option" onClick={() => setArea(value)}>
+                                    {label}
+                                </button>
+                            ))}
+                        </span>
+                        <span className="muted downloads__shown">
+                            as shown: {shownTables} {shownTables === 1 ? 'table' : 'tables'}
+                        </span>
+                    </div>
+                    <div className="downloads__grid">
+                        <button type="button" className="downloads__item" onClick={() => onDownloadImage('svg', area)}>
+                            <b>SVG</b>
+                            <span className="muted">Sharp at any size, for docs and slides</span>
+                        </button>
+                        <button type="button" className="downloads__item" onClick={() => onDownloadImage('png', area)}>
+                            <b>PNG</b>
+                            <span className="muted">A picture for chats and issues</span>
+                        </button>
                     </div>
                 </section>
                 <section>

@@ -27,7 +27,8 @@ export type Route = {
     labelY: number;
 };
 
-const rowY = (box: Box, column: string) => {
+// Where an edge meets a card: the middle of the column's row, or of the header when the column is folded away.
+export const rowY = (box: Box, column: string) => {
     if (box.folded && !box.rows.includes(column)) {
         return box.y + 1 + HEADER_HEIGHT / 2;
     }
@@ -126,5 +127,29 @@ export function route(boxes: Map<string, Box>, requests: RouteRequest[]): Map<st
 
     return routes;
 }
+
+// An orthogonal path with rounded corners: across to the lane, along it, across to the target. The diagram and the
+// image download draw the same path.
+export function orthogonal(sx: number, sy: number, cx: number, tx: number, ty: number): string {
+    const dy = ty - sy;
+    const r = Math.min(10, Math.abs(dy) / 2, Math.abs(cx - sx), Math.abs(tx - cx));
+    if (r < 1) {
+        return `M ${sx} ${sy} L ${cx} ${sy} L ${cx} ${ty} L ${tx} ${ty}`;
+    }
+    const dirA = Math.sign(cx - sx) || 1;
+    const dirB = Math.sign(tx - cx) || 1;
+    const dirY = Math.sign(dy);
+    return [
+        `M ${sx} ${sy}`,
+        `L ${cx - dirA * r} ${sy}`,
+        `Q ${cx} ${sy} ${cx} ${sy + dirY * r}`,
+        `L ${cx} ${ty - dirY * r}`,
+        `Q ${cx} ${ty} ${cx + dirB * r} ${ty}`,
+        `L ${tx} ${ty}`,
+    ].join(' ');
+}
+
+// An edge label: a pill this tall, centered on the route's label point.
+export const LABEL_HEIGHT_PX = LABEL_HEIGHT;
 
 export const boxWidth = (type: string | undefined) => (type === 'external' ? 200 : NODE_WIDTH);

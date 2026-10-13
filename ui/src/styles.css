@@ -1493,6 +1493,23 @@ button:disabled {
     color: var(--muted);
 }
 
+.downloads__image-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 10px;
+}
+
+.downloads__shown,
+.downloads__note {
+    font-size: var(--text-xs);
+}
+
+.downloads__note {
+    margin: -4px 0 8px;
+}
+
 .hints__filter {
     margin-bottom: 10px;
 }

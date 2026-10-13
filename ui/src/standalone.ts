@@ -68,6 +68,11 @@ async function script(): Promise<string> {
     return text(el.src);
 }
 
+// The page's @font-face rules with their WOFF2 files embedded, for a downloaded image to carry its fonts.
+export async function fontFaces(): Promise<string> {
+    return ((await styles()).match(/@font-face\s*\{[^}]*\}/g) ?? []).join('\n');
+}
+
 // The stylesheet with its WOFF2 fonts embedded and the WOFF fallbacks dropped, as the exporter does.
 async function styles(): Promise<string> {
     const link = document.querySelector<HTMLLinkElement>('link[rel="stylesheet"]');

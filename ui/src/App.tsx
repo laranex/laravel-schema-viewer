@@ -22,9 +22,10 @@ import { DownloadDialog, type ExportFormat } from './components/DownloadDialog';
 import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
-import { boxWidth, route, type Box, type Route } from './routing';
+import { boxWidth, route, rowY, type Box, type Route } from './routing';
+import { boundsOf, COLOR_TOKENS, diagramSvg, svgToPng, type Colors, type ImageEdge, type ImageNode } from './exportImage';
 import { layoutConnections, TALL, WIDE, type StaticDownloads } from './layout';
-import { standaloneHtml } from './standalone';
+import { fontFaces, standaloneHtml } from './standalone';
 import { changedTables } from './components/Changes';
 import type { Change, SchemaDocument, Table } from './types';
 
@@ -1147,6 +1148,106 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
 
+    // The diagram as an image, as it is shown: the connections in view, the kinds of lines and tables shown, focus mode,
+    // folded cards, relation names when they show on every line, and the theme. Nothing hovered, dimmed or picked.
+    const diagramImage = async (area: ImageArea) => {
+        const shownNodes = flow.getNodes().filter((n) => !n.hidden);
+        const nodesOut: ImageNode[] = [];
+        for (const n of shownNodes) {
+            const box = boxes.map.get(n.id);
+            if (n.type === 'region') {
+                const width = n.width ?? n.measured?.width ?? 0;
+                const height = n.height ?? n.measured?.height ?? 0;
+                const d = n.data;
+                nodesOut.push({ kind: 'region', x: n.position.x, y: n.position.y, width, height, connection: d.connection, meta: `${d.driver} · ${d.tables} ${d.tables === 1 ? 'table' : 'tables'}${d.hints > 0 ? ` · ${d.hints} ${d.hints === 1 ? 'hint' : 'hints'}` : ''}` });
+            } else if (n.type === 'external' && box) {
+                nodesOut.push({ kind: 'external', x: box.x, y: box.y, width: box.width, height: box.height, connection: n.data.connection, table: n.data.table });
+            } else if (n.type === 'table' && box) {
+                const d = n.data;
+                const shown = new Set(d.shown);
+                nodesOut.push({
+                    kind: 'table',
+                    x: box.x,
+                    y: box.y,
+                    width: box.width,
+                    height: box.height,
+                    name: d.table.name,
+                    meta: d.models,
+                    noModel: d.models.length ? null : d.table.framework ? 'framework table' : d.table.package ? 'package table' : 'no model',
+                    tags: [...(d.pivot ? ['pivot'] : []), ...(d.table.package ? [d.table.package] : [])],
+                    pivot: d.pivot,
+                    framework: d.table.framework,
+                    hints: d.hintCount,
+                    change: d.change ?? null,
+                    rows: d.table.columns
+                        .filter((c) => shown.has(c.name))
+                        .map((c) => ({ name: c.name, key: d.primary.includes(c.name) ? 'PK' : d.foreign.includes(c.name) ? 'FK' : '', type: d.casts[c.name] ? (d.casts[c.name].split('\\').pop() ?? '') : c.type, nullable: c.nullable })),
+                    more: d.table.columns.length - d.shown.length,
+                });
+            }
+        }
+        const edgesOut: ImageEdge[] = [];
+        for (const e of flow.getEdges()) {
+            const s = boxes.map.get(e.source);
+            const t = boxes.map.get(e.target);
+            if (e.hidden || !e.data || !s || !t) {
+                continue;
+            }
+            const { route: r } = e.data;
+            const sourceColumn = (e.sourceHandle ?? '').split('|')[0];
+            const targetColumn = (e.targetHandle ?? '').split('|')[0];
+            edgesOut.push({
+                kind: e.data.kind,
+                many: e.data.many,
+                sx: r.sourceSide === 'r' ? s.x + s.width : s.x,
+                sy: rowY(s, sourceColumn),
+                cx: r.channelX,
+                tx: r.targetSide === 'r' ? t.x + t.width : t.x,
+                ty: rowY(t, targetColumn),
+                label: layers.allLabels ? { x: r.labelX, y: r.labelY, text: e.data.label, chip: e.data.relationship } : null,
+            });
+        }
+        let bounds = boundsOf(nodesOut);
+        const canvas = canvasRef.current?.getBoundingClientRect();
+        if (area === 'screen' && canvas) {
+            const { x, y, zoom } = flow.getViewport();
+            bounds = { x: -x / zoom, y: -y / zoom, width: canvas.width / zoom, height: canvas.height / zoom };
+        }
+        // The theme's colors as the browser resolves them, so the file needs no stylesheet.
+        const probe = document.createElement('span');
+        canvasRef.current?.append(probe);
+        const colors = Object.fromEntries(
+            COLOR_TOKENS.map((token) => {
+                probe.style.color = `var(--${token})`;
+                return [token, getComputedStyle(probe).color];
+            }),
+        ) as Colors;
+        probe.remove();
+        const fonts = await fontFaces().catch(() => '');
+        return { svg: diagramSvg({ nodes: nodesOut, edges: edgesOut, colors, fonts, bounds }), bounds, tables: nodesOut.filter((n) => n.kind === 'table').length };
+    };
+
+    const downloadImage = (format: 'svg' | 'png', area: ImageArea) => {
+        const name = `schema-${(scope === ALL ? 'all' : scope).replace(/[^A-Za-z0-9_-]/g, '-')}.${format}`;
+        notify(format === 'png' ? 'Painting the diagram…' : 'Drawing the diagram…');
+        diagramImage(area)
+            .then(async ({ svg, bounds }) => {
+                if (format === 'svg') {
+                    return { blob: new Blob([svg], { type: 'image/svg+xml' }), scale: 1 };
+                }
+                return svgToPng(svg, bounds.width, bounds.height, Math.max(2, Math.min(window.devicePixelRatio || 1, 3)));
+            })
+            .then(
+                ({ blob, scale }) => {
+                    const url = URL.createObjectURL(blob);
+                    save(url, name);
+                    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    notify(scale < 1 ? `Large diagram saved at ${Math.round(scale * 100)}% scale; the SVG keeps every detail.` : `${format.toUpperCase()} downloaded.`, scale < 1 ? 6000 : 2600);
+                },
+                (e: Error) => notify(`The image could not be made: ${e.message}`),
+            );
+    };
+
     // The standalone viewer: every connection in one HTML file that opens without the app, built from this page.
     const downloadHtml = () => {
         if (!downloads) {
@@ -1592,6 +1693,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                         initial={highlight?.connection ?? selected?.connection ?? (scope === ALL ? doc.connections[0].name : scope)}
                         onDownload={download}
                         onDownloadHtml={downloadHtml}
+                        onDownloadImage={downloadImage}
+                        shownTables={nodes.filter((n) => !n.hidden && n.type === 'table').length}
                     />
                     <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} keysOn={keysOn} onKeysOn={switchKeys} />
                     <Tour steps={TOUR_STEPS} open={tourOpen} onClose={endTour} onStep={onTourStep} menuSteps={narrow} />
@@ -1608,6 +1711,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
 }
 
 
+
+type ImageArea = 'whole' | 'screen';
 
 const EXTENSIONS: Record<ExportFormat, string> = { mermaid: 'mmd', dbml: 'dbml', markdown: 'md', json: 'json' };
 

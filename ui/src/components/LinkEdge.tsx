@@ -1,6 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
 import { createContext, memo, useContext, useSyncExternalStore } from 'react';
-import { LABEL_WIDTH, type Route } from '../routing';
+import { LABEL_WIDTH, orthogonal, type Route } from '../routing';
 import { LazyTooltip } from './ui';
 
 export type EdgeKind = 'both' | 'relation' | 'foreign_key' | 'through';
@@ -55,26 +55,6 @@ export const EdgeHover = createContext(new HoverStore());
 function useHovered(id: string) {
     const store = useContext(EdgeHover);
     return useSyncExternalStore(store.subscribe, () => store.get() === id);
-}
-
-// An orthogonal path with rounded corners: across to the lane, along it, across to the target.
-function orthogonal(sx: number, sy: number, cx: number, tx: number, ty: number): string {
-    const dy = ty - sy;
-    const r = Math.min(10, Math.abs(dy) / 2, Math.abs(cx - sx), Math.abs(tx - cx));
-    if (r < 1) {
-        return `M ${sx} ${sy} L ${cx} ${sy} L ${cx} ${ty} L ${tx} ${ty}`;
-    }
-    const dirA = Math.sign(cx - sx) || 1;
-    const dirB = Math.sign(tx - cx) || 1;
-    const dirY = Math.sign(dy);
-    return [
-        `M ${sx} ${sy}`,
-        `L ${cx - dirA * r} ${sy}`,
-        `Q ${cx} ${sy} ${cx} ${sy + dirY * r}`,
-        `L ${cx} ${ty - dirY * r}`,
-        `Q ${cx} ${ty} ${cx + dirB * r} ${ty}`,
-        `L ${tx} ${ty}`,
-    ].join(' ');
 }
 
 function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: EdgeProps<LinkEdgeType>) {
