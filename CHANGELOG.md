@@ -2,6 +2,24 @@
 
 All notable changes to `laravel-schema-viewer` will be documented in this file.
 
+## v1.1.0 - 2026-10-13
+
+### Added
+- A floating bar at the bottom of the diagram: zoom out and in, a zoom level you can type, fit, pan mode (or hold Space), arrange, read again, and three menus: Relationships (which kinds of line show), Tables (framework and package tables) and Show (relation names, the grid, and how many columns each card shows). On a narrow diagram the menus become icons.
+- The panel has three tabs: Browse lists every table, relationship and column with one filter; Details shows whatever is picked, a table, a relationship (keys, foreign key, on update and on delete, index, relations) or a column (type, null, default, casts, indexes, foreign keys in and out, the relationships that use it); Hints.
+- Pick a line or a column on the diagram as well as a table; the pick lights up and the rest dims. Double-click a table, a line or a column to focus on it; focus mode works for all three.
+- Copy link copies a link to exactly the current view, with the relationship or column picked, focus mode, the columns shown, the zoom and the position. A link to a table, relationship, column or connection the schema no longer has opens the whole diagram and says so.
+- A light and a dark theme, light by default, remembered per browser.
+- Download opens a dialog to pick the connection and the format, or the whole viewer as an offline page; Ignore… opens a dialog with the rules to copy.
+- A second agent skill, `laravel-schema-viewer-schema`, for reading an app's schema before changing it; `laravel-schema-viewer` now covers setting up and configuring the package.
+
+### Changed
+- Large schemas lay out in packed columns that fill the screen, upright on a phone; with more than 60 tables on screen, lines are thin and muted and relation names show only on the picked table's lines.
+- Smaller relation names, and lines between two tables in the same column loop outside the cards.
+- The guided tour explains the floating bar and each panel tab in turn, zooms in where it points at a table or a line, and moves the spotlight and its card together.
+- Phones keep the floating bar, drag the diagram instead of the cards, and show a one-time note that the diagram is easier on a larger screen.
+- The panel can be widened only as far as the diagram keeps room for the floating bar.
+
 ## v1.0.0 - 2026-10-13
 
 First release.
