@@ -62,6 +62,22 @@ final class Snapshot
      */
     public function build(): SchemaDocument
     {
+        $rendered = $this->render();
+
+        $this->write($this->path(), $rendered['contents']);
+        $this->loaded = null;
+
+        return $rendered['document'];
+    }
+
+    /**
+     * Read the models and the database, as build() does, and return the document and the file it would write, without
+     * writing it.
+     *
+     * @return array{document: SchemaDocument, contents: string}
+     */
+    public function render(): array
+    {
         $document = $this->isolation->run(fn (): SchemaDocument => $this->viewer->document($this->isolation->events(...)));
 
         // Without when it was built, the file changes only when the schema does, so a committed snapshot diffs cleanly.
@@ -74,10 +90,109 @@ final class Snapshot
             'downloads' => HtmlExporter::downloads($document),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n";
 
-        $this->write($this->path(), $contents);
-        $this->loaded = null;
+        return ['document' => $document, 'contents' => $contents];
+    }
 
-        return $document;
+    /**
+     * The snapshot on disk as it would be compared: without a UTF-8 BOM and with \n line endings, so a checkout that
+     * converted them still matches. Null when there is no file.
+     */
+    public function current(): ?string
+    {
+        $path = $this->path();
+        clearstatcache(true, $path);
+
+        if (! is_file($path)) {
+            return null;
+        }
+
+        $contents = (string) @file_get_contents($path);
+
+        return str_replace("\r\n", "\n", str_starts_with($contents, "\u{FEFF}") ? substr($contents, 3) : $contents);
+    }
+
+    /**
+     * How the snapshot on disk differs from freshly rendered contents: null when they are the same, otherwise a few
+     * lines that say what changed.
+     *
+     * @return list<string>|null
+     */
+    public function compare(string $existing, string $fresh): ?array
+    {
+        if ($existing === $fresh) {
+            return null;
+        }
+
+        $old = json_decode($existing, true);
+        $new = json_decode($fresh, true);
+
+        if (! is_array($old) || ($old['format'] ?? null) !== self::FORMAT || ! is_array($old['document'] ?? null) || ! is_array($new)) {
+            return ['It was written by another version of laravel-schema-viewer.'];
+        }
+
+        if ($old === $new) {
+            return ['Only its formatting differs.'];
+        }
+
+        $lines = $this->summary($old, $new);
+
+        return $lines !== [] ? $lines : ['Its contents differ in order only.'];
+    }
+
+    /**
+     * What changed, section by section: tables per connection, models, relations, hints and downloads.
+     *
+     * @param  array<mixed>  $old
+     * @param  array<mixed>  $new
+     * @return list<string>
+     */
+    private function summary(array $old, array $new): array
+    {
+        $lines = [];
+        $tables = function (array $data): array {
+            $tables = [];
+
+            foreach ((array) ($data['document']['connections'] ?? []) as $connection) {
+                foreach ((array) ($connection['tables'] ?? []) as $table) {
+                    $tables[($connection['name'] ?? '').'.'.($table['name'] ?? '')] = $table;
+                }
+            }
+
+            return $tables;
+        };
+        $before = $tables($old);
+        $after = $tables($new);
+
+        foreach (['added' => array_diff_key($after, $before), 'removed' => array_diff_key($before, $after)] as $change => $list) {
+            if ($list !== []) {
+                $lines[] = sprintf('Tables %s: %s.', $change, implode(', ', array_keys($list)));
+            }
+        }
+
+        $changed = array_keys(array_filter(array_intersect_key($after, $before), fn (mixed $table, string $key): bool => $table !== $before[$key], ARRAY_FILTER_USE_BOTH));
+
+        if ($changed !== []) {
+            $lines[] = sprintf('Tables changed: %s.', implode(', ', $changed));
+        }
+
+        foreach (['models' => 'class', 'relations' => 'id', 'hints' => 'message'] as $section => $key) {
+            $count = fn (array $data): array => array_count_values(array_map(fn (mixed $item): string => is_array($item) ? (string) json_encode($item[$key] ?? $item) : '', (array) ($data['document'][$section] ?? [])));
+            $was = $count($old);
+            $is = $count($new);
+            $added = array_sum(array_map(fn (string $item): int => max(0, $is[$item] - ($was[$item] ?? 0)), array_keys($is)));
+            $removed = array_sum(array_map(fn (string $item): int => max(0, $was[$item] - ($is[$item] ?? 0)), array_keys($was)));
+            $same = $added === 0 && $removed === 0;
+
+            if (! $same || ($old['document'][$section] ?? null) !== ($new['document'][$section] ?? null)) {
+                $lines[] = $same ? ucfirst($section).' changed.' : sprintf('%s: %d added, %d removed.', ucfirst($section), $added, $removed);
+            }
+        }
+
+        if (($old['downloads'] ?? null) !== ($new['downloads'] ?? null) && $lines === []) {
+            $lines[] = 'The downloads differ.';
+        }
+
+        return $lines;
     }
 
     /**

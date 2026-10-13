@@ -10,6 +10,7 @@ dataset('skills', [
         '## Configure',
         '## Use',
         '### Enforce the hints in CI',
+        '### Keep the snapshot current in CI',
         '### Share the viewer without the app',
         '### Open it on a server',
         '## Test your app',

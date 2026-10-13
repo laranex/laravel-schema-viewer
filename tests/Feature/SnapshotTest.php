@@ -169,3 +169,61 @@ it('reports a build that fails', function (): void {
         ->expectsOutputToContain('The schema snapshot could not be built')
         ->assertFailed();
 });
+
+it('checks that the snapshot is up to date without writing it', function (): void {
+    buildSnapshot();
+    $before = (string) file_get_contents($this->snapshot);
+    $time = filemtime($this->snapshot);
+
+    $this->artisan('schema-viewer:build', ['--check' => true])
+        ->expectsOutputToContain('Schema snapshot [schema-viewer.json] is up to date.')
+        ->assertSuccessful();
+
+    Schema::create('gadgets', fn (Blueprint $table) => $table->id());
+
+    $this->artisan('schema-viewer:build', ['--check' => true])
+        ->expectsOutputToContain('The schema snapshot [schema-viewer.json] is out of date. Run php artisan schema-viewer:build and commit it.')
+        ->expectsOutputToContain('Tables added: testing.gadgets.')
+        ->assertFailed();
+
+    clearstatcache();
+    expect((string) file_get_contents($this->snapshot))->toBe($before)
+        ->and(filemtime($this->snapshot))->toBe($time);
+});
+
+it('fails the check when there is no snapshot', function (): void {
+    $this->artisan('schema-viewer:build', ['--check' => true])
+        ->expectsOutputToContain('No schema snapshot at [schema-viewer.json]. Run php artisan schema-viewer:build and commit it.')
+        ->assertFailed();
+
+    expect($this->snapshot)->not->toBeFile();
+});
+
+it('reads a snapshot checked out with CRLF line endings or a BOM as up to date', function (): void {
+    buildSnapshot();
+    file_put_contents($this->snapshot, "\u{FEFF}".str_replace("\n", "\r\n", (string) file_get_contents($this->snapshot)));
+
+    $this->artisan('schema-viewer:build', ['--check' => true])->assertSuccessful();
+});
+
+it('says what kind of difference the check found', function (string $edit, string $line): void {
+    buildSnapshot();
+    $data = json_decode((string) file_get_contents($this->snapshot), true);
+
+    $contents = match ($edit) {
+        'format' => (string) json_encode(['format' => 1] + $data),
+        'formatting' => (string) json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        'hint' => (string) json_encode(['document' => ['hints' => array_slice($data['document']['hints'], 1)] + $data['document']] + $data, JSON_PRETTY_PRINT),
+        'model' => (string) json_encode(['document' => ['models' => array_slice($data['document']['models'], 1)] + $data['document']] + $data, JSON_PRETTY_PRINT),
+    };
+    file_put_contents($this->snapshot, $contents);
+
+    $this->artisan('schema-viewer:build', ['--check' => true])
+        ->expectsOutputToContain($line)
+        ->assertFailed();
+})->with([
+    'another format' => ['format', 'It was written by another version of laravel-schema-viewer.'],
+    'formatting only' => ['formatting', 'Only its formatting differs.'],
+    'a hint' => ['hint', 'Hints: 1 added, 0 removed.'],
+    'a model' => ['model', 'Models: 1 added, 0 removed.'],
+]);

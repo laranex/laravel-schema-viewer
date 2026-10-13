@@ -73,6 +73,16 @@ php artisan schema-viewer:check --fail-on=foreign_key_without_index --fail-on=un
 
 The command lists every hint and exits non-zero when one of a `hints.fail_on` kind remains (or of the kinds passed with `--fail-on`). `--format=json` prints the same as one JSON document for scripts and agents, with the same exit codes. Under each hint it prints the narrowest `hints.ignore` rule that leaves it out; add that rule to the config when the team accepts the hint, rather than lowering `fail_on`.
 
+### Keep the snapshot current in CI
+
+When `schema-viewer.json` is committed, fail CI when someone migrates or changes a model without rebuilding it:
+
+```bash
+php artisan migrate --force && php artisan schema-viewer:build --check
+```
+
+`--check` builds in memory, never writes, and exits 0 when the file matches, 1 when it is missing or out of date (with a short summary of what differs). CI must use the same database engine and connection names as the machine that built the file. A `.gitattributes` line `schema-viewer.json text eol=lf` keeps line endings stable; the check also accepts CRLF checkouts.
+
 ### Share the viewer without the app
 
 ```bash

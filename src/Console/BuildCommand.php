@@ -11,12 +11,17 @@ use Throwable;
 
 final class BuildCommand extends Command
 {
-    protected $signature = 'schema-viewer:build';
+    protected $signature = 'schema-viewer:build
+        {--check : Build in memory and fail when schema-viewer.json is missing or out of date, without writing it}';
 
     protected $description = 'Read the database and the Eloquent models and write the schema snapshot the viewer serves';
 
     public function handle(Snapshot $snapshot): int
     {
+        if ($this->option('check')) {
+            return $this->check($snapshot);
+        }
+
         try {
             $document = $snapshot->build();
         } catch (Throwable $e) {
@@ -36,5 +41,48 @@ final class BuildCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Whether the committed snapshot matches the schema now, for CI.
+     */
+    private function check(Snapshot $snapshot): int
+    {
+        try {
+            $fresh = $snapshot->render()['contents'];
+        } catch (Throwable $e) {
+            $this->components->error('The schema snapshot could not be built: '.$e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $path = $snapshot->displayPath();
+        $existing = $snapshot->current();
+
+        if ($existing === null) {
+            $this->components->error("No schema snapshot at [{$path}]. Run php artisan schema-viewer:build and commit it.");
+
+            return self::FAILURE;
+        }
+
+        $summary = $snapshot->compare($existing, $fresh);
+
+        if ($summary === null) {
+            $this->components->info("Schema snapshot [{$path}] is up to date.");
+
+            return self::SUCCESS;
+        }
+
+        $this->components->error("The schema snapshot [{$path}] is out of date. Run php artisan schema-viewer:build and commit it.");
+
+        foreach (array_slice($summary, 0, 10) as $line) {
+            $this->line('  '.$line);
+        }
+
+        if (count($summary) > 10) {
+            $this->line(sprintf('  …and %d more', count($summary) - 10));
+        }
+
+        return self::FAILURE;
     }
 }
