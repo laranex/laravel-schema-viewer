@@ -49,7 +49,7 @@ export const TOUR_STEPS: TourStep[] = [
                 <li>The right column shows the type, or the cast when the model casts it.</li>
                 <li>An amber number counts the hints for this table. Click the card to see everything about it.</li>
                 <li>
-                    The arrow folds the card to its key columns, then to its name. <b>Columns</b> above the diagram does it for every table (<kbd>C</kbd>).
+                    The arrow folds the card to its key columns, then to its name. <b>Columns</b> in the bar at the bottom of the diagram does it for every table (<kbd>C</kbd>).
                 </li>
                 <li>
                     Double-click a card to focus on it: only the table and its neighbors stay, one to three links away (<kbd>Shift F</kbd>).

@@ -173,9 +173,37 @@ code {
     font-weight: 500;
 }
 
-.toolbar__view {
-    flex-wrap: nowrap;
+/* The diagram's view switches float at the bottom of the canvas, like a drawing tool's palette. */
+.float-bar {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    z-index: 5;
+    transform: translateX(-50%);
+    display: flex;
     align-items: center;
+    gap: 4px;
+    padding: 5px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    white-space: nowrap;
+}
+
+.float-bar > .button {
+    border-color: transparent;
+    background: transparent;
+}
+
+.float-bar > .button:hover,
+.float-bar > .button[data-state='open'] {
+    background: var(--surface-2);
+}
+
+.float-bar .segmented {
+    border: 0;
+    background: var(--surface-2);
 }
 
 .toolbar__off {
@@ -186,18 +214,6 @@ code {
     font-size: 10.5px;
     font-weight: 600;
     line-height: 16px;
-}
-
-/* Narrower desktops keep the toolbar on one row: the brand keeps its mark, and the search gives way first. */
-@media (max-width: 1179px) {
-    .toolbar__brand > span:not(.toolbar__note),
-    .toolbar__view .segmented__label {
-        display: none;
-    }
-    .field--search {
-        flex-basis: 180px;
-        min-width: 150px;
-    }
 }
 
 /* Below a wide screen the shortcuts button keeps only its icon; its tooltip names it. */

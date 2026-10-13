@@ -1010,23 +1010,6 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                             {example && <span className="toolbar__note">example data</span>}
                         </div>
                         <SearchBox schema={schema} tables={visibleTables} multiple={scopeConnections.length > 1} query={query} onQuery={setQuery} onPick={open} inputRef={searchRef} />
-                        {!narrow && (
-                            <div className="toolbar__group toolbar__view" role="group" aria-label="Show on the diagram" data-tour="layers">
-                                <ViewMenu label="Lines" toggles={lineToggles} cosmetic={['Relation names']} />
-                                <ViewMenu label="Tables" toggles={tableToggles} />
-                                <div className="segmented" role="radiogroup" aria-label="Columns" aria-keyshortcuts="C" data-tour="columns">
-                                    <span className="segmented__label">Columns</span>
-                                    {FOLDS.map((f) => (
-                                        <Tooltip key={f} content={<>{COLUMN_CHOICES[f].hint} <kbd>C</kbd></>} side="bottom">
-                                            <button type="button" role="radio" aria-checked={columns === f} className="segmented__option" onClick={() => setColumns(f)}>
-                                                {COLUMN_CHOICES[f].label}
-                                            </button>
-                                        </Tooltip>
-                                    ))}
-                                    <kbd className="kbd-hint">C</kbd>
-                                </div>
-                            </div>
-                        )}
                         <div className="toolbar__spacer" />
                         {narrow ? (
                             <Menu
@@ -1204,6 +1187,23 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 {/* Below 1100px the diagram needs the room more than an overview does. */}
                                 {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
                             </ReactFlow>
+                            {!narrow && (
+                                <div className="float-bar" role="group" aria-label="Show on the diagram" data-tour="layers">
+                                    <ViewMenu label="Lines" toggles={lineToggles} cosmetic={['Relation names']} />
+                                    <ViewMenu label="Tables" toggles={tableToggles} />
+                                    <div className="segmented" role="radiogroup" aria-label="Columns" aria-keyshortcuts="C" data-tour="columns">
+                                        <span className="segmented__label">Columns</span>
+                                        {FOLDS.map((f) => (
+                                            <Tooltip key={f} content={<>{COLUMN_CHOICES[f].hint} <kbd>C</kbd></>} side="bottom">
+                                                <button type="button" role="radio" aria-checked={columns === f} className="segmented__option" onClick={() => setColumns(f)}>
+                                                    {COLUMN_CHOICES[f].label}
+                                                </button>
+                                            </Tooltip>
+                                        ))}
+                                        <kbd className="kbd-hint">C</kbd>
+                                    </div>
+                                </div>
+                            )}
                             {focus && (
                                 <div className="focus-bar" role="group" aria-label="Focus mode">
                                     <span className="focus-bar__label">
