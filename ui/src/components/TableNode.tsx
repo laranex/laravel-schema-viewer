@@ -24,7 +24,15 @@ export type TableNodeData = {
 };
 
 // What a card's own controls do, provided by the viewer.
-export const TableActions = createContext<{ setFold: (id: string, fold: Fold) => void }>({ setFold: () => undefined });
+export const TableActions = createContext<{
+    setFold: (id: string, fold: Fold) => void;
+    highlightColumn: (connection: string, table: string, column: string) => void;
+    focusColumn: (connection: string, table: string, column: string) => void;
+}>({
+    setFold: () => undefined,
+    highlightColumn: () => undefined,
+    focusColumn: () => undefined,
+});
 
 const NEXT_FOLD: Record<Fold, { fold: Fold; label: string }> = {
     all: { fold: 'keys', label: 'Fold to the key columns' },
@@ -49,7 +57,7 @@ function ColumnHandles({ column }: { column: string }) {
 
 function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
     const { table } = data;
-    const { setFold } = useContext(TableActions);
+    const { setFold, highlightColumn, focusColumn } = useContext(TableActions);
     const shown = new Set(data.shown);
     const ends = new Set(data.ends);
     const folded = table.columns.filter((c) => !shown.has(c.name));
@@ -104,7 +112,20 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
                         const isPk = data.primary.includes(c.name);
                         const isFk = data.foreign.includes(c.name);
                         return (
-                            <li key={c.name} className={data.linked.includes(c.name) ? 'is-linked' : undefined}>
+                            <li
+                                key={c.name}
+                                className={data.linked.includes(c.name) ? 'is-linked' : undefined}
+                                // A click on a column shows that column, not the whole table.
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    highlightColumn(data.connection, table.name, c.name);
+                                }}
+                                // A double-click focuses on the column, not the whole table.
+                                onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    focusColumn(data.connection, table.name, c.name);
+                                }}
+                            >
                                 {ends.has(c.name) && <ColumnHandles column={c.name} />}
                                 <span className="key">{isPk ? 'PK' : isFk ? 'FK' : ''}</span>
                                 <span className="col">

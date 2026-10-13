@@ -17,6 +17,7 @@ import { SearchBox } from './components/SearchBox';
 import { Tour, type TourStep } from './components/Tour';
 import { TOUR_STEPS } from './tourSteps';
 import { Dialog, Menu, Select, Tooltip, TooltipProvider, type MenuChoice, type MenuToggle } from './components/ui';
+import type { Highlight } from './components/Browse';
 import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
@@ -35,6 +36,8 @@ const ALL = '*';
 
 // From this many tables on screen, edges are drawn thin and muted until a table is selected.
 const DENSE = 60;
+// The narrowest the panel may leave the diagram: room for the floating bar with every control in it.
+const DIAGRAM_ROOM = 480;
 
 type Layers = Record<EdgeKind, boolean> & { framework: boolean; package: boolean; allLabels: boolean };
 
@@ -85,8 +88,9 @@ const FOLDS: Fold[] = ['all', 'keys', 'none'];
 const isFold = (v: unknown): v is Fold => FOLDS.includes(v as Fold);
 
 // What a link to the viewer opens on, kept in the URL's hash so it works from a static export too:
-// #connection=all&table=billing:invoices&focus=2
-type LinkState = { scope?: string; table?: TableRef; focus?: number };
+// #connection=all&table=billing:invoices&focus=2, or a relationship or column instead of the table:
+// #connection=all&relationship=mysql:<link id>&focus=1, #connection=all&column=mysql:orders.user_id
+type LinkState = { scope?: string; table?: TableRef; focus?: number; highlight?: Highlight; at?: { x: number; y: number; zoom: number }; columns?: Fold; missing?: string };
 
 function readHash(doc: SchemaDocument): LinkState {
     const params = new URLSearchParams(window.location.hash.slice(1));
@@ -95,20 +99,65 @@ function readHash(doc: SchemaDocument): LinkState {
     const at = table?.indexOf(':') ?? -1;
     const ref = table && at > 0 ? { connection: table.slice(0, at), table: table.slice(at + 1) } : undefined;
     const focus = Number(params.get('focus'));
+    const connectionOf = (value: string | null) => {
+        const i = value?.indexOf(':') ?? -1;
+        return value && i > 0 ? { connection: value.slice(0, i), rest: value.slice(i + 1) } : null;
+    };
+    const tablesOf = (connection: string) => doc.connections.find((c) => c.name === connection)?.tables ?? [];
+    let highlight: Highlight | undefined;
+    const rel = connectionOf(params.get('relationship'));
+    const col = connectionOf(params.get('column'));
+    // What the link names but the schema lacks: the link then opens like a plain one, and the viewer says so.
+    let missing: string | undefined;
+    if (scope && scope !== 'all' && !doc.connections.some((c) => c.name === scope)) {
+        missing = `the connection ${scope}`;
+    }
+    if (params.has('relationship')) {
+        if (rel && (doc.links.some((l) => l.id === rel.rest && l.from.connection === rel.connection) || doc.derivedLinks.some((d) => d.id === rel.rest && d.connection === rel.connection))) {
+            highlight = { kind: 'link', connection: rel.connection, id: rel.rest };
+        } else {
+            missing = 'this relationship';
+        }
+    } else if (params.has('column')) {
+        const rest = col?.rest ?? '';
+        const dot = rest.lastIndexOf('.');
+        const t = rest.slice(0, dot);
+        const c = rest.slice(dot + 1);
+        if (col && dot > 0 && tablesOf(col.connection).some((x) => x.name === t && x.columns.some((y) => y.name === c))) {
+            highlight = { kind: 'column', connection: col.connection, table: t, column: c };
+        } else {
+            missing = `the column ${rest || params.get('column')}`;
+        }
+    }
+    const tableFound = ref && doc.connections.find((c) => c.name === ref.connection)?.tables.some((t) => t.name === ref.table);
+    if (table && !highlight && !missing && !tableFound) {
+        missing = `the table ${ref?.table ?? table}`;
+    }
+    const view = (params.get('at') ?? '').split(',').map(Number);
+    const columns = params.get('columns');
     return {
+        missing,
+        highlight,
+        // A link to something missing opens on the whole diagram, not on where that was.
+        at: !missing && view.length === 3 && view.every(Number.isFinite) && view[2] > 0 ? { x: view[0], y: view[1], zoom: view[2] } : undefined,
+        columns: isFold(columns) ? columns : undefined,
         scope: scope === 'all' && doc.connections.length > 1 ? ALL : doc.connections.some((c) => c.name === scope) ? (scope as string) : undefined,
-        table: ref && doc.connections.find((c) => c.name === ref.connection)?.tables.some((t) => t.name === ref.table) ? ref : undefined,
+        table: tableFound ? ref : undefined,
         focus: focus >= 1 && focus <= 3 ? focus : undefined,
     };
 }
 
-function writeHash(scope: string, table: TableRef | null, focus: number | null) {
+function writeHash(scope: string, table: TableRef | null, focus: number | null, highlight: Highlight | null) {
     const params = new URLSearchParams();
     params.set('connection', scope === ALL ? 'all' : scope);
-    if (table) {
+    if (highlight?.kind === 'link') {
+        params.set('relationship', `${highlight.connection}:${highlight.id}`);
+    } else if (highlight?.kind === 'column') {
+        params.set('column', `${highlight.connection}:${highlight.table}.${highlight.column}`);
+    } else if (table) {
         params.set('table', `${table.connection}:${table.table}`);
     }
-    if (table && focus) {
+    if ((table || highlight) && focus) {
         params.set('focus', String(focus));
     }
     const hash = `#${params.toString().replace(/%3A/g, ':')}`;
@@ -166,12 +215,19 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         return linked.table && opening !== ALL && opening !== linked.table.connection ? linked.table.connection : opening;
     });
     const [selected, setSelected] = useState<TableRef | null>(null);
+    // A relationship or column picked in Browse or on the diagram: Details shows it and the diagram lights it up.
+    const [highlight, setHighlight] = useState<Highlight | null>(() => linked.highlight ?? null);
+    // A relationship or column from the link, brought into view once the diagram is drawn.
+    const [pendingHighlight, setPendingHighlight] = useState<Highlight | null>(() => linked.highlight ?? null);
     // A table to select and center once the diagram has placed it.
     const [pending, setPending] = useState<TableRef | null>(() => linked.table ?? null);
     // Focus mode: only a table and the tables within `depth` links of it.
-    const [focus, setFocus] = useState<(TableRef & { depth: number }) | null>(() => (linked.table && linked.focus ? { ...linked.table, depth: linked.focus } : null));
+    // Focus mode: a table, or a relationship or column (on), and how many links around it stay on the diagram.
+    const [focus, setFocus] = useState<(TableRef & { depth: number; on?: Highlight }) | null>(() =>
+        linked.highlight && linked.focus ? { ...seedsOf(schema, linked.highlight)[0], depth: linked.focus, on: linked.highlight } : linked.table && linked.focus ? { ...linked.table, depth: linked.focus } : null,
+    );
     // How much of each card shows: one choice for every table, and the tables folded or unfolded one by one.
-    const [columns, setColumnsState] = useState<Fold>(() => stored('schema-viewer.columns', 'all', isFold));
+    const [columns, setColumnsState] = useState<Fold>(() => linked.columns ?? stored('schema-viewer.columns', 'all', isFold));
     const [folds, setFolds] = useState<Record<string, Fold>>(() =>
         stored('schema-viewer.folds', {}, (v) => typeof v === 'object' && v !== null && Object.values(v).every(isFold)),
     );
@@ -181,7 +237,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
     // The connection the panel and the per-connection downloads talk about: the selected table's, else the one in view.
     const connection = selected?.connection ?? scopeConnections[0];
-    const [tab, setTab] = useState<PanelTab>(() => (linked.table ? 'table' : 'tables'));
+    const [tab, setTab] = useState<PanelTab>(() => (linked.table || linked.highlight ? 'details' : 'browse'));
     const [query, setQuery] = useState('');
     // A large schema starts with relation names on the selected table only; on every edge they would cover the diagram.
     const [layers, setLayers] = useState<Layers>(() => ({
@@ -201,6 +257,12 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     // Pan mode: dragging anywhere moves the diagram, even over a table. The hand button switches it; holding Space
     // turns it on until the key is released.
     const [panMode, setPanMode] = useState(false);
+    // A phone gets a one-time note that the diagram is easier on a larger screen; closing it is remembered.
+    const [smallScreenNote, setSmallScreenNote] = useState(() => !stored('schema-viewer.small-screen-note-closed', false, (v) => typeof v === 'boolean'));
+    const closeSmallScreenNote = () => {
+        setSmallScreenNote(false);
+        store('schema-viewer.small-screen-note-closed', true);
+    };
     // The dotted grid behind the diagram; remembered per browser.
     const [grid, setGrid] = useState(() => stored('schema-viewer.grid', true, (v) => typeof v === 'boolean'));
     const switchGrid = () => {
@@ -264,25 +326,32 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         const roomFor = step?.opens === 'download' || !(window.innerWidth <= 760 && window.innerHeight < 760);
         setTourOpens(roomFor ? step?.opens : undefined);
         setTourLabels(!!step?.labels);
-        if (step?.closeUp && flow.getZoom() < 0.8) {
-            flow.zoomTo(0.9);
-        }
-        // Bring what the step shows to the middle, so it is whole on screen: the label nearest the middle once the labels
-        // are drawn, or the table nearest it (its header and first columns, when the card is taller than the screen).
+        document.querySelectorAll('[data-tour-pick]').forEach((el) => el.removeAttribute('data-tour-pick'));
+        // Bring what the step shows to the middle at a readable size in one smooth move: the label nearest the middle
+        // once the labels are drawn, or the table nearest it (its header and first columns, when it is taller than the
+        // screen). On a phone the card takes the top of the screen, so a table goes lower, clear of it.
         if (step?.closeUp) {
             window.setTimeout(() => {
                 const cx = window.innerWidth / 2;
                 const cy = window.innerHeight / 2;
-                const nearest = [...document.querySelectorAll(step.labels ? '.edge-label' : '.react-flow__node-table')]
-                    .map((el) => el.getBoundingClientRect())
-                    .sort((a, b) => Math.hypot(a.x + a.width / 2 - cx, a.y + a.height / 2 - cy) - Math.hypot(b.x + b.width / 2 - cx, b.y + b.height / 2 - cy))[0];
-                if (nearest) {
-                    const at = flow.screenToFlowPosition({ x: nearest.x + nearest.width / 2, y: nearest.y + Math.min(nearest.height, window.innerHeight * 0.4) / 2 });
-                    // On a phone the card takes the top of the screen, so a table goes lower, clear of it.
-                    const lower = !step.labels && window.innerWidth <= 760 ? (window.innerHeight * 0.18) / flow.getZoom() : 0;
-                    flow.setCenter(at.x, at.y - lower, { zoom: flow.getZoom() });
+                const zoom = Math.max(flow.getZoom(), 0.9);
+                const picked = [...document.querySelectorAll(step.labels ? '.edge-label' : '.react-flow__node-table')]
+                    .map((el) => ({ el, r: el.getBoundingClientRect() }))
+                    .sort((a, b) => Math.hypot(a.r.x + a.r.width / 2 - cx, a.r.y + a.r.height / 2 - cy) - Math.hypot(b.r.x + b.r.width / 2 - cx, b.r.y + b.r.height / 2 - cy))[0];
+                // The tour spotlights this one, so it follows it through the move.
+                document.querySelectorAll('[data-tour-pick]').forEach((el) => el.removeAttribute('data-tour-pick'));
+                picked?.el.setAttribute('data-tour-pick', '');
+                const nearest = picked?.r;
+                if (!nearest) {
+                    flow.zoomTo(zoom, { duration: 450 });
+                    return;
                 }
-            }, 80);
+                const scale = zoom / flow.getZoom();
+                const at = flow.screenToFlowPosition({ x: nearest.x + nearest.width / 2, y: nearest.y + Math.min(nearest.height * scale, window.innerHeight * 0.4) / scale / 2 });
+                const lower = !step.labels && window.innerWidth <= 760 ? (window.innerHeight * 0.18) / zoom : 0;
+                const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                flow.setCenter(at.x, at.y - lower, { zoom, duration: still ? 0 : 450 });
+            }, 60);
         }
     }, [flow]);
     const endTour = useCallback(() => setTourOpen(false), []);
@@ -298,9 +367,16 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         }
     }, [needsFit, initialized]);
 
+    const atRef = useRef(linked.at ?? null);
     // Phones start on the selected table at a readable size; larger screens see the whole diagram.
     const fitRef = useRef(() => undefined as unknown);
     fitRef.current = () => {
+        // A copied link opens where it was copied, once.
+        if (atRef.current) {
+            const at = atRef.current;
+            atRef.current = null;
+            return flow.setCenter(at.x, at.y, { zoom: at.zoom });
+        }
         const target = narrow && selectedId ? [{ id: selectedId }] : undefined;
         return flow.fitView({ padding: narrow ? 0.25 : 0.08, nodes: target, maxZoom: narrow ? 1.1 : 1 });
     };
@@ -326,11 +402,19 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         return () => observer.disconnect();
     }, []);
 
-    const notify = useCallback((message: string) => {
+    const notify = useCallback((message: string, ms = 2600) => {
         setToast(message);
         window.clearTimeout(toastTimer.current);
-        toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+        toastTimer.current = window.setTimeout(() => setToast(null), ms);
     }, []);
+
+    // A shared link to a table, relationship, column or connection this schema no longer has.
+    const missingNote = useCallback((what: string) => notify(`This link points at ${what}, which this schema does not have. Showing the whole diagram instead.`, 6000), [notify]);
+    useEffect(() => {
+        if (linked.missing) {
+            missingNote(linked.missing);
+        }
+    }, [linked.missing, missingNote]);
 
     // Every table in view, with its connection.
     const visibleTables = useMemo(
@@ -362,7 +446,20 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     const tablesById = useMemo(() => new Map(visibleTables.map((e) => [nodeId(e.connection, e.table.name), e])), [visibleTables]);
 
     // In focus mode the diagram holds only the focused table and its neighbors; search still finds every table.
-    const focusSet = useMemo(() => (focus ? schema.neighbors(focus.connection, focus.table, focus.depth) : null), [schema, focus]);
+    // A relationship or column in focus starts from every table it touches: 1 link keeps just those tables.
+    const focusSet = useMemo(() => {
+        if (!focus) {
+            return null;
+        }
+        if (!focus.on) {
+            return schema.neighbors(focus.connection, focus.table, focus.depth);
+        }
+        const out = new Set<string>();
+        for (const seed of seedsOf(schema, focus.on)) {
+            schema.neighbors(seed.connection, seed.table, focus.depth - 1).forEach((id) => out.add(id));
+        }
+        return out;
+    }, [schema, focus]);
     const shownTables = useMemo(() => (focusSet ? visibleTables.filter((e) => focusSet.has(nodeId(e.connection, e.table.name))) : visibleTables), [visibleTables, focusSet]);
 
     // The columns each card shows.
@@ -377,6 +474,50 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     // The links and through links in view: each once, even when it joins two connections in view.
     const links = useMemo(() => [...new Map(scopeConnections.flatMap((c) => schema.links(c)).map((l) => [l.id, l])).values()], [schema, scopeConnections]);
     const derived = useMemo(() => scopeConnections.flatMap((c) => schema.derived(c)), [schema, scopeConnections]);
+
+    // What a highlight lights up: its tables (main: the one it sits on), its lines, and the rows they use.
+    const spot = useMemo(() => {
+        if (!highlight) {
+            return null;
+        }
+        const nodes = new Set<string>();
+        const edges = new Set<string>();
+        const rows = new Map<string, string[]>();
+        const addRows = (end: { connection: string; table: string; columns: string[] }) => {
+            const id = nodeId(end.connection, end.table);
+            nodes.add(id);
+            rows.set(id, [...(rows.get(id) ?? []), ...end.columns]);
+        };
+        let main: string;
+        if (highlight.kind === 'link') {
+            const l = links.find((x) => x.id === highlight.id);
+            const d = l ? undefined : derived.find((x) => x.id === highlight.id);
+            if (l) {
+                addRows(l.from);
+                addRows(l.to);
+                main = nodeId(l.from.connection, l.from.table);
+            } else if (d) {
+                [d.from, ...d.via, d.to].forEach((t) => nodes.add(nodeId(d.connection, t)));
+                main = nodeId(d.connection, d.from);
+            } else {
+                return null;
+            }
+            edges.add(highlight.id);
+        } else {
+            main = nodeId(highlight.connection, highlight.table);
+            nodes.add(main);
+            rows.set(main, [highlight.column]);
+            for (const l of links) {
+                const at = (e: { connection: string; table: string; columns: string[] }) => e.connection === highlight.connection && e.table === highlight.table && e.columns.includes(highlight.column);
+                if (at(l.from) || at(l.to)) {
+                    edges.add(l.id);
+                    addRows(l.from);
+                    addRows(l.to);
+                }
+            }
+        }
+        return { main, nodes, edges, rows };
+    }, [highlight, links, derived]);
 
     // Tables on a connection out of view that the relations in view point at.
     const externals = useMemo(() => {
@@ -530,19 +671,19 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 ...n.data,
                 ...cards(n.data.connection, t),
                 pivot: pivots.has(n.id),
-                dim: isDim(n.id),
-                active: neighbors !== null && neighbors.has(n.id) && n.id !== selectedId,
-                linked: linkedColumns.get(n.id) ?? NONE,
+                dim: isDim(n.id) || (spot !== null && !spot.nodes.has(n.id)),
+                active: spot ? spot.nodes.has(n.id) && n.id !== spot.main : neighbors !== null && neighbors.has(n.id) && n.id !== selectedId,
+                linked: (spot ? spot.rows.get(n.id) : linkedColumns.get(n.id)) ?? NONE,
                 fold: folds[n.id] ?? columns,
                 shown: shownOf(n.id, t),
             };
-            const isSelected = n.id === selectedId;
+            const isSelected = spot ? n.id === spot.main : n.id === selectedId;
             if (!!n.selected === isSelected && sameData(n.data, data)) {
                 return n;
             }
             return { ...n, selected: isSelected, data };
         },
-        [cards, selectedId, neighbors, pivots, isDim, linkedColumns, folds, columns, shownOf],
+        [cards, selectedId, neighbors, pivots, isDim, linkedColumns, folds, columns, shownOf, spot],
     );
     const decorateRef = useRef(decorate);
     decorateRef.current = decorate;
@@ -570,7 +711,8 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     type Spec = { id: string; source: string; target: string; sourceColumn: string; targetColumn: string; data: Omit<LinkEdgeData, 'route' | 'floating'> };
     const specs = useMemo((): Spec[] => {
         const visible = (id: string) => shownIds.has(id);
-        const touches = (a: string, b: string) => selectedId !== null && (a === selectedId || b === selectedId);
+        const touches = (a: string, b: string, id: string) => (spot ? spot.edges.has(id) : selectedId !== null && (a === selectedId || b === selectedId));
+        const quiet = spot !== null || selected !== null;
         const firstColumn = (c: string, name: string) => schema.table(c, name)?.columns[0]?.name ?? 'id';
 
         const specs: Spec[] = [];
@@ -583,7 +725,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 continue;
             }
             const names = [...new Set(l.relations.map((r) => r.split('::')[1]))];
-            const touch = touches(source, target);
+            const touch = touches(source, target, l.id);
             specs.push({
                 id: l.id,
                 source,
@@ -599,7 +741,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                     detail: `${l.from.table}.${l.from.columns.join(', ')} → ${l.to.table}.${l.to.columns.join(', ')}`,
                     showLabel: layers.allLabels || tourLabels || touch,
                     emphasized: touch,
-                    dim: isDim(source) || isDim(target) || (selected !== null && !touch),
+                    dim: isDim(source) || isDim(target) || (quiet && !touch),
                 },
             });
         }
@@ -611,7 +753,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 if (!visible(source) || !visible(target)) {
                     continue;
                 }
-                const touch = touches(source, target);
+                const touch = touches(source, target, d.id);
                 specs.push({
                     id: d.id,
                     source,
@@ -627,14 +769,14 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                         detail: `${d.from} → ${d.via.join(' → ')} → ${d.to}`,
                         showLabel: layers.allLabels || tourLabels || touch,
                         emphasized: touch,
-                        dim: isDim(source) || isDim(target) || (selected !== null && !touch),
+                        dim: isDim(source) || isDim(target) || (quiet && !touch),
                     },
                 });
             }
         }
 
         return specs;
-    }, [schema, links, derived, layers, tourLabels, selectedId, selected, isDim, shownIds]);
+    }, [schema, links, derived, layers, tourLabels, selectedId, selected, isDim, shownIds, spot]);
 
     // Where each card is and which rows it shows. While a card is dragged this keeps the last place, so edges are
     // routed again once, on drop, instead of on every frame.
@@ -734,7 +876,8 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
 
     const open = useCallback(
         (conn: string, table: string) => {
-            setTab('table');
+            setTab('details');
+            setHighlight(null);
             if (!scopeConnections.includes(conn)) {
                 setScope(conn);
                 setFocus(null);
@@ -755,19 +898,73 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         [scopeConnections, focusSet, centerOn],
     );
 
+    // Light up a relationship or column, show it in Details and bring it into view. Outside the connection or focus in
+    // view, the whole diagram of its connection comes back first.
+    const highlightThing = useCallback(
+        (h: Highlight) => {
+            setTab('details');
+            setHighlight(h);
+            const table = h.kind === 'column' ? h.table : null;
+            if (!scopeConnections.includes(h.connection)) {
+                setScope(h.connection);
+                setFocus(null);
+            } else if (focusSet && table && !focusSet.has(nodeId(h.connection, table))) {
+                setFocus(null);
+            }
+            window.setTimeout(() => {
+                if (h.kind === 'column') {
+                    centerOn(nodeId(h.connection, h.table));
+                    return;
+                }
+                const l = schema.links(h.connection).find((x) => x.id === h.id);
+                const d = l ? undefined : schema.derived(h.connection).find((x) => x.id === h.id);
+                const ids = l ? [nodeId(l.from.connection, l.from.table), nodeId(l.to.connection, l.to.table)] : d ? [d.from, ...d.via, d.to].map((t) => nodeId(d.connection, t)) : [];
+                if (ids.length) {
+                    flow.fitView({ nodes: ids.map((id) => ({ id })), padding: 0.25, maxZoom: 1, duration: 400 });
+                }
+            }, 60);
+        },
+        [scopeConnections, focusSet, centerOn, schema, flow],
+    );
+
+    const highlightThingRef = useRef(highlightThing);
+    highlightThingRef.current = highlightThing;
+
+    useEffect(() => {
+        if (pendingHighlight && initialized && nodes.length > 0) {
+            setPendingHighlight(null);
+            // A link that carries its own view keeps it; otherwise the highlight is brought into view.
+            if (!linked.at) {
+                window.setTimeout(() => highlightThingRef.current(pendingHighlight), 300);
+            }
+        }
+    }, [pendingHighlight, initialized, nodes.length, linked.at]);
+
     // Focus mode on a table, keeping the depth already chosen.
     const focusOn = useCallback((ref: TableRef, depth?: number) => {
         setSelected(ref);
-        setTab('table');
+        setTab('details');
         setFocus((f) => ({ ...ref, depth: depth ?? f?.depth ?? 1 }));
     }, []);
 
+    // Focus mode on a relationship or column, keeping it highlighted.
+    const focusHighlight = useCallback((h: Highlight, depth?: number) => {
+        const main = seedsOf(schema, h)[0];
+        setHighlight(h);
+        setTab('details');
+        setFocus((f) => ({ ...main, depth: depth ?? f?.depth ?? 1, on: h }));
+    }, [schema]);
+
     const endFocus = useCallback(() => {
+        const on = focus?.on;
         setFocus(null);
-        if (selected) {
+        if (on) {
+            // Once the whole diagram is back, bring the relationship or column into view again.
+            window.setTimeout(() => highlightThingRef.current(on), 400);
+        } else if (selected) {
             setPending(selected);
         }
-    }, [selected]);
+    }, [selected, focus]);
 
     // One card folded or unfolded; the rest stay where they are.
     const setFold = useCallback(
@@ -785,7 +982,9 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         },
         [columns],
     );
-    const tableActions = useMemo(() => ({ setFold }), [setFold]);
+    const highlightColumn = useCallback((connection: string, table: string, column: string) => highlightThing({ kind: 'column', connection, table, column }), [highlightThing]);
+    const focusColumn = useCallback((connection: string, table: string, column: string) => focusHighlight({ kind: 'column', connection, table, column }), [focusHighlight]);
+    const tableActions = useMemo(() => ({ setFold, highlightColumn, focusColumn }), [setFold, highlightColumn, focusColumn]);
 
     // Every card at once, then the diagram is arranged again around the new sizes.
     const setColumns = (fold: Fold) => {
@@ -800,28 +999,52 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     // The URL always opens what is on screen: the connection, the selected table and focus mode.
     useEffect(() => {
         if (!pending) {
-            writeHash(scope, focus ?? selected, focus?.depth ?? null);
+            // A relationship or column wins; focus on a table counts only while no relationship or column is picked.
+            const focusDepth = focus && (focus.on ? highlight && JSON.stringify(focus.on) === JSON.stringify(highlight) : !highlight) ? focus.depth : null;
+            writeHash(scope, focus ?? selected, focusDepth, highlight);
         }
-    }, [scope, selected, focus, pending]);
+    }, [scope, selected, focus, pending, highlight]);
 
     // A link pasted into the same tab.
     useEffect(() => {
         const onHash = () => {
             const next = readHash(doc);
+            if (next.missing) {
+                missingNoteRef.current(next.missing);
+            }
             if (next.scope) {
                 setScope(next.scope);
             }
-            setFocus(next.table && next.focus ? { ...next.table, depth: next.focus } : null);
+            setFocus(next.highlight && next.focus ? { ...seedsOf(schema, next.highlight)[0], depth: next.focus, on: next.highlight } : next.table && next.focus ? { ...next.table, depth: next.focus } : null);
             setSelected(null);
-            setPending(next.table ?? null);
+            setHighlight(next.highlight ?? null);
+            setPending(next.highlight ? null : (next.table ?? null));
+            if (next.highlight) {
+                setPendingHighlight(next.highlight);
+            }
         };
         window.addEventListener('hashchange', onHash);
         return () => window.removeEventListener('hashchange', onHash);
-    }, [doc]);
+    }, [doc, schema]);
+
+    // The link to exactly what is on screen: the hash (connection, table, relationship or column, focus) plus how many
+    // columns the cards show and where the diagram is centered and zoomed.
+    const missingNoteRef = useRef(missingNote);
+    missingNoteRef.current = missingNote;
 
     const copyLink = () => {
-        const done = () => notify('Link copied. It opens this connection, table and focus.');
-        navigator.clipboard?.writeText(window.location.href).then(done, () => notify('The link could not be copied. Copy it from the address bar.'));
+        const params = new URLSearchParams(window.location.hash.slice(1));
+        const box = canvasRef.current?.getBoundingClientRect();
+        if (box) {
+            const at = flow.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+            params.set('at', `${Math.round(at.x)},${Math.round(at.y)},${Math.round(flow.getZoom() * 1000) / 1000}`);
+        }
+        if (columns !== 'all') {
+            params.set('columns', columns);
+        }
+        const url = `${window.location.href.split('#')[0]}#${params.toString().replace(/%3A/g, ':').replace(/%2C/g, ',')}`;
+        const done = () => notify('Link copied. It opens this exact view.');
+        navigator.clipboard?.writeText(url).then(done, () => notify('The link could not be copied.'));
     };
 
     // Dragging the panel's edge sets its width, kept between the panel's minimum and room for the diagram.
@@ -829,7 +1052,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
     // Dragging remembers the width once, on release; the keyboard and double-click remember it at once.
     const resizePanel = (width: number | null, remember = true) => {
         const room = mainRef.current?.getBoundingClientRect().width ?? window.innerWidth;
-        const next = width === null ? null : Math.round(Math.min(Math.max(width, 280), room - 360));
+        const next = width === null ? null : Math.round(Math.min(Math.max(width, 280), room - DIAGRAM_ROOM));
         setPanelWidth(next);
         if (remember) {
             store('schema-viewer.panel-width', next);
@@ -874,8 +1097,9 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 return;
             }
             const d = node.data as { connection: string; table: Table };
+            setHighlight(null);
             setSelected({ connection: d.connection, table: d.table.name });
-            setTab('table');
+            setTab('details');
         },
         [open],
     );
@@ -1000,12 +1224,14 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                 if (helpOpen) setHelpOpen(false);
                 else if (sheetOpen) setSheetOpen(false);
                 else if (focus) endFocus();
+                else if (highlight) setHighlight(null);
                 else setSelected(null);
             },
             F: () => {
                 if (focus) endFocus();
+                else if (highlight) focusHighlight(highlight);
                 else if (selected) focusOn(selected);
-                else notify('Select a table first, then press Shift F to focus on it.');
+                else notify('Select a table, a relationship or a column first, then press Shift F to focus on it.');
             },
             c: () => setColumns(FOLDS[(FOLDS.indexOf(columns) + 1) % FOLDS.length]),
             f: () => flow.fitView({ padding: 0.08, duration: 250 }),
@@ -1020,16 +1246,21 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
             '3': () => toggle('foreign_key'),
             '4': () => toggle('through'),
             a: () => {
-                setTab('tables');
+                setTab('browse');
                 setSheetOpen(true);
             },
-            t: () => setTab('table'),
+            d: () => {
+                setTab('details');
+                setSheetOpen(true);
+            },
+            t: () => setTab('details'),
             h: () => {
                 setTab('hints');
                 setSheetOpen(true);
             },
             A: () => onAutoLayout(),
             R: () => refresh(),
+            C: () => copyLink(),
             '[': () => step(-1),
             ']': () => step(1),
         };
@@ -1180,18 +1411,42 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                 edgeTypes={edgeTypes}
                                 onNodesChange={onNodesChange}
                                 onNodeClick={onNodeClick}
+                                zoomOnDoubleClick={false}
+                                // Double-click focuses: on a table, a line (its relationship) or, in TableNode, a column.
                                 onNodeDoubleClick={(_, node) => {
                                     if (node.type === 'table') {
+                                        setHighlight(null);
                                         focusOn({ connection: node.data.connection, table: node.data.table.name });
                                     }
                                 }}
-                                zoomOnDoubleClick={false}
+                                onEdgeDoubleClick={(_, edge) => {
+                                    const l = links.find((x) => x.id === edge.id);
+                                    const d = l ? undefined : derived.find((x) => x.id === edge.id);
+                                    const connection = l?.from.connection ?? d?.connection;
+                                    if (connection) {
+                                        focusHighlight({ kind: 'link', connection, id: edge.id });
+                                    }
+                                }}
                                 onEdgeMouseEnter={(_, edge) => hover.set(edge.id)}
                                 onEdgeMouseLeave={() => hover.set(null)}
                                 onNodeDragStart={(_, node) => setDragging(node.id)}
                                 onNodeDragStop={() => setDragging(null)}
                                 onlyRenderVisibleElements
-                                onPaneClick={() => setSelected(null)}
+                                onPaneClick={() => {
+                                    setSelected(null);
+                                    setHighlight(null);
+                                }}
+                                onEdgeClick={(_, edge) => {
+                                    const l = links.find((x) => x.id === edge.id);
+                                    const d = l ? undefined : derived.find((x) => x.id === edge.id);
+                                    const connection = l?.from.connection ?? d?.connection;
+                                    if (connection) {
+                                        highlightThing({ kind: 'link', connection, id: edge.id });
+                                        if (narrow) {
+                                            setSheetOpen(true);
+                                        }
+                                    }
+                                }}
                                 onMoveStart={(event) => {
                                     if (event) {
                                         userMoved.current = true;
@@ -1224,10 +1479,10 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                         {/* On a phone a drag always pans, and the layout already suits the screen. */}
                                         {!narrow && (
                                             <>
-                                            <FloatButton label={panMode ? 'Pan mode on: drag anywhere to move' : 'Pan mode: drag anywhere to move'} keys="Hold Space" pressed={panMode} onClick={() => setPanMode((on) => !on)}>
+                                            <FloatButton label={panMode ? 'Pan mode on: drag anywhere to move' : 'Pan mode: drag anywhere to move'} keys="Hold Space" pressed={panMode} extra onClick={() => setPanMode((on) => !on)}>
                                                 <path d="M5.5 8.5 V4 a1 1 0 0 1 2 0 V7.5 M7.5 7.5 V2.8 a1 1 0 0 1 2 0 V7.5 M9.5 7.5 V3.8 a1 1 0 0 1 2 0 V8.5 M11.5 8.5 V6 a1 1 0 0 1 2 0 V10 a4.5 4.5 0 0 1 -4.5 4.5 H8.6 a4 4 0 0 1 -3.1 -1.5 L2.7 9.6 a1.1 1.1 0 0 1 1.7 -1.4 L5.5 9.7" />
                                             </FloatButton>
-                                            <FloatButton label="Arrange tables automatically" keys="Shift A" shortcut="Shift+A" onClick={onAutoLayout} tour="auto-layout">
+                                            <FloatButton label="Arrange tables automatically" keys="Shift A" shortcut="Shift+A" onClick={onAutoLayout} tour="auto-layout" extra>
                                                 <rect x="1.5" y="2" width="5" height="4" rx="1" />
                                                 <rect x="9.5" y="2" width="5" height="4" rx="1" />
                                                 <rect x="5.5" y="10" width="5" height="4" rx="1" />
@@ -1236,7 +1491,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                             </>
                                         )}
                                         {onRefresh && (
-                                            <FloatButton label="Read the database and models again" keys="Shift R" shortcut="Shift+R" onClick={refresh}>
+                                            <FloatButton label="Read the database and models again" keys="Shift R" shortcut="Shift+R" onClick={refresh} extra>
                                                 <path d="M13 8 A5 5 0 1 1 11.5 4.4 M13 2.5 V5 H10.5" />
                                             </FloatButton>
                                         )}
@@ -1262,26 +1517,38 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     />
                                     </div>
                                     <span className="float-bar__divider" aria-hidden="true" />
+                                    <FloatButton label="Copy a link to this view" keys="Shift C" shortcut="Shift+C" onClick={copyLink} tour="copy">
+                                        <path d="M6.8 9.2 a2.6 2.6 0 0 0 3.7 0 l2.4 -2.4 a2.6 2.6 0 0 0 -3.7 -3.7 l-0.9 0.9 M9.2 6.8 a2.6 2.6 0 0 0 -3.7 0 l-2.4 2.4 a2.6 2.6 0 0 0 3.7 3.7 l0.9 -0.9" />
+                                    </FloatButton>
                                     <FloatButton label="Take the tour" keys="?" shortcut="?" onClick={() => setTourOpen(true)} tour="help">
                                         <path d="M5.3 5.4 a2.7 2.7 0 1 1 3.9 2.4 c-0.75 0.38 -1.2 0.95 -1.2 1.8 V10.4 M8 13.3 V13.4" />
                                     </FloatButton>
                                 </div>
+                            {narrow && smallScreenNote && !tourOpen && (
+                                <div className="screen-note" role="status">
+                                    <p>
+                                        <b>Easier on a larger screen.</b> On a phone you can browse every table and its details; the diagram itself is best on a desktop or tablet.
+                                    </p>
+                                    <button type="button" className="button button--icon button--ghost" aria-label="Close" onClick={closeSmallScreenNote}>
+                                        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="ui-icon">
+                                            <path d="M4 4 L12 12 M12 4 L4 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            )}
                             {focus && (
                                 <div className="focus-bar" role="group" aria-label="Focus mode">
                                     <span className="focus-bar__label">
-                                        Focus on <code>{scopeConnections.length > 1 ? `${focus.connection}.${focus.table}` : focus.table}</code>
+                                        Focus on <code>{focusLabel(schema, focus, scopeConnections.length > 1)}</code>
                                     </span>
                                     <span className="segmented" role="radiogroup" aria-label="Links away">
                                         {[1, 2, 3].map((d) => (
-                                            <button key={d} type="button" role="radio" aria-checked={focus.depth === d} className="segmented__option" onClick={() => focusOn(focus, d)}>
+                                            <button key={d} type="button" role="radio" aria-checked={focus.depth === d} className="segmented__option" onClick={() => setFocus((f) => f && { ...f, depth: d })}>
                                                 {d} {d === 1 ? 'link' : 'links'}
                                             </button>
                                         ))}
                                     </span>
                                     <span className="focus-bar__count">{shownTables.length} tables</span>
-                                    <button type="button" className="button button--small" onClick={copyLink}>
-                                        Copy link
-                                    </button>
                                     <Tooltip content={<>Show every table again <kbd>Esc</kbd></>} side="bottom">
                                         <button type="button" className="button button--small" aria-keyshortcuts="Escape" onClick={endFocus}>
                                             Leave focus mode
@@ -1308,18 +1575,28 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                     }
                                 }}
                                 title="Drag to resize, double-click to reset"
-                            />
+                            >
+                                <span className="panel-resizer__grip" aria-hidden="true" />
+                            </div>
                         )}
                         <SidePanel
                             schema={schema}
                             editor={editor ?? null}
-                            focused={focus}
+                            focused={focus && !focus.on ? focus : null}
                             onFocus={focusOn}
+                            focusedOn={focus?.on ?? null}
+                            onFocusHighlight={focusHighlight}
                             onLeaveFocus={endFocus}
-                            onCopyLink={copyLink}
                             connections={scopeConnections}
                             tables={visibleTables}
                             selected={selected}
+                            highlight={highlight}
+                            onHighlight={(h) => {
+                                highlightThing(h);
+                                if (narrow) {
+                                    setSheetOpen(false);
+                                }
+                            }}
                             tab={tab}
                             onTab={(t) => {
                                 setTab(t);
@@ -1397,6 +1674,44 @@ function Swatch({ kind }: { kind: EdgeKind }) {
     );
 }
 
+// The tables a relationship or column touches; the first is the one it sits on.
+function seedsOf(schema: Schema, h: Highlight): TableRef[] {
+    if (h.kind === 'column') {
+        const out: TableRef[] = [{ connection: h.connection, table: h.table }];
+        for (const l of schema.links(h.connection)) {
+            const at = (e: { connection: string; table: string; columns: string[] }) => e.connection === h.connection && e.table === h.table && e.columns.includes(h.column);
+            if (at(l.from)) {
+                out.push({ connection: l.to.connection, table: l.to.table });
+            } else if (at(l.to)) {
+                out.push({ connection: l.from.connection, table: l.from.table });
+            }
+        }
+        return out;
+    }
+    const l = schema.links(h.connection).find((x) => x.id === h.id);
+    if (l) {
+        return [
+            { connection: l.from.connection, table: l.from.table },
+            { connection: l.to.connection, table: l.to.table },
+        ];
+    }
+    const d = schema.derived(h.connection).find((x) => x.id === h.id);
+    return d ? [d.from, ...d.via, d.to].map((table) => ({ connection: d.connection, table })) : [{ connection: h.connection, table: '' }];
+}
+
+// What the focus bar names: the table, the relationship or the column in focus.
+function focusLabel(schema: Schema, focus: TableRef & { on?: Highlight }, withConnection: boolean): string {
+    const prefix = withConnection ? `${focus.connection}.` : '';
+    if (focus.on?.kind === 'column') {
+        return `${prefix}${focus.on.table}.${focus.on.column}`;
+    }
+    if (focus.on?.kind === 'link') {
+        const seeds = seedsOf(schema, focus.on);
+        return `${prefix}${seeds[0].table} → ${seeds[seeds.length - 1].table}`;
+    }
+    return `${prefix}${focus.table}`;
+}
+
 // A sun in dark mode (to switch to light), a moon in light mode.
 function ThemeIcon({ dark }: { dark: boolean }) {
     return (
@@ -1411,10 +1726,10 @@ function ThemeIcon({ dark }: { dark: boolean }) {
 }
 
 // A square icon button in the floating bar, with its name and key in a tooltip.
-function FloatButton({ label, keys, shortcut, pressed, onClick, tour, children }: { label: string; keys: string; shortcut?: string; pressed?: boolean; onClick: () => void; tour?: string; children: ReactNode }) {
+function FloatButton({ label, keys, shortcut, pressed, onClick, tour, extra = false, children }: { label: string; keys: string; shortcut?: string; pressed?: boolean; onClick: () => void; tour?: string; extra?: boolean; children: ReactNode }) {
     return (
         <Tooltip content={<>{label} <kbd>{keys}</kbd></>} side="top">
-            <button type="button" className="button button--icon float-bar__icon" aria-label={label} aria-pressed={pressed} aria-keyshortcuts={shortcut}
+            <button type="button" className={`button button--icon float-bar__icon${extra ? ' float-bar__extra' : ''}`} aria-label={label} aria-pressed={pressed} aria-keyshortcuts={shortcut}
                 onClick={(e) => {
                     onClick();
                     // A mouse click leaves focus on the diagram, so Space pans again instead of pressing this button.
@@ -1469,7 +1784,7 @@ function ZoomLevel({ onZoom }: { onZoom: (zoom: number) => void }) {
     }
     return (
         <Tooltip content="Type a zoom" side="top">
-            <button type="button" className="float-bar__zoom" aria-label={`Zoom ${percent}%, type another`} onClick={() => setEditing(String(percent))}>
+            <button type="button" className="float-bar__zoom float-bar__extra" aria-label={`Zoom ${percent}%, type another`} onClick={() => setEditing(String(percent))}>
                 {percent}%
             </button>
         </Tooltip>
@@ -1522,12 +1837,13 @@ const SHORTCUTS: [string[], string][] = [
     [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
     [['G'], 'Show or hide framework tables'],
     [['P'], 'Show or hide package tables, such as Passport\'s oauth_*'],
-    [['A', 'T', 'H'], 'Open the Tables, Table or Hints tab'],
+    [['A', 'D', 'H'], 'Open the Browse, Details or Hints tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
     [['Shift A'], 'Arrange tables automatically'],
     [['Shift R'], 'Read the database and models again (in your app, not in an exported page)'],
-    [['Shift F'], 'Focus on the selected table and its neighbors, or leave focus mode'],
+    [['Shift F'], 'Focus on the selected table, relationship or column and what is around it, or leave focus mode'],
     [['C'], 'Show every column, the key columns only, or the table names only'],
+    [['Shift C'], 'Copy a link to exactly this view'],
     [['S'], 'Show this list'],
     [['?'], 'Take the tour'],
 ];

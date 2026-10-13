@@ -254,29 +254,35 @@ code {
     background: var(--surface-2);
 }
 
+/* The bar fits the diagram it sits on, whatever the window: it is sized by the canvas, not the screen. */
+.canvas {
+    container: canvas / inline-size;
+}
+
+.float-bar {
+    max-width: calc(100% - 24px);
+}
+
 @media (max-width: 760px) {
-    /* Above the details sheet's bar, and narrow enough for a phone. */
+    /* Above the details sheet's bar, with finger-sized buttons. */
     .float-bar {
         bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 12px);
-        max-width: calc(100% - 24px);
         padding: 4px;
         gap: 2px;
     }
     .float-bar .button {
         height: 36px;
-        font-size: 13.5px;
     }
     .float-bar .button--icon {
         width: 36px;
-        padding: 0;
     }
+}
+
+/* A narrow diagram: the menus keep only their icon, the names go to screen readers. */
+@container canvas (max-width: 700px) {
     .float-bar .button--with-icon {
-        gap: 4px;
-        padding: 0 7px;
-    }
-    /* Icons only: the menus keep their icon, the names go to screen readers. */
-    .float-bar .button--with-icon {
-        width: 36px;
+        position: relative;
+        width: 34px;
         padding: 0;
     }
     .float-bar__label,
@@ -297,12 +303,47 @@ code {
         padding: 0;
         font-size: 0;
     }
-    .float-bar__menu .button {
-        position: relative;
-    }
     .float-bar__divider {
         margin: 0 2px;
     }
+}
+
+/* The minimap sits in the corner beside the bar; when the diagram is too narrow for both, the bar wins. */
+@container canvas (max-width: 1000px) {
+    .react-flow__minimap {
+        display: none;
+    }
+}
+
+/* Narrower still: the extras (zoom level, pan mode, arrange, read again) give way; their keys still work. */
+@container canvas (max-width: 460px) {
+    .float-bar__extra {
+        display: none;
+    }
+}
+
+/* The note a phone gets once: the diagram is easier on a larger screen. */
+.screen-note {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    z-index: 6;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 6px 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+}
+
+.screen-note p {
+    flex: 1;
+    margin: 0;
 }
 
 /* Pan mode: the hand shows over the whole diagram, tables included. */
@@ -616,6 +657,7 @@ button:disabled {
 }
 
 .table-node__columns li {
+    cursor: pointer;
     position: relative;
     display: grid;
     grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -831,6 +873,79 @@ button:disabled {
 
 .panel__empty {
     color: var(--muted);
+}
+
+/* Browse tab */
+
+.browse__modes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    padding: 3px;
+    border-radius: 9px;
+    background: var(--surface-2);
+}
+
+.browse__mode {
+    height: 28px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.browse__mode[aria-checked='true'] {
+    background: var(--surface);
+    color: var(--fg);
+    box-shadow: var(--shadow);
+}
+
+.browse__swatch {
+    width: 14px;
+    height: 0;
+    border-top: 2px solid var(--accent);
+}
+
+.browse__swatch--relation {
+    border-top: 2px dashed var(--warn);
+}
+
+.browse__swatch--foreign_key {
+    border-top-color: var(--fk);
+}
+
+.browse__swatch--through {
+    border-top: 2px dotted var(--through);
+}
+
+/* Details of a relationship or column */
+
+.ref {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+}
+
+.ref .link-button,
+.link-button--code {
+    font-family: var(--font-mono);
+    font-weight: 400;
+}
+
+.state {
+    font-weight: 600;
+}
+
+.state--both {
+    color: var(--accent-ink);
+}
+
+.state--relation {
+    color: var(--warn);
 }
 
 /* Tables tab */
@@ -1878,6 +1993,25 @@ kbd {
     box-shadow: var(--shadow), 0 12px 32px rgb(0 0 0 / 28%);
 }
 
+.tour__content {
+    display: grid;
+    gap: 10px;
+    animation: tour-in 0.22s ease;
+}
+
+@keyframes tour-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tour__content {
+        animation: none;
+    }
+}
+
 .tour__head {
     display: flex;
     align-items: center;
@@ -2398,10 +2532,36 @@ a.source--link:focus-visible .ui-icon {
     outline: none;
 }
 
+/* The handle in the middle of the edge, so it reads as something to drag. */
+.panel-resizer__grip {
+    position: absolute;
+    top: 50%;
+    left: -5px;
+    z-index: 1;
+    width: 10px;
+    height: 40px;
+    transform: translateY(-50%);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background:
+        radial-gradient(circle, var(--muted) 1px, transparent 1.4px) 1.5px 6px / 4px 6px repeat-y,
+        var(--surface);
+    box-shadow: var(--shadow);
+    transition: border-color 0.12s ease;
+    pointer-events: none;
+}
+
+.panel-resizer:hover .panel-resizer__grip,
+.panel-resizer:active .panel-resizer__grip,
+.panel-resizer:focus-visible .panel-resizer__grip {
+    border-color: var(--accent);
+}
+
 @media (min-width: 961px) {
     .main.has-panel-width .panel {
         flex: 0 0 var(--panel-width);
-        max-width: none;
+        /* A width remembered on a wider window still leaves the diagram room for its floating bar. */
+        max-width: calc(100% - 480px);
     }
 
     .main.has-panel-width .canvas {

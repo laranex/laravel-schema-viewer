@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { relationKind, relationLabel, shortClass, type Schema } from '../graph';
-import { TableList } from './TableList';
+import { Browse, type BrowseMode, type Highlight } from './Browse';
+import { HighlightDetails } from './Details';
 import { Tab, TabList, TabPanel, Tabs, Tooltip } from './ui';
 import type { Hint, IgnoreRule, Relation, Source, Table } from '../types';
 
-export type PanelTab = 'tables' | 'table' | 'hints';
+export type PanelTab = 'browse' | 'details' | 'hints';
 
 type Props = {
     schema: Schema;
@@ -13,6 +14,9 @@ type Props = {
     // The tables in view, listed in the Tables tab.
     tables: { connection: string; table: Table }[];
     selected: { connection: string; table: string } | null;
+    // A relationship or column shown in Details instead of the selected table.
+    highlight: Highlight | null;
+    onHighlight: (highlight: Highlight) => void;
     tab: PanelTab;
     onTab: (tab: PanelTab) => void;
     onOpen: (connection: string, table: string) => void;
@@ -24,17 +28,19 @@ type Props = {
     // The table focus mode is on, if any.
     focused: { connection: string; table: string } | null;
     onFocus: (table: { connection: string; table: string }) => void;
+    // The relationship or column focus mode is on, if any.
+    focusedOn: Highlight | null;
+    onFocusHighlight: (highlight: Highlight) => void;
     onLeaveFocus: () => void;
-    onCopyLink: () => void;
 };
 
-type TableProps = Pick<Props, 'schema' | 'onOpen' | 'editor' | 'focused' | 'onFocus' | 'onLeaveFocus' | 'onCopyLink'> & { connection: string; name: string };
+type TableProps = Pick<Props, 'schema' | 'onOpen' | 'onHighlight' | 'editor' | 'focused' | 'onFocus' | 'onLeaveFocus'> & { connection: string; name: string };
 
 // Schemes a link must never carry; the server drops them too.
 const UNSAFE_HREF = /^[\s\0-\x1f]*(javascript|data|vbscript|blob|file):/i;
 
 // Where a model or relation is declared: a link that opens the editor, or the path to copy when there is none.
-function SourceLink({ source, editor, children }: { source: Source | null | undefined; editor: string | null; children: ReactNode }) {
+export function SourceLink({ source, editor, children }: { source: Source | null | undefined; editor: string | null; children: ReactNode }) {
     if (!source) {
         return <>{children}</>;
     }
@@ -59,7 +65,7 @@ function SourceLink({ source, editor, children }: { source: Source | null | unde
     );
 }
 
-const HINT_TITLE: Record<Hint['kind'], string> = {
+export const HINT_TITLE: Record<Hint['kind'], string> = {
     relation_without_foreign_key: 'Relation without a foreign key',
     foreign_key_without_relation: 'Foreign key without a relation',
     foreign_key_without_index: 'Foreign key without an index',
@@ -70,9 +76,10 @@ const HINT_TITLE: Record<Hint['kind'], string> = {
     custom_relation: 'Custom relation, foreign key not checked',
 };
 
-export function SidePanel({ schema, connections, tables, selected, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, onLeaveFocus, onCopyLink }: Props) {
+export function SidePanel({ schema, connections, tables, selected, highlight, onHighlight, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, focusedOn, onFocusHighlight, onLeaveFocus }: Props) {
     const hints = connections.flatMap((c) => schema.hints(c));
     const [filter, setFilter] = useState('');
+    const [mode, setMode] = useState<BrowseMode>('tables');
     const models = selected ? schema.modelsFor(selected.connection, selected.table) : [];
 
     return (
@@ -82,8 +89,14 @@ export function SidePanel({ schema, connections, tables, selected, tab, onTab, o
                     <span className="sheet-bar__grip" aria-hidden="true" />
                     <button type="button" className="sheet-bar__main" aria-expanded={sheetOpen} onClick={() => onSheet(!sheetOpen)}>
                         <span className="sheet-bar__title">
-                            {selected ? <code>{selected.table}</code> : <span>Tap a table for details</span>}
-                            {selected && models.length > 0 && <span className="muted">{models.map((m) => shortClass(m.class)).join(', ')}</span>}
+                            {highlight ? (
+                                <code>{highlight.kind === 'column' ? `${highlight.table}.${highlight.column}` : 'Relationship'}</code>
+                            ) : selected ? (
+                                <code>{selected.table}</code>
+                            ) : (
+                                <span>Tap a table, a column or a line</span>
+                            )}
+                            {!highlight && selected && models.length > 0 && <span className="muted">{models.map((m) => shortClass(m.class)).join(', ')}</span>}
                         </span>
                     </button>
                     {hints.length > 0 && !(sheetOpen && tab === 'hints') && (
@@ -94,46 +107,61 @@ export function SidePanel({ schema, connections, tables, selected, tab, onTab, o
                             {hints.length} {hints.length === 1 ? 'hint' : 'hints'}
                         </button>
                     )}
-                    <button type="button" className="sheet-bar__action" aria-expanded={sheetOpen} onClick={() => onSheet(!sheetOpen)}>
-                        {sheetOpen ? 'Close' : 'Details'}
+                    <button type="button" className="sheet-bar__action" aria-expanded={sheetOpen} onClick={() => (sheetOpen ? onSheet(false) : onTab(selected || highlight ? 'details' : 'browse'))}>
+                        {sheetOpen ? 'Close' : selected || highlight ? 'Details' : 'Browse'}
                     </button>
                 </div>
             )}
             <Tabs value={tab} onValueChange={(v) => onTab(v as PanelTab)} className="panel__tabs-root">
                 <TabList label="Details">
-                    <Tab value="tables">
-                        Tables <kbd className="kbd-hint">A</kbd>
+                    <Tab value="browse">
+                        Browse <kbd className="kbd-hint">A</kbd>
                     </Tab>
-                    <Tab value="table">
-                        Table <kbd className="kbd-hint">T</kbd>
+                    <Tab value="details">
+                        Details <kbd className="kbd-hint">D</kbd>
                     </Tab>
                     <Tab value="hints">
                         Hints <span className="count">{hints.length}</span> <kbd className="kbd-hint">H</kbd>
                     </Tab>
                 </TabList>
-                <TabPanel value="tables" className="panel__body">
-                    <TableList schema={schema} tables={tables} several={connections.length > 1} selected={selected} onOpen={onOpen} filter={filter} onFilter={setFilter} />
+                <TabPanel value="browse" className="panel__body">
+                    <Browse
+                        schema={schema}
+                        tables={tables}
+                        connections={connections}
+                        several={connections.length > 1}
+                        selected={selected}
+                        highlight={highlight}
+                        mode={mode}
+                        onMode={setMode}
+                        filter={filter}
+                        onFilter={setFilter}
+                        onOpen={onOpen}
+                        onHighlight={onHighlight}
+                    />
                 </TabPanel>
-                <TabPanel value="table" className="panel__body">
-                    {selected ? (
+                <TabPanel value="details" className="panel__body">
+                    {highlight ? (
+                        <HighlightDetails schema={schema} highlight={highlight} editor={editor} onOpen={onOpen} onHighlight={onHighlight} focusedOn={focusedOn} onFocus={onFocusHighlight} onLeaveFocus={onLeaveFocus} />
+                    ) : selected ? (
                         <TableDetails
                             schema={schema}
                             connection={selected.connection}
                             name={selected.table}
                             onOpen={onOpen}
+                            onHighlight={onHighlight}
                             editor={editor}
                             focused={focused}
                             onFocus={onFocus}
                             onLeaveFocus={onLeaveFocus}
-                            onCopyLink={onCopyLink}
                         />
                     ) : (
                         <p className="panel__empty">
-                            Select a table on the diagram or in{' '}
-                            <button type="button" className="link-button" onClick={() => onTab('tables')}>
-                                Tables
-                            </button>{' '}
-                            to see its columns, relations, indexes and model.
+                            Select a table, a line or a column on the diagram, or pick one in{' '}
+                            <button type="button" className="link-button" onClick={() => onTab('browse')}>
+                                Browse
+                            </button>
+                            , to see its details here.
                         </p>
                     )}
                 </TabPanel>
@@ -165,7 +193,7 @@ function php(rule: IgnoreRule): string {
 }
 
 // The hints.ignore rules that leave a hint out, each ready to copy.
-function IgnoreRules({ hint }: { hint: Hint }) {
+export function IgnoreRules({ hint }: { hint: Hint }) {
     const [copied, setCopied] = useState<string | null>(null);
     if (!hint.ignore) {
         return null;
@@ -242,7 +270,7 @@ function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean;
     );
 }
 
-function TableDetails({ schema, connection, name, onOpen, editor, focused, onFocus, onLeaveFocus, onCopyLink }: TableProps) {
+function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, focused, onFocus, onLeaveFocus }: TableProps) {
     const table = schema.table(connection, name);
     if (!table) {
         return null;
@@ -296,11 +324,6 @@ function TableDetails({ schema, connection, name, onOpen, editor, focused, onFoc
                             </button>
                         </Tooltip>
                     )}
-                    <Tooltip content="A link that opens this table, on any machine that opens this viewer">
-                        <button type="button" className="button button--small" onClick={onCopyLink}>
-                            Copy link
-                        </button>
-                    </Tooltip>
                 </div>
             </header>
 
@@ -328,7 +351,9 @@ function TableDetails({ schema, connection, name, onOpen, editor, focused, onFoc
                                 return (
                                     <tr key={c.name}>
                                         <td>
-                                            <code>{c.name}</code>
+                                            <button type="button" className="link-button link-button--code" onClick={() => onHighlight({ kind: 'column', connection, table: name, column: c.name })}>
+                                                {c.name}
+                                            </button>
                                         </td>
                                         <td className="muted">{c.type}</td>
                                         <td>
@@ -487,7 +512,7 @@ function TableDetails({ schema, connection, name, onOpen, editor, focused, onFoc
     );
 }
 
-function RelationKeys({ schema, relation: r }: { schema: Schema; relation: Relation }) {
+export function RelationKeys({ schema, relation: r }: { schema: Schema; relation: Relation }) {
     const parts: string[] = [];
     if (r.pivot) {
         parts.push(`via ${r.pivot.table} (${r.pivot.foreignPivotKey}, ${r.pivot.relatedPivotKey})`);

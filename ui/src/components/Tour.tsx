@@ -91,6 +91,25 @@ const reveal = (el: Element | null) => {
     }
 };
 
+const still = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// How far the spotlight and card move this frame: a fifth of the way, or all of it when they arrive, have no start,
+// or motion is reduced.
+const glideFactor = (from: Rect | null, target: Rect | null): number => {
+    if (!target || !from || still()) {
+        return 1;
+    }
+    const left = Math.abs(target.x - from.x) + Math.abs(target.y - from.y) + Math.abs(target.width - from.width) + Math.abs(target.height - from.height);
+    return left < 1 ? 1 : 0.2;
+};
+
+const ease = (shown: { current: Rect | null }, target: Rect | null, factor: number): Rect | null => {
+    const from = shown.current;
+    const next = !target || !from || factor >= 1 ? target : { x: from.x + (target.x - from.x) * factor, y: from.y + (target.y - from.y) * factor, width: from.width + (target.width - from.width) * factor, height: from.height + (target.height - from.height) * factor };
+    shown.current = next;
+    return next;
+};
+
 const union = (a: Rect, b: DOMRect): Rect => {
     const x = Math.min(a.x, b.x);
     const y = Math.min(a.y, b.y);
@@ -134,7 +153,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
     // Menu steps count when the menu exists (phones): their targets only appear once the tour opens it.
     // Steps that pick their element when shown (a table, a label) always count, so the total never depends on timing.
     const available = useMemo(
-        () => (open ? steps.filter((s) => !s.target || typeof s.target === 'function' || find(s.target) || s.menu === 'always' || (s.menu === 'phone' && menuSteps) || (s.opens === 'download' && !menuSteps)) : []),
+        () => (open ? steps.filter((s) => !s.target || [s.target].flat().some((t) => typeof t === 'function') || find(s.target) || s.menu === 'always' || (s.menu === 'phone' && menuSteps) || (s.opens === 'download' && !menuSteps)) : []),
         [open, steps, menuSteps],
     );
     const [index, setIndex] = useState(0);
@@ -144,6 +163,14 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
     const [card, setCard] = useState({ width: CARD_WIDTH, height: 180 });
     const cardRef = useRef<HTMLDivElement>(null);
     const nextRef = useRef<HTMLButtonElement>(null);
+    // Where the spotlight is drawn: it glides toward its element, from one step to the next and while the diagram
+    // moves, instead of jumping.
+    const shownRef = useRef<Rect | null>(null);
+    // The card glides with the spotlight, frame by frame, so the two move as one.
+    const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+    const placedRef = useRef<{ left: number; top: number } | null>(null);
+    const cardSizeRef = useRef(card);
+    cardSizeRef.current = card;
     const step = available[index];
 
     useEffect(() => {
@@ -166,9 +193,17 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
             const opened = step.opens ? document.querySelector(`[data-tour="${step.opens}-menu"]`) : null;
             // A floating-bar menu is part of what the step explains, so it is lit with its button; Download's stays dimmed.
             const lit = next && opened && step.opens !== 'download' ? union(next, opened.getBoundingClientRect()) : next;
-            setRect((prev) => same(prev, lit));
             const wide = next && opened ? union(next, opened.getBoundingClientRect()) : null;
+            // One easing for both: where they are headed is worked out from the target, then each moves the same
+            // share of the way this frame.
+            const factor = glideFactor(shownRef.current, lit);
+            setRect((prev) => same(prev, ease(shownRef, lit, factor)));
             setAround((prev) => same(prev, wide));
+            const goal = placeCard(wide ?? lit, cardSizeRef.current);
+            const from = placedRef.current;
+            const placed = from && factor < 1 ? { left: from.left + (goal.left - from.left) * factor, top: from.top + (goal.top - from.top) * factor } : goal;
+            placedRef.current = placed;
+            setPosition((prev) => (prev && Math.abs(prev.left - placed.left) + Math.abs(prev.top - placed.top) < 0.5 ? prev : placed));
             frame = window.requestAnimationFrame(update);
         };
         // A menu opened for this step renders a frame later, so look for the element again briefly.
@@ -225,7 +260,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
         return null;
     }
 
-    const position = placeCard(around ?? rect, card);
+    const at = position ?? placeCard(around ?? rect, card);
     const last = index === available.length - 1;
 
     return (
@@ -240,7 +275,7 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
                 <rect width="100%" height="100%" mask="url(#tour-hole)" />
             </svg>
             {rect && <div className="tour__ring" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }} />}
-            <div ref={cardRef} className="tour__card" role="dialog" aria-modal="true" aria-labelledby="tour-title" style={{ left: position.left, top: position.top, width: window.innerWidth < 600 ? window.innerWidth - 24 : CARD_WIDTH }}>
+            <div ref={cardRef} className="tour__card" role="dialog" aria-modal="true" aria-labelledby="tour-title" style={{ left: at.left, top: at.top, width: window.innerWidth < 600 ? window.innerWidth - 24 : CARD_WIDTH }}>
                 <div className="tour__head">
                     <span className="tour__count">
                         {index + 1} of {available.length}
@@ -251,10 +286,12 @@ export function Tour({ steps, open, onClose, onStep, menuSteps }: { steps: TourS
                         </svg>
                     </button>
                 </div>
+                <div key={index} className="tour__content">
                 <h2 id="tour-title" className="tour__title">
                     {step.title}
                 </h2>
                 <div className="tour__body">{step.body}</div>
+                </div>
                 <div className="tour__progress" aria-hidden="true">
                     {available.map((s, i) => (
                         <span key={s.title} className={i === index ? 'is-on' : i < index ? 'is-done' : undefined} />

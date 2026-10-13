@@ -95,7 +95,7 @@ The command exits non-zero when a hint of a `fail_on` kind remains, so it fits C
 
 Visit `/schema-viewer` in the local environment: every table of the connection, the models on them, and each relation drawn as an edge with its methods and kind (one-to-many, many-to-many, polymorphic, has-many-through).
 
-To point someone at one table, link to it: `/schema-viewer#connection=all&table=mysql:orders&focus=1` opens every connection with the `orders` table of the `mysql` connection selected and focus mode on it and its direct neighbors (`focus` takes 1 to 3 links; leave it out to show the whole diagram). The same hash works on a static HTML export.
+To point someone at one table, link to it: `/schema-viewer#connection=all&table=mysql:orders&focus=1` opens every connection with the `orders` table of the `mysql` connection selected and focus mode on it and its direct neighbors (`focus` takes 1 to 3 links; leave it out to show the whole diagram). To point at a column instead, use `column=mysql:orders.user_id`; the link button in the viewer (Shift C) copies a link to exactly what is on screen, relationships included. The same hash works on a static HTML export.
 
 JSON exports record where each model class and relation method is declared (`source`: a file relative to the app's root and a line); use it to find the code behind a relation.
 

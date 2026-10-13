@@ -40,7 +40,7 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: centralTable,
+        target: ['.react-flow__node-table[data-tour-pick]', centralTable],
         closeUp: true,
         title: 'A table',
         body: (
@@ -50,13 +50,13 @@ export const TOUR_STEPS: TourStep[] = [
                     <b>PK</b>, <b>FK</b> and <b>?</b> mark the primary key, foreign keys and nullable columns; the right side shows each type or cast.
                 </li>
                 <li>
-                    Click a card for everything about it, double-click to focus on it and its neighbors (<kbd>Shift F</kbd>). Its arrow folds it.
+                    Click a card, a column or a line for its details. Double-click one to focus on it: only what is around it stays (<kbd>Shift F</kbd>). A card's arrow folds it.
                 </li>
             </ul>
         ),
     },
     {
-        target: firstLabel,
+        target: ['.edge-label[data-tour-pick]', firstLabel],
         labels: true,
         closeUp: true,
         title: 'A relationship',
@@ -72,29 +72,9 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Zoom and arrange',
         body: (
             <p>
-                Zoom in and out, fit the whole diagram on screen, and arrange the tables automatically (<kbd>Shift A</kbd>). The hand turns on pan mode: drag anywhere, even over a table, to move around; or hold <kbd>Space</kbd>. In your app, the last button reads the database and models again (<kbd>Shift R</kbd>).
+                Zoom in and out, fit the whole diagram on screen, and arrange the tables automatically (<kbd>Shift A</kbd>). Click the percentage to type a zoom. The hand turns on pan mode: drag anywhere, even over a table, to move around; or hold <kbd>Space</kbd>. In your app, the last button reads the database and models again (<kbd>Shift R</kbd>).
             </p>
         ),
-    },
-    {
-        target: '[data-tour="search"]',
-        title: 'Search',
-        body: <p>Find a table by its name, a column, its model or a relation. Pick a result to jump to the table.</p>,
-    },
-    {
-        target: ['.ui-tabs', '.sheet-bar__main'],
-        title: 'Details',
-        body: (
-            <p>
-                <b>Tables</b> lists every table, with a filter; pick one to see it. The <b>Table</b> tab shows the selected table's columns, relations, the relations that point at it, indexes and model settings: casts, fillable, hidden, scopes and observers. With an editor set in the config, model and relation names open in it, and{' '}
-                <b>Copy link</b> shares exactly this view. Drag the panel's edge to make it wider.
-            </p>
-        ),
-    },
-    {
-        target: ['.ui-tabs .ui-tab:nth-child(3)', '.sheet-bar__hints'],
-        title: 'Hints',
-        body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
     },
     {
         target: '[data-tour="view-relationships"]',
@@ -150,6 +130,44 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
+        target: '[data-tour="copy"]',
+        title: 'Share this view',
+        body: (
+            <p>
+                Copies a link to exactly what you see: the connection, the table, relationship or column you picked, focus mode, the columns shown, and where the diagram is zoomed (<kbd>Shift C</kbd>). It
+                works in a downloaded HTML file too.
+            </p>
+        ),
+    },
+    {
+        target: '[data-tour="search"]',
+        title: 'Search',
+        body: <p>Find a table by its name, a column, its model or a relation. Pick a result to jump to the table.</p>,
+    },
+    {
+        target: ['.ui-tabs', '.sheet-bar__main'],
+        title: 'Browse and details',
+        body: (
+            <ul>
+                <li>
+                    <b>Browse</b> lists every table, relationship and column, with one filter (<kbd>A</kbd>).
+                </li>
+                <li>
+                    <b>Details</b> shows what you picked: a table's columns, relations and model; a relationship's keys, foreign key and relations; or a column's type, indexes and the relationships that use it (<kbd>D</kbd>).
+                    Click a table, a line or a column on the diagram to pick it there.
+                </li>
+                <li>
+                    With an editor set in the config, model and relation names open in it. <b>Copy link</b> shares the view; drag the panel's edge to widen it.
+                </li>
+            </ul>
+        ),
+    },
+    {
+        target: ['.ui-tabs .ui-tab:nth-child(3)', '.sheet-bar__hints'],
+        title: 'Hints',
+        body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
+    },
+    {
         target: ['#connection', '[data-tour="menu-connection"]'],
         menu: 'phone',
         title: 'Connections',
@@ -162,7 +180,6 @@ export const TOUR_STEPS: TourStep[] = [
     {
         target: ['[data-tour="actions"]', '[data-tour="menu-actions"]'],
         menu: 'phone',
-        opens: 'download',
         extend: '[data-tour="menu-offline"]',
         title: 'Download',
         body: (
