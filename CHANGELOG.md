@@ -2,6 +2,11 @@
 
 All notable changes to `laravel-schema-viewer` will be documented in this file.
 
+## v1.3.1 - 2026-10-14
+
+### Changed
+- A package's table without a model reads "package table" next to the package's name, instead of "no model". Your own tables without a model still say "no model".
+
 ## v1.3.0 - 2026-10-14
 
 ### Added
