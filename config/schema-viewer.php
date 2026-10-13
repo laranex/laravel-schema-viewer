@@ -10,11 +10,9 @@ return [
     | Unset, the viewer is on in the local environment and off everywhere
     | else. Set it to true or false to decide for every environment.
     |
-    | In the local environment there is no gate, only a host check: the
-    | viewer answers on APP_URL's host, localhost, 127.0.0.1 and ::1, so a
-    | tunnel (Herd Share, Expose, ngrok) or another hostname gets a 403.
-    | Decide yourself with SchemaViewer::auth() in a provider, e.g. for
-    | Docker or a remote machine with its own hostname.
+    | In the local environment everyone may open it; elsewhere only users
+    | the viewSchema gate allows, as with Telescope. Decide yourself with
+    | SchemaViewer::auth() in a service provider.
     |
     | The viewer shows schema-viewer.json in the project root, which php
     | artisan schema-viewer:build writes. No model code runs in a request.

@@ -60,7 +60,7 @@ use Laranex\LaravelSchemaViewer\SchemaViewer;
 SchemaViewer::auth(fn (Request $request): bool => $request->user()?->isAdmin() ?? false);
 ```
 
-Without a callback, `local` has no gate, only a host check: the viewer opens on `APP_URL`'s host, `localhost`, `127.0.0.1` and `::1`, and answers 403 on any other host, such as a tunnel's (Herd Share, Expose, ngrok) or a name a web page rebinds to the machine. For Docker or a remote machine reached under another hostname, use `SchemaViewer::auth()`; it replaces the host check too.
+Without a callback, `local` is open to everyone, as with Telescope; elsewhere only users the `viewSchema` gate allows.
 
 ## Use
 
