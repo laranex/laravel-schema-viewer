@@ -67,9 +67,11 @@ export function route(boxes: Map<string, Box>, requests: RouteRequest[]): Map<st
     }
 
     // Edges sharing a gap get their own lanes, ordered top to bottom, so vertical runs never sit on each other.
-    const lanes = new Map<number, Draft[]>();
+    // A loop between two cards in the same column has its own lanes just right of the cards, apart from the edges
+    // that cross the next gap; sharing theirs would spread it back over the cards.
+    const lanes = new Map<string, Draft[]>();
     for (const d of drafts) {
-        const key = Math.round(d.gap / 10);
+        const key = `${d.same ? 'loop' : 'gap'}:${Math.round((d.same ? d.base : d.gap) / 10)}`;
         const group = lanes.get(key);
         if (group) {
             group.push(d);
@@ -79,8 +81,14 @@ export function route(boxes: Map<string, Box>, requests: RouteRequest[]): Map<st
     }
     const offsets = new Map<string, number>();
     for (const group of lanes.values()) {
-        group.sort((a, b) => (a.sy + a.ty) / 2 - (b.sy + b.ty) / 2);
         const limit = GAP / 2 - 20;
+        if (group[0].same) {
+            // Shorter loops inside longer ones, each one lane further out, so none crosses back over a card.
+            group.sort((a, b) => Math.abs(a.ty - a.sy) - Math.abs(b.ty - b.sy));
+            group.forEach((d, i) => offsets.set(d.id, Math.min(limit, i * LANE_STEP)));
+            continue;
+        }
+        group.sort((a, b) => (a.sy + a.ty) / 2 - (b.sy + b.ty) / 2);
         group.forEach((d, i) => offsets.set(d.id, Math.max(-limit, Math.min(limit, (i - (group.length - 1) / 2) * LANE_STEP))));
     }
 
