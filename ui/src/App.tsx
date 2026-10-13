@@ -326,6 +326,9 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
         const roomFor = step?.opens === 'download' || !(window.innerWidth <= 760 && window.innerHeight < 760);
         setTourOpens(roomFor ? step?.opens : undefined);
         setTourLabels(!!step?.labels);
+        if (step?.tab) {
+            setTab(step.tab);
+        }
         document.querySelectorAll('[data-tour-pick]').forEach((el) => el.removeAttribute('data-tour-pick'));
         // Bring what the step shows to the middle at a readable size in one smooth move: the label nearest the middle
         // once the labels are drawn, or the table nearest it (its header and first columns, when it is taller than the
@@ -913,7 +916,13 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
             }
             window.setTimeout(() => {
                 if (h.kind === 'column') {
-                    centerOn(nodeId(h.connection, h.table));
+                    // The column's table and the tables its lines reach, when they fit at a readable size.
+                    const seeds = seedsOf(schema, h);
+                    if (seeds.length > 1 && seeds.length <= 6) {
+                        flow.fitView({ nodes: seeds.map((t) => ({ id: nodeId(t.connection, t.table) })), padding: 0.25, maxZoom: 1, duration: 400 });
+                    } else {
+                        centerOn(nodeId(h.connection, h.table));
+                    }
                     return;
                 }
                 const l = schema.links(h.connection).find((x) => x.id === h.id);
@@ -1521,7 +1530,7 @@ function Viewer({ doc, example = false, exportUrl, downloads, defaultConnection,
                                         <path d="M5.3 5.4 a2.7 2.7 0 1 1 3.9 2.4 c-0.75 0.38 -1.2 0.95 -1.2 1.8 V10.4 M8 13.3 V13.4" />
                                     </FloatButton>
                                 </div>
-                            {narrow && smallScreenNote && !tourOpen && (
+                            {narrow && smallScreenNote && !tourOpen && !focus && (
                                 <div className="screen-note" role="status">
                                     <p>
                                         <b>Easier on a larger screen.</b> On a phone you can browse every table and its details; the diagram itself is best on a desktop or tablet.

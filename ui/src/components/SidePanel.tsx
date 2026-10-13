@@ -77,6 +77,16 @@ export const HINT_TITLE: Record<Hint['kind'], string> = {
     custom_relation: 'Custom relation, foreign key not checked',
 };
 
+// A relationship's short name for the phone's sheet bar: its two tables.
+function relationshipTitle(schema: Schema, connection: string, id: string): string {
+    const l = schema.links(connection).find((x) => x.id === id);
+    if (l) {
+        return `${l.from.table} → ${l.to.table}`;
+    }
+    const d = schema.derived(connection).find((x) => x.id === id);
+    return d ? `${d.from} → ${d.to}` : 'Relationship';
+}
+
 export function SidePanel({ schema, connections, tables, selected, highlight, onHighlight, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, focusedOn, onFocusHighlight, onLeaveFocus, onCopyLink }: Props) {
     const hints = connections.flatMap((c) => schema.hints(c));
     const [filter, setFilter] = useState('');
@@ -91,7 +101,7 @@ export function SidePanel({ schema, connections, tables, selected, highlight, on
                     <button type="button" className="sheet-bar__main" aria-expanded={sheetOpen} onClick={() => onSheet(!sheetOpen)}>
                         <span className="sheet-bar__title">
                             {highlight ? (
-                                <code>{highlight.kind === 'column' ? `${highlight.table}.${highlight.column}` : 'Relationship'}</code>
+                                <code>{highlight.kind === 'column' ? `${highlight.table}.${highlight.column}` : relationshipTitle(schema, highlight.connection, highlight.id)}</code>
                             ) : selected ? (
                                 <code>{selected.table}</code>
                             ) : (

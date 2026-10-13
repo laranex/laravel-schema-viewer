@@ -14,6 +14,8 @@ export type TourStep = {
     opens?: 'download' | 'relationships' | 'tables' | 'show';
     // On phones, where the step's part sits in the ⋯ menu, more of the menu to spotlight with it.
     extend?: string;
+    // The panel tab the step explains, switched to while the step is open.
+    tab?: 'browse' | 'details' | 'hints';
     // Relation names show on every line while this step is open, even when they are switched off.
     labels?: boolean;
     // The diagram zooms in to a readable size first, when it shows more than it can label.

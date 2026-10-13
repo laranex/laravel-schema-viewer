@@ -135,27 +135,41 @@ export const TOUR_STEPS: TourStep[] = [
         body: <p>Find a table by its name, a column, its model or a relation. Pick a result to jump to the table.</p>,
     },
     {
-        target: ['.ui-tabs', '.sheet-bar__main'],
-        title: 'Browse and details',
+        target: ['.ui-tabs .ui-tab:nth-child(1)', '.sheet-bar__action'],
+        tab: 'browse',
+        title: 'Browse',
+        body: (
+            <p>
+                Every table, relationship and column, with one filter (<kbd>A</kbd>). Pick one to see it on the diagram and in Details.
+            </p>
+        ),
+    },
+    {
+        target: ['.ui-tabs .ui-tab:nth-child(2)', '.sheet-bar__main'],
+        tab: 'details',
+        title: 'Details',
         body: (
             <ul>
                 <li>
-                    <b>Browse</b> lists every table, relationship and column, with one filter (<kbd>A</kbd>).
+                    What you picked (<kbd>D</kbd>): a table's columns, relations and model; a relationship's keys, foreign key and relations; or a column's type, indexes and the relationships that use it.
                 </li>
+                <li>Click a table, a line or a column on the diagram to pick it there.</li>
                 <li>
-                    <b>Details</b> shows what you picked: a table's columns, relations and model; a relationship's keys, foreign key and relations; or a column's type, indexes and the relationships that use it (<kbd>D</kbd>).
-                    Click a table, a line or a column on the diagram to pick it there.
-                </li>
-                <li>
-                    With an editor set in the config, model and relation names open in it. <b>Copy link</b> copies a link to exactly this view (<kbd>Shift C</kbd>); drag the panel's edge to widen it.
+                    <b>Focus</b> keeps only what is around it; <b>Copy link</b> copies a link to exactly this view (<kbd>Shift C</kbd>). With an editor set in the config, model and relation names open in it. Drag the panel's edge to
+                    widen it.
                 </li>
             </ul>
         ),
     },
     {
         target: ['.ui-tabs .ui-tab:nth-child(3)', '.sheet-bar__hints'],
+        tab: 'hints',
         title: 'Hints',
-        body: <p>Things worth a second look: relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.</p>,
+        body: (
+            <p>
+                Things worth a second look (<kbd>H</kbd>): relations without a foreign key, foreign keys without an index or a relation, morph columns that store class names, and relations that could not be read.
+            </p>
+        ),
     },
     {
         target: ['#connection', '[data-tour="menu-connection"]'],
