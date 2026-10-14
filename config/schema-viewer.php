@@ -110,8 +110,7 @@ return [
 
     'framework_tables' => [
         'migrations', 'jobs', 'job_batches', 'failed_jobs', 'cache', 'cache_locks',
-        'sessions', 'password_reset_tokens', 'personal_access_tokens', 'notifications',
-        'telescope_*', 'pulse_*',
+        'sessions', 'password_reset_tokens', 'notifications',
     ],
 
     'package_tables' => [
@@ -119,6 +118,9 @@ return [
         'laravel/cashier' => ['subscriptions', 'subscription_items'],
         'laravel/cashier-paddle' => ['customers', 'subscriptions', 'subscription_items', 'transactions'],
         'laravel/pennant' => ['features'],
+        'laravel/pulse' => ['pulse_*'],
+        'laravel/sanctum' => ['personal_access_tokens'],
+        'laravel/telescope' => ['telescope_*'],
     ],
 
     /*

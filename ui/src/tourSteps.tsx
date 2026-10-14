@@ -106,8 +106,8 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Tables',
         body: (
             <p>
-                Every table is one of three kinds, each with its count: <b>Your tables</b> (<kbd>Y</kbd>); <b>Framework tables</b>, Laravel's own such as migrations, jobs, cache and sessions, plus Telescope and Pulse (<kbd>G</kbd>);
-                and <b>Package tables</b>, from an installed package such as Passport or Cashier, or one you list in <code>package_tables</code> (<kbd>P</kbd>). A hidden kind leaves the diagram, the Browse list and search.
+                Every table is one of three kinds, each with its count: <b>Your tables</b> (<kbd>Y</kbd>); <b>Framework tables</b>, Laravel's own such as migrations, jobs, cache and sessions (<kbd>G</kbd>);
+                and <b>Package tables</b>, from an installed package such as Telescope, Pulse, Sanctum or Passport, or one you list in <code>package_tables</code> (<kbd>P</kbd>). A hidden kind leaves the diagram, the Browse list and search.
             </p>
         ),
     },
