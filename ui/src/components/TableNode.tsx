@@ -1,6 +1,6 @@
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { Handle, Position, useStore, type Node, type NodeProps } from '@xyflow/react';
 import { createContext, memo, useContext } from 'react';
-import type { Fold } from '../graph';
+import { cardRows, LOW_DETAIL_ZOOM, ROW_HEIGHT, type Fold } from '../graph';
 import type { Table } from '../types';
 import { LazyTooltip as Tooltip } from './ui';
 
@@ -95,6 +95,44 @@ function NoteRow({ text }: { text: string }) {
     );
 }
 
+const lowDetailOf = (s: { transform: [number, number, number] }) => s.transform[2] < LOW_DETAIL_ZOOM;
+
+// A card too small to read: its name and models, and a plain bar for each row, so it costs a fraction of a full card
+// while keeping its size and the handles its edges end on.
+function LowDetailCard({ data, className, folded, ends }: { data: TableNodeData; className: string; folded: string[]; ends: Set<string> }) {
+    const linked = new Set(data.linked);
+    const rows = cardRows(data.table, data.shown, data.notes);
+    return (
+        <div className={`${className} is-low`}>
+            <header className="table-node__header">
+                {folded
+                    .filter((c) => ends.has(c))
+                    .map((c) => (
+                        <ColumnHandles key={c} column={c} />
+                    ))}
+                <div className="table-node__title">
+                    <span className="table-node__name">{data.table.name}</span>
+                </div>
+                <div className="table-node__meta">
+                    <span>{data.models[0] ?? ''}</span>
+                </div>
+            </header>
+            {data.shown.length > 0 && (
+                // One element draws every row as a bar; only rows an edge ends on, or that are lit, get their own.
+                <div className="table-node__bars" style={{ height: (rows.length + (folded.length > 0 ? 1 : 0)) * ROW_HEIGHT }}>
+                    {rows.map((row, i) =>
+                        ends.has(row) || linked.has(row) ? (
+                            <div key={row} className={`table-node__bar${linked.has(row) ? ' is-linked' : ''}`} style={{ top: i * ROW_HEIGHT }}>
+                                {ends.has(row) && <ColumnHandles column={row} />}
+                            </div>
+                        ) : null,
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
     const { table } = data;
     const { setFold, highlightColumn, focusColumn } = useContext(TableActions);
@@ -105,6 +143,18 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
     const classes = ['table-node', data.shown.length === 0 ? 'is-folded' : '', selected ? 'is-selected' : '', data.dim ? 'is-dim' : '', data.active ? 'is-active' : '', table.framework ? 'is-framework' : '', data.pivot ? 'is-pivot' : '']
         .filter(Boolean)
         .join(' ');
+    const lowDetail = useStore(lowDetailOf);
+
+    if (lowDetail) {
+        return (
+            <LowDetailCard
+                data={data}
+                className={classes}
+                folded={folded.map((c) => c.name)}
+                ends={ends}
+            />
+        );
+    }
 
     return (
         <div className={classes}>

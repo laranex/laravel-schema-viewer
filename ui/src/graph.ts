@@ -3,6 +3,9 @@ import type { DerivedLink, Hint, Link, Model, Relation, SchemaDocument, Table } 
 export const NODE_WIDTH = 268;
 export const HEADER_HEIGHT = 52;
 export const ROW_HEIGHT = 26;
+// Below this zoom the text on a card is too small to read: cards draw their rows as plain bars and labels show only
+// on the picked table's lines, which keeps a whole large schema on screen smooth.
+export const LOW_DETAIL_ZOOM = 0.4;
 
 export const nodeId = (connection: string, table: string) => `${connection}.${table}`;
 
