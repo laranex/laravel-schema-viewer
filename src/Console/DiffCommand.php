@@ -114,7 +114,7 @@ final class DiffCommand extends Command
 
         if ($changes === null || $changes === []) {
             $message = $changes === null
-                ? 'Nothing to compare yet. After a later schema-viewer:build finds a different schema, this lists what changed.'
+                ? 'Nothing to compare yet. Once a later schema-viewer:build finds that tables, columns, indexes, foreign keys, models or relations changed, this lists what changed.'
                 : 'No schema changes.';
             $format === 'markdown' ? $this->raw("## Schema changes\n\n{$message}\n") : $this->components->info($message);
 

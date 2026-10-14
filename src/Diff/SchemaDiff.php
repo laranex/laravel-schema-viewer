@@ -6,17 +6,18 @@ namespace Laranex\LaravelSchemaViewer\Diff;
 
 /**
  * What changed between two schema documents, as decoded from JSON: connections, tables, columns, indexes, foreign keys,
- * models, relations, links and hints that were added, removed or changed. A field one side does not have, because a
+ * models, relations and links that were added, removed or changed. Hints are left out: they have their own list, and a
+ * new rule or setting can change them while the schema stays the same. A field one side does not have, because a
  * version of the package wrote it without that field, is never a change. A renamed table or column shows as one removed
  * and one added.
  *
  * Each change is an array: type, change (added, removed or changed), connection and table where they apply, name, and
  * fields ([before, after] by field) for a change, a small before for a removal, a small after for an addition, and a
- * message for links and hints.
+ * message for links.
  */
 final class SchemaDiff
 {
-    private const ORDER = ['connection', 'table', 'column', 'index', 'foreign_key', 'model', 'relation', 'link', 'hint'];
+    private const ORDER = ['connection', 'table', 'column', 'index', 'foreign_key', 'model', 'relation', 'link'];
 
     private const TABLE_FIELDS = ['comment', 'note'];
 
@@ -75,7 +76,6 @@ final class SchemaDiff
         ));
 
         array_push($changes, ...self::links(self::list($before['links'] ?? []), self::list($after['links'] ?? [])));
-        array_push($changes, ...self::hints(self::list($before['hints'] ?? []), self::list($after['hints'] ?? [])));
 
         usort($changes, fn (array $a, array $b): int => [
             self::string($a['connection'] ?? ''), self::string($a['table'] ?? ''), array_search($a['type'], self::ORDER, true), self::string($a['name'] ?? ''), self::string($a['change']), self::string($a['message'] ?? ''),
@@ -107,10 +107,6 @@ final class SchemaDiff
 
         if ($type === 'link') {
             return $label;
-        }
-
-        if ($type === 'hint') {
-            return ($change['change'] === 'added' ? 'New hint' : 'Hint gone').' ('.self::string($change['name'] ?? '').'): '.self::string($change['message'] ?? '');
         }
 
         $details = [];
@@ -255,36 +251,6 @@ final class SchemaDiff
                 'fields' => ['state' => [$was, $is]],
                 'message' => trim($message),
             ];
-        }
-
-        return $changes;
-    }
-
-    /**
-     * @param  list<array<mixed>>  $before
-     * @param  list<array<mixed>>  $after
-     * @return list<array<string, mixed>>
-     */
-    private static function hints(array $before, array $after): array
-    {
-        $key = fn (array $h): string => (string) json_encode([$h['kind'] ?? null, $h['connection'] ?? null, $h['table'] ?? null, $h['columns'] ?? null, $h['relation'] ?? null]);
-        $old = self::keyed($before, $key);
-        $new = self::keyed($after, $key);
-        $changes = [];
-
-        foreach (['added' => array_diff_key($new, $old), 'removed' => array_diff_key($old, $new)] as $change => $hints) {
-            foreach ($hints as $hint) {
-                $changes[] = [
-                    'type' => 'hint',
-                    'change' => $change,
-                    'connection' => self::string($hint['connection'] ?? ''),
-                    'table' => self::string($hint['table'] ?? ''),
-                    'name' => self::string($hint['kind'] ?? ''),
-                    'columns' => $hint['columns'] ?? null,
-                    'relation' => $hint['relation'] ?? null,
-                    'message' => self::string($hint['message'] ?? ''),
-                ];
-            }
         }
 
         return $changes;

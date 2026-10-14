@@ -63,13 +63,13 @@ export function changedTables(changes: Change[] | null | undefined): Map<string,
 // What changed in the schema since the previous build that changed it, grouped by table.
 export function ChangeList({ schema, changes, connections, onOpen, onHighlight }: Props) {
     if (!changes) {
-        return <p className="panel__empty">Nothing to compare yet. After a later schema-viewer:build finds a different schema, this tab lists what changed.</p>;
+        return <p className="panel__empty">Nothing to compare yet. Once a later schema-viewer:build finds that tables, columns, indexes, foreign keys, models or relations changed, this tab lists what changed.</p>;
     }
     const inView = changes.filter((c) => !c.connection || connections.includes(c.connection));
     if (!inView.length) {
         return (
             <>
-                <h2 className="changes__head">Since the previous build</h2>
+                <h2 className="changes__head">Changed by the last build that found a difference</h2>
                 <p className="panel__empty">{changes.length ? 'Nothing changed on this connection.' : 'Nothing this tab follows changed.'}</p>
             </>
         );
@@ -106,7 +106,7 @@ export function ChangeList({ schema, changes, connections, onOpen, onHighlight }
     return (
         <div className="changes">
             <h2 className="changes__head">
-                Since the previous build <span className="muted">· {inView.length} {inView.length === 1 ? 'change' : 'changes'}</span>
+                Changed by the last build that found a difference <span className="muted">· {inView.length} {inView.length === 1 ? 'change' : 'changes'}</span>
             </h2>
             {[...groups].map(([key, items]) => {
                 const [connection, table] = key.split('\u0000');

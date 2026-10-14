@@ -91,7 +91,7 @@ php artisan schema-viewer:diff base.json --format=json
 php artisan schema-viewer:diff base.json --against=schema-viewer.json --format=markdown
 ```
 
-Without arguments it prints the `changes` stored in `schema-viewer.json`: what changed since the previous build that changed the schema (null before there was one), without touching the database. With an older snapshot it compares that file with the schema now, or with `--against` two files without running any model code. Each change has a `type` (connection, table, column, index, foreign_key, model, relation, link, hint), a `change` (added, removed, changed), where it is, and `fields` ([before, after]) for a change. A renamed table or column shows as one removed and one added. To review a branch, compare with the base branch's file: `git show origin/main:schema-viewer.json > base.json`.
+Without arguments it prints the `changes` stored in `schema-viewer.json`: what the last build that found a difference changed (null before there was one; hints are not included), without touching the database. With an older snapshot it compares that file with the schema now, or with `--against` two files without running any model code. Each change has a `type` (connection, table, column, index, foreign_key, model, relation, link), a `change` (added, removed, changed), where it is, and `fields` ([before, after]) for a change. A renamed table or column shows as one removed and one added. To review a branch, compare with the base branch's file: `git show origin/main:schema-viewer.json > base.json`.
 
 ### Point a person at a table, relationship or column
 

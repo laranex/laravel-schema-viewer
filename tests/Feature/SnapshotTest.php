@@ -225,9 +225,26 @@ it('says what kind of difference the check found', function (string $edit, strin
 })->with([
     'another format' => ['format', 'It was written by another version of laravel-schema-viewer.'],
     'formatting only' => ['formatting', 'Only its formatting differs.'],
-    'a hint' => ['hint', 'New hint ('],
+    'only the hints' => ['hint', 'such as the hints'],
     'a model' => ['model', 'Model Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\'],
 ]);
+
+it('keeps the listed changes when a build finds only the hints different', function (): void {
+    buildSnapshot();
+    Schema::create('gadgets', fn (Blueprint $table) => $table->id());
+    buildSnapshot();
+    $before = json_decode((string) file_get_contents($this->snapshot), true);
+
+    // A rule or setting change can add or remove hints while the schema stays the same.
+    config()->set('schema-viewer.hints.ignore', [['table' => '*']]);
+    buildSnapshot();
+    $after = json_decode((string) file_get_contents($this->snapshot), true);
+
+    expect($before['document']['hints'])->not->toBe([])
+        ->and($after['document']['hints'])->toBe([])
+        ->and($before['changes'])->not->toBe([])
+        ->and($after['changes'])->toBe($before['changes']);
+});
 
 it('lists what changed since the snapshot it replaces, and keeps that list while the schema stays the same', function (): void {
     buildSnapshot();

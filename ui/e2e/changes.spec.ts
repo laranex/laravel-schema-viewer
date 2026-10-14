@@ -9,7 +9,7 @@ test('lists what changed since the previous build and opens what is still there'
     const tab = page.getByRole('tab', { name: /Changes/ });
     await expect(tab).toHaveAttribute('aria-selected', 'true');
     await expect(tab.locator('.count')).toHaveText('5');
-    await expect(page.locator('.changes__head')).toContainText('Since the previous build');
+    await expect(page.locator('.changes__head')).toContainText('Changed by the last build that found a difference');
 
     // Removed things are struck through and lead nowhere.
     await expect(page.locator('.change--removed del')).toHaveCount(2);

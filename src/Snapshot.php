@@ -91,11 +91,13 @@ final class Snapshot
         $fresh = json_decode((string) json_encode($written, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), true);
         $previous = $this->decoded($this->current());
 
-        $changes = match (true) {
-            $previous === null || ! is_array($fresh) => null,
-            $previous['document'] === $fresh => $previous['changes'],
-            default => SchemaDiff::diff($previous['document'], $fresh),
-        };
+        $changes = null;
+
+        if ($previous !== null && is_array($fresh)) {
+            $diff = $previous['document'] === $fresh ? [] : SchemaDiff::diff($previous['document'], $fresh);
+            // Nothing the changes cover differs (at most the hints did): keep what the last different build listed.
+            $changes = $diff === [] ? $previous['changes'] : $diff;
+        }
 
         $contents = json_encode([
             'format' => self::FORMAT,
@@ -169,7 +171,7 @@ final class Snapshot
 
         $lines = array_map(SchemaDiff::describe(...), SchemaDiff::diff($old['document'], $new['document']));
 
-        return $lines !== [] ? $lines : ['Its contents differ in details the summary does not cover, such as the order of items or the downloads.'];
+        return $lines !== [] ? $lines : ['Its contents differ in details the summary does not cover, such as the hints, the order of items or the downloads.'];
     }
 
     /**

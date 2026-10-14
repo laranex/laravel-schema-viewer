@@ -177,7 +177,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Changes',
         body: (
             <p>
-                What changed since the previous build that changed the schema (<kbd>W</kbd>): tables, columns, indexes, foreign keys, models, relations and hints. A dot on a card marks a new or changed table.
+                What the last build that found a difference changed (<kbd>W</kbd>): tables, columns, indexes, foreign keys, models and relations. A build that changes nothing keeps the list as it was. A dot on a card marks a new or changed table.
             </p>
         ),
     },

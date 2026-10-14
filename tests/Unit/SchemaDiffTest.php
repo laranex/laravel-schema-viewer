@@ -93,7 +93,7 @@ it('lists added, removed and changed tables, columns, indexes and foreign keys',
         ->and(collect($changes)->where('table', 'users')->count())->toBe(1);
 });
 
-it('lists models, relations, links and hints', function (): void {
+it('lists models, relations and links, but not hints', function (): void {
     $after = diffDocument([
         'models' => [['fillable' => ['status', 'total'], 'softDeletes' => true]],
         'relations' => [['type' => 'HasOne']],
@@ -108,7 +108,7 @@ it('lists models, relations, links and hints', function (): void {
         ->and($changes->where('type', 'relation')->pluck('change', 'name')->all())->toBe(['App\Models\Order::items' => 'added', 'App\Models\Order::user' => 'changed'])
         ->and($changes->firstWhere('type', 'link')['message'])->toBe('Order::user() is now backed by a foreign key')
         ->and($changes->firstWhere('type', 'link')['fields'])->toBe(['state' => ['relation', 'both']])
-        ->and($changes->where('type', 'hint')->map(fn (array $c): string => $c['change'].' '.$c['name'])->values()->all())->toBe(['added morph_without_map', 'removed relation_without_foreign_key']);
+        ->and($changes->where('type', 'hint')->all())->toBe([]);
 });
 
 it('ignores fields one side does not have', function (): void {
@@ -148,8 +148,6 @@ it('describes each change as a line', function (array $change, string $line): vo
     'a connection' => [['type' => 'connection', 'change' => 'added', 'connection' => 'analytics', 'after' => ['tables' => 2]], 'Connection analytics added: tables 2'],
     'an index' => [['type' => 'index', 'change' => 'added', 'table' => 'orders', 'name' => 'orders_status_index', 'after' => ['columns' => ['status']]], 'Index orders_status_index on orders added: columns ["status"]'],
     'a link' => [['type' => 'link', 'change' => 'changed', 'message' => 'Order::user() is now backed by a foreign key'], 'Order::user() is now backed by a foreign key'],
-    'a hint' => [['type' => 'hint', 'change' => 'added', 'name' => 'duplicate_index', 'message' => 'Two indexes.'], 'New hint (duplicate_index): Two indexes.'],
-    'a gone hint' => [['type' => 'hint', 'change' => 'removed', 'name' => 'duplicate_index', 'message' => 'Two indexes.'], 'Hint gone (duplicate_index): Two indexes.'],
     'a model' => [['type' => 'model', 'change' => 'removed', 'name' => 'App\Models\Order', 'before' => ['table' => 'orders']], 'Model App\Models\Order removed: table orders'],
     'a relation' => [['type' => 'relation', 'change' => 'changed', 'name' => 'App\Models\Order::user', 'fields' => ['pivot' => [null, ['table' => 'x']]]], 'Relation App\Models\Order::user changed: pivot none → {"table":"x"}'],
     'a foreign key' => [['type' => 'foreign_key', 'change' => 'changed', 'table' => 'orders', 'name' => 'fk', 'fields' => ['onDelete' => ['restrict', 'cascade']]], 'Foreign key fk on orders changed: onDelete restrict → cascade'],
