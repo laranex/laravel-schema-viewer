@@ -174,6 +174,11 @@ function RelationshipDetails({ schema, connection, id, editor, onOpen, onHighlig
                 <p className="details__sub">
                     {link.from.connection} · {linkKind(schema, link)} · <span className={`state state--${link.state}`}>{state.label}</span>
                 </p>
+                {link.note && (
+                    <p className="details__comment details__note">
+                        <b>Note</b> {link.note}
+                    </p>
+                )}
                 {focusButton}
             </header>
 

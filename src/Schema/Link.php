@@ -21,6 +21,7 @@ final class Link implements JsonSerializable
         public readonly ?string $foreignKey,
         public readonly array $relations,
         public readonly bool $morph,
+        public readonly ?string $note = null,
     ) {}
 
     public function state(): LinkState
@@ -45,6 +46,7 @@ final class Link implements JsonSerializable
             'relations' => $this->relations,
             'state' => $this->state()->value,
             'morph' => $this->morph,
+            'note' => $this->note,
         ];
     }
 }

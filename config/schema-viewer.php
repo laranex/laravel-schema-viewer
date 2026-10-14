@@ -129,15 +129,18 @@ return [
     |--------------------------------------------------------------------------
     |
     | Your own notes, shown in the viewer beside the database's comments and
-    | written into the exports: one on the project, and notes on tables and
-    | columns by table name. A table name applies on every connection that
-    | has the table; prefix it with a connection to pick one, which wins:
+    | written into the exports: one on the project, and notes on tables,
+    | columns and relationships by table name. A relationship is named by
+    | the table and the columns that hold its key (comma separated when
+    | there are several). A table name applies on every connection that has
+    | the table; prefix it with a connection to pick one, which wins:
     |
     |   'tables' => ['orders' => 'One row per checkout.',
     |                'analytics:events' => 'Raw tracking events.'],
     |   'columns' => ['orders' => ['status' => 'pending, paid or refunded.']],
+    |   'relationships' => ['orders' => ['user_id' => 'The buyer.']],
     |
-    | schema-viewer:build warns about notes that match no table or column.
+    | schema-viewer:build warns about notes that match nothing.
     |
     */
 
@@ -145,6 +148,7 @@ return [
         'project' => null,
         'tables' => [],
         'columns' => [],
+        'relationships' => [],
     ],
 
     /*

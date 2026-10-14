@@ -63,7 +63,7 @@ export const TOUR_STEPS: TourStep[] = [
         body: (
             <p>
                 Each line joins the column that holds the key to the column it points at. The label names the relation methods and the kind of relationship. Crow's feet mark the many side. Hover a label for the exact
-                columns. On a big schema the labels show only on the selected table's lines; <b>Relation names</b> under <b>Show</b> puts them on every line (<kbd>L</kbd>).
+                columns. <b>Relation names</b> under <b>Show</b> hides or shows the labels on every line (<kbd>L</kbd>); off, only the selected table's lines carry them.
             </p>
         ),
     },
@@ -162,20 +162,6 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
-        target: ['.project-note', '.ui-tabs .ui-tab:nth-child(2)', '.sheet-bar__main'],
-        tab: 'details',
-        title: 'Notes',
-        body: (
-            <ul>
-                <li>
-                    Your team's own notes on the schema, from <code>notes</code> in <code>config/schema-viewer.php</code>, next to the database's comments.
-                </li>
-                <li>The project note shows here before anything is picked; a table's or a column's shows in its details, and in the table's column list.</li>
-                <li>On the diagram, hover a column's type for its comment and note. Search finds words in notes too.</li>
-            </ul>
-        ),
-    },
-    {
         target: ['.ui-tabs .ui-tab:nth-child(3)', '.sheet-bar__hints'],
         tab: 'hints',
         title: 'Hints',
@@ -218,7 +204,7 @@ export const TOUR_STEPS: TourStep[] = [
     {
         target: ['[data-tour="shortcuts"]', '[data-tour="menu-shortcuts"]'],
         menu: 'phone',
-        title: 'Keyboard shortcuts',
+        title: 'Shortcuts',
         body: (
             <p>
                 Everything here has a key. Open this list any time with <kbd>S</kbd>.

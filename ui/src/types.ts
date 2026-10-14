@@ -119,6 +119,8 @@ export type Link = {
     relations: string[];
     state: LinkState;
     morph: boolean;
+    // From the notes config; snapshots from before 1.4.1 have none.
+    note?: string | null;
 };
 
 // Through relations: drawn as a derived edge, never matched to a foreign key.

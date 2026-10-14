@@ -238,7 +238,6 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
     const [tab, setTab] = useState<PanelTab>(() => (linked.table || linked.highlight ? 'details' : 'browse'));
     const [query, setQuery] = useState('');
-    // A large schema starts with relation names on the selected table only; on every edge they would cover the diagram.
     const [layers, setLayers] = useState<Layers>(() => ({
         both: true,
         relation: true,
@@ -247,7 +246,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         app: true,
         framework: true,
         package: true,
-        allLabels: doc.connections.reduce((n, c) => n + schema.tables(c.name).length, 0) <= DENSE,
+        allLabels: true,
     }));
     const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
     const [toast, setToast] = useState<string | null>(null);
@@ -752,6 +751,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                     many: !schema.isUnique(l.from.connection, l.from.table, l.from.columns),
                     label: names.length ? names.join(' · ') : (l.foreignKey ?? ''),
                     detail: `${l.from.table}.${l.from.columns.join(', ')} → ${l.to.table}.${l.to.columns.join(', ')}`,
+                    note: l.note ?? null,
                     showLabel: layers.allLabels || tourLabels || touch,
                     emphasized: touch,
                     dim: isDim(source) || isDim(target) || (quiet && !touch),
@@ -1418,7 +1418,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                     </svg>
                                 }
                                 items={[{ label: 'Download…', hint: 'Diagrams, references and an offline page', onSelect: () => setDownloadOpen(true) }]}
-                                groups={[{ items: [{ label: dark ? 'Light mode' : 'Dark mode', onSelect: switchTheme }, { label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
+                                groups={[{ items: [{ label: dark ? 'Light mode' : 'Dark mode', onSelect: switchTheme }, { label: 'Shortcuts', onSelect: () => setHelpOpen(true), tour: 'menu-shortcuts' }] }]}
                                 open={menuOpen || tourMenu === 'phone'}
                                 onOpenChange={(o) => !tourMenu && setMenuOpen(o)}
                                 choice={{
@@ -1468,7 +1468,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                             <rect x="1.5" y="2" width="17" height="12" rx="2" />
                                             <path d="M5 6 H5.5 M8 6 H8.5 M11.5 6 H12 M14.5 6 H15 M5 9 H5.5 M14.5 9 H15 M7.5 11.5 H12.5" />
                                         </svg>
-                                        <span className="button__text">Keyboard shortcuts</span>
+                                        <span className="button__text">Shortcuts</span>
                                     </button>
                                 </Tooltip>
                             </div>

@@ -151,5 +151,12 @@ function reasonFor(schema: Schema, connection: string, table: Table, q: string):
         return `model ${shortClass(model.class)}`;
     }
     const noted = table.columns.find((c) => c.note?.toLowerCase().includes(q));
-    return noted ? `note on ${noted.name}` : table.note?.toLowerCase().includes(q) ? 'its note' : null;
+    if (noted) {
+        return `note on ${noted.name}`;
+    }
+    const link = schema.links(connection).find((l) => l.from.table === table.name && l.note?.toLowerCase().includes(q));
+    if (link) {
+        return `note on ${link.from.columns.join(', ')} → ${link.to.table}`;
+    }
+    return table.note?.toLowerCase().includes(q) ? 'its note' : null;
 }

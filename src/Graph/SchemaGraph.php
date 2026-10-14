@@ -47,8 +47,10 @@ final class SchemaGraph
      * @param  list<UnresolvedRelation>  $unresolved
      * @param  list<IgnoreRule>  $ignore  Hints to leave out.
      * @param  string|null  $note  The project's note, from the notes config.
+     * @param  array<string, array<string, string>>  $relationshipNotes  Notes on relationships by the table that holds the key (plain, or
+     *                                                                   prefixed with a connection and a colon, which wins), then by its columns, comma separated.
      */
-    public function build(array $connections, array $models, array $relations, array $unresolved, array $ignore = [], ?string $generatedAt = null, ?string $note = null): SchemaDocument
+    public function build(array $connections, array $models, array $relations, array $unresolved, array $ignore = [], ?string $generatedAt = null, ?string $note = null, array $relationshipNotes = []): SchemaDocument
     {
         $this->models = [];
 
@@ -65,7 +67,7 @@ final class SchemaGraph
         }
 
         try {
-            return $this->document($connections, $models, $relations, $unresolved, $ignore, $generatedAt, $note);
+            return $this->document($connections, $models, $relations, $unresolved, $ignore, $generatedAt, $note, $relationshipNotes);
         } finally {
             $this->models = $this->morphTargets = [];
         }
@@ -77,8 +79,9 @@ final class SchemaGraph
      * @param  list<RelationInfo>  $relations
      * @param  list<UnresolvedRelation>  $unresolved
      * @param  list<IgnoreRule>  $ignore  Hints to leave out.
+     * @param  array<string, array<string, string>>  $relationshipNotes
      */
-    private function document(array $connections, array $models, array $relations, array $unresolved, array $ignore, ?string $generatedAt, ?string $note): SchemaDocument
+    private function document(array $connections, array $models, array $relations, array $unresolved, array $ignore, ?string $generatedAt, ?string $note, array $relationshipNotes): SchemaDocument
     {
         $this->pairInverses($relations);
 
@@ -138,6 +141,9 @@ final class SchemaGraph
             foreignKey: $link['foreignKey'],
             relations: $link['relations'],
             morph: $link['morph'],
+            note: $relationshipNotes[$link['from']->connection.':'.$link['from']->table][implode(',', $link['from']->columns)]
+                ?? $relationshipNotes[$link['from']->table][implode(',', $link['from']->columns)]
+                ?? null,
         ), array_keys($links), $links);
 
         $hints = array_values(array_filter(

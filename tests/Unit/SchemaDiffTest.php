@@ -111,6 +111,19 @@ it('lists models, relations and links, but not hints', function (): void {
         ->and($changes->where('type', 'hint')->all())->toBe([]);
 });
 
+it('lists a relationship whose note changed', function (): void {
+    $before = diffDocument(['links' => [['note' => null]]]);
+    $after = diffDocument(['links' => [['note' => 'The buyer.']]]);
+
+    $change = collect(SchemaDiff::diff(asLists($before), asLists($after)))->firstWhere('type', 'link');
+
+    expect($change['fields'])->toBe(['note' => [null, 'The buyer.']])
+        ->and($change['message'])->toBe('Relationship orders.user_id → users.id note: none → The buyer.')
+        ->and(SchemaDiff::describe($change))->toBe('Relationship orders.user_id → users.id note: none → The buyer.')
+        // A snapshot from before relationship notes has no field to compare.
+        ->and(SchemaDiff::diff(asLists(diffDocument()), asLists($after)))->toBe([]);
+});
+
 it('ignores fields one side does not have', function (): void {
     $before = diffDocument();
     unset($before['connections'][0]['tables']['orders']['note'], $before['connections'][0]['tables']['orders']['columns']['status']['note'], $before['connections'][0]['tables']['orders']['indexes']['primary']['partial']);

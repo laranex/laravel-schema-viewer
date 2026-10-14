@@ -188,7 +188,7 @@ class SchemaViewer
             $this->connectionNames($models),
         );
 
-        return $this->graph->build($connections, $models, $relations, $unresolved, $this->ignoreRules(), note: $notes['project']);
+        return $this->graph->build($connections, $models, $relations, $unresolved, $this->ignoreRules(), note: $notes['project'], relationshipNotes: $notes['relationships']);
     }
 
     /**
@@ -289,10 +289,11 @@ class SchemaViewer
     }
 
     /**
-     * The notes config: a note on the project, and notes on tables and columns by table name. A table name may start
-     * with a connection name and a colon (analytics:events), which wins over the plain name on that connection.
+     * The notes config: a note on the project, notes on tables by table name, and notes on columns and on relationships
+     * by table name, then column (for a relationship, the columns that hold its key, comma separated). A table name may
+     * start with a connection name and a colon (analytics:events), which wins over the plain name on that connection.
      *
-     * @return array{project: string|null, tables: array<string, string>, columns: array<string, array<string, string>>}
+     * @return array{project: string|null, tables: array<string, string>, columns: array<string, array<string, string>>, relationships: array<string, array<string, string>>}
      *
      * @throws InvalidArgumentException When a note is not a string.
      */
@@ -303,6 +304,7 @@ class SchemaViewer
         $project = $notes['project'] ?? null;
         $tables = $notes['tables'] ?? [];
         $columns = $notes['columns'] ?? [];
+        $relationships = $notes['relationships'] ?? [];
 
         if ($project !== null && ! is_string($project)) {
             throw new InvalidArgumentException('schema-viewer.notes.project must be a string or null.');
@@ -316,17 +318,26 @@ class SchemaViewer
             throw new InvalidArgumentException('schema-viewer.notes.columns must map table names to column notes, such as [\'orders\' => [\'status\' => \'…\']].');
         }
 
+        if (! is_array($relationships) || array_filter($relationships, fn (mixed $notes): bool => ! is_array($notes) || array_filter($notes, fn (mixed $note): bool => ! is_string($note)) !== []) !== []) {
+            throw new InvalidArgumentException('schema-viewer.notes.relationships must map table names to notes by the columns that hold the key, such as [\'orders\' => [\'user_id\' => \'…\']].');
+        }
+
         /** @var array<string, string> $tables */
         /** @var array<string, array<string, string>> $columns */
+        /** @var array<string, array<string, string>> $relationships */
+        $byColumn = fn (array $notes): array => array_combine(array_map('strval', array_keys($notes)), array_map(fn (array $notes): array => array_combine(array_map('strval', array_keys($notes)), $notes), $notes));
+
         return [
             'project' => $project !== '' ? $project : null,
             'tables' => array_combine(array_map('strval', array_keys($tables)), $tables),
-            'columns' => array_combine(array_map('strval', array_keys($columns)), array_map(fn (array $notes): array => array_combine(array_map('strval', array_keys($notes)), $notes), $columns)),
+            'columns' => $byColumn($columns),
+            'relationships' => $byColumn($relationships),
         ];
     }
 
     /**
-     * The table and column notes that name nothing in the document, such as orders.stauts, so the build can say so.
+     * The table, column and relationship notes that name nothing in the document, such as orders.stauts, so the build
+     * can say so. A relationship note is listed with "relationship" before it.
      *
      * @return list<string>
      */
@@ -359,6 +370,20 @@ class SchemaViewer
             foreach (array_keys($columns) as $column) {
                 if (array_filter($tables, fn (Schema\Table $table): bool => $table->hasColumn($column)) === []) {
                     $unmatched[] = $key.'.'.$column;
+                }
+            }
+        }
+
+        foreach ($notes['relationships'] as $key => $relationships) {
+            [$connection, $table] = str_contains($key, ':') ? explode(':', $key, 2) : [null, $key];
+
+            foreach (array_keys($relationships) as $columns) {
+                $found = array_filter($document->links, fn (Schema\Link $link): bool => ($connection === null || $link->from->connection === $connection)
+                    && $link->from->table === $table
+                    && implode(',', $link->from->columns) === $columns);
+
+                if ($found === []) {
+                    $unmatched[] = 'relationship '.$key.'.'.$columns;
                 }
             }
         }

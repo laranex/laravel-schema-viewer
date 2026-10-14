@@ -246,6 +246,9 @@ export class Schema {
                 ...table.columns.map((c) => c.name),
                 table.note ?? '',
                 ...table.columns.map((c) => c.note ?? ''),
+                ...this.links(connection)
+                    .filter((l) => l.from.table === table.name)
+                    .map((l) => l.note ?? ''),
                 ...this.modelsFor(connection, table.name).map((m) => m.class),
                 ...this.relationsOf(connection, table.name).map((r) => r.name),
             ].map((s) => s.toLowerCase());

@@ -1661,7 +1661,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\Category::parent"
                 ],
                 "state": "both",
-                "morph": false
+                "morph": false,
+                "note": null
             },
             {
                 "id": "l96e5ca81c5",
@@ -1686,7 +1687,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\Post::comments"
                 ],
                 "state": "relation",
-                "morph": true
+                "morph": true,
+                "note": null
             },
             {
                 "id": "lce5cf5755e",
@@ -1707,7 +1709,8 @@
                 "foreignKey": "comments_user_id_foreign",
                 "relations": [],
                 "state": "foreign_key",
-                "morph": false
+                "morph": false,
+                "note": null
             },
             {
                 "id": "lef23f6c9eb",
@@ -1731,7 +1734,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\Post::category"
                 ],
                 "state": "relation",
-                "morph": false
+                "morph": false,
+                "note": null
             },
             {
                 "id": "ld343f1bbed",
@@ -1757,7 +1761,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\User::posts"
                 ],
                 "state": "both",
-                "morph": false
+                "morph": false,
+                "note": null
             },
             {
                 "id": "l18f2e223e0",
@@ -1781,7 +1786,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\User::roles"
                 ],
                 "state": "both",
-                "morph": false
+                "morph": false,
+                "note": null
             },
             {
                 "id": "l783bdd4745",
@@ -1805,7 +1811,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\User::roles"
                 ],
                 "state": "both",
-                "morph": false
+                "morph": false,
+                "note": null
             },
             {
                 "id": "l62f41fe491",
@@ -1829,7 +1836,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\Tag::posts"
                 ],
                 "state": "both",
-                "morph": false
+                "morph": false,
+                "note": null
             },
             {
                 "id": "l62d8040290",
@@ -1853,7 +1861,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\Tag::posts"
                 ],
                 "state": "relation",
-                "morph": true
+                "morph": true,
+                "note": null
             },
             {
                 "id": "lcfa010edce",
@@ -1877,7 +1886,8 @@
                     "Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\User::country"
                 ],
                 "state": "both",
-                "morph": false
+                "morph": false,
+                "note": null
             }
         ],
         "derivedLinks": [

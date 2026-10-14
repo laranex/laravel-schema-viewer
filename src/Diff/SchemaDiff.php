@@ -206,8 +206,8 @@ final class SchemaDiff
     }
 
     /**
-     * Links whose state moved: a relation that gained or lost its foreign key, a foreign key that gained or lost a
-     * relation.
+     * Links whose state moved (a relation that gained or lost its foreign key, a foreign key that gained or lost a
+     * relation), and links whose note changed.
      *
      * @param  list<array<mixed>>  $before
      * @param  list<array<mixed>>  $after
@@ -222,14 +222,28 @@ final class SchemaDiff
         foreach (self::keyed($after, $key) as $id => $link) {
             $was = $old[$id]['state'] ?? null;
             $is = $link['state'] ?? null;
+            $from = is_array($link['from'] ?? null) ? $link['from'] : [];
+            $to = is_array($link['to'] ?? null) ? $link['to'] : [];
+            $name = self::string($from['table'] ?? '').'.'.implode(', ', self::strings($from['columns'] ?? [])).' → '.self::string($to['table'] ?? '').'.'.implode(', ', self::strings($to['columns'] ?? []));
+
+            // A note only counts when both sides have the field, as for tables and columns.
+            if (isset($old[$id]) && array_key_exists('note', $old[$id]) && array_key_exists('note', $link) && $old[$id]['note'] !== $link['note']) {
+                $changes[] = [
+                    'type' => 'link',
+                    'change' => 'changed',
+                    'connection' => self::string($from['connection'] ?? ''),
+                    'table' => self::string($from['table'] ?? ''),
+                    'name' => $name,
+                    'id' => self::string($link['id'] ?? ''),
+                    'fields' => ['note' => [$old[$id]['note'], $link['note']]],
+                    'message' => sprintf('Relationship %s note: %s → %s', $name, self::show($old[$id]['note']), self::show($link['note'])),
+                ];
+            }
 
             if (! is_string($was) || ! is_string($is) || $was === $is) {
                 continue;
             }
 
-            $from = is_array($link['from'] ?? null) ? $link['from'] : [];
-            $to = is_array($link['to'] ?? null) ? $link['to'] : [];
-            $name = self::string($from['table'] ?? '').'.'.implode(', ', self::strings($from['columns'] ?? [])).' → '.self::string($to['table'] ?? '').'.'.implode(', ', self::strings($to['columns'] ?? []));
             $relations = implode(' and ', array_map(fn (string $id): string => self::shortRelation($id).'()', self::strings($link['relations'] ?? $old[$id]['relations'] ?? [])));
             $foreignKey = self::string($link['foreignKey'] ?? $old[$id]['foreignKey'] ?? '');
 

@@ -12,6 +12,7 @@ export type LinkEdgeData = {
     many: boolean;
     label: string;
     detail: string;
+    note?: string | null;
     showLabel: boolean;
     emphasized: boolean;
     dim: boolean;
@@ -92,6 +93,12 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: Ed
                                 {data.relationship}, {KIND_LABEL[kind]}
                                 <br />
                                 <code>{data.detail}</code>
+                                {data.note && (
+                                    <>
+                                        <br />
+                                        <b>Note</b> {data.note}
+                                    </>
+                                )}
                             </>
                         }
                     >
