@@ -364,7 +364,7 @@ function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean;
         <>
             {mixed && (
                 <div className="hints__filter">
-                    <span className="segmented" role="radiogroup" aria-label="Show hints">
+                    <div className="browse__modes" role="radiogroup" aria-label="Show hints">
                         {(
                             [
                                 ['all', `All ${hints.length}`],
@@ -372,11 +372,11 @@ function HintList({ hints, several, onOpen }: { hints: Hint[]; several: boolean;
                                 ['likely', `Likely ${likely}`],
                             ] as [CertaintyFilter, string][]
                         ).map(([value, label]) => (
-                            <button key={value} type="button" role="radio" aria-checked={certainty === value} className="segmented__option" onClick={() => setCertainty(value)}>
+                            <button key={value} type="button" role="radio" aria-checked={certainty === value} className="browse__mode" onClick={() => setCertainty(value)}>
                                 {label}
                             </button>
                         ))}
-                    </span>
+                    </div>
                 </div>
             )}
             <HintItems hints={shown} several={several} onOpen={onOpen} />
