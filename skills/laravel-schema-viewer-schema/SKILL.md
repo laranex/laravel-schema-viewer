@@ -61,11 +61,11 @@ Read `--format=json` rather than the text: one JSON document with `passed`, `fai
 Hint kinds:
 
 - `relation_without_foreign_key`: a relation uses columns with no foreign key; add one in a migration, or ignore it when intended (polymorphic and cross-connection relations never get this hint).
-- `foreign_key_without_relation`: a foreign key no model declares; add the `belongsTo` / `hasMany` pair.
+- `foreign_key_without_relation` (note): a foreign key no model declares; add the `belongsTo` / `hasMany` pair.
 - `foreign_key_without_index`: a foreign key column with no index starting with it; add the index.
 - `model_without_table`: a model whose table does not exist on its connection.
-- `morph_without_map`: morph columns store class names; register `Relation::enforceMorphMap()`.
-- `unresolved_relation`: a relation method of the app threw when called on a blank model (no row loaded); fix the method.
+- `morph_without_map` (note): morph columns store class names; register `Relation::enforceMorphMap()`.
+- `unresolved_relation`: a relation method of the app threw when called on a blank model (no row loaded); fix the method so it works without a loaded row.
 - `unresolved_package_relation` (note): the same for a method inherited from a package, such as Passport's `Token::user()`; usually nothing to do.
 - `custom_relation` (note): a relation without a foreign key that joins other tables or matches a column that is not unique, so its foreign key is not checked.
 
