@@ -671,42 +671,6 @@ button:disabled {
     padding: 4px 0;
 }
 
-.table-node__bars {
-    position: relative;
-    box-sizing: content-box;
-    padding: 4px 0;
-    /* A bar in the middle of every 26px row. */
-    background: repeating-linear-gradient(to bottom, transparent 0 10px, var(--line) 10px 16px, transparent 16px 26px) 12px 4px / 55% calc(100% - 8px) no-repeat;
-}
-
-.table-node__bar {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 26px;
-    margin-top: 4px;
-}
-
-.table-node__bar.is-linked {
-    background: var(--accent-soft);
-}
-
-.table-node__bar.is-linked::after {
-    content: '';
-    position: absolute;
-    top: 10px;
-    left: 12px;
-    width: 55%;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--accent);
-    opacity: 0.5;
-}
-
-.table-node__columns li {
-    cursor: default;
-}
-
 .table-node__columns li {
     cursor: pointer;
     position: relative;

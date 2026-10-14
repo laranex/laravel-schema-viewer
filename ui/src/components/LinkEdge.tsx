@@ -1,6 +1,5 @@
-import { BaseEdge, EdgeLabelRenderer, useStore, type Edge, type EdgeProps } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
 import { createContext, memo, useContext, useSyncExternalStore } from 'react';
-import { LOW_DETAIL_ZOOM } from '../graph';
 import { LABEL_WIDTH, orthogonal, type Route } from '../routing';
 import { LazyTooltip } from './ui';
 
@@ -59,11 +58,8 @@ function useHovered(id: string) {
     return useSyncExternalStore(store.subscribe, () => store.get() === id);
 }
 
-const lowDetailOf = (s: { transform: [number, number, number] }) => s.transform[2] < LOW_DETAIL_ZOOM;
-
 function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: EdgeProps<LinkEdgeType>) {
     const hovered = useHovered(id);
-    const lowDetail = useStore(lowDetailOf);
     if (!data) {
         return null;
     }
@@ -75,8 +71,7 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: Ed
     const className = ['link-edge', `link-edge--${kind}`, data.morph ? 'link-edge--morph' : '', data.dim ? 'is-dim' : '', selected ? 'is-selected' : '', hovered ? 'is-hovered' : '']
         .filter(Boolean)
         .join(' ');
-    // Too small to read, a label shows only on the picked table's lines and under the pointer.
-    const showLabel = (data.showLabel || hovered) && !data.dim && (!lowDetail || data.emphasized || hovered);
+    const showLabel = (data.showLabel || hovered) && !data.dim;
 
     return (
         <>
