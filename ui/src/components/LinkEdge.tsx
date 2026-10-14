@@ -107,6 +107,13 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: Ed
                             style={{ maxWidth: LABEL_WIDTH, transform: `translate(-50%, -50%) translate(${route.labelX}px, ${route.labelY}px)` }}
                         >
                             <span className="edge-label__text">{data.label}</span>
+                            {data.note && (
+                                <span className="edge-label__note" role="img" aria-label="Has a note">
+                                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                                        <path d="M3.5 2.5 H10 L12.5 5 V13.5 H3.5 Z M6 7 H10 M6 9.5 H10 M6 12 H8.5" />
+                                    </svg>
+                                </span>
+                            )}
                             <span className="edge-label__chip">{data.relationship}</span>
                         </div>
                     </LazyTooltip>

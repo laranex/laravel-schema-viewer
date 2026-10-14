@@ -581,6 +581,11 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                                         {r.type} · {relationKind(r.type)}
                                     </span>
                                 </div>
+                                {relationNote(schema, r) && (
+                                    <p className="grid__note">
+                                        <b>Note</b> {relationNote(schema, r)}
+                                    </p>
+                                )}
                             </li>
                         ))}
                     </ul>
@@ -660,7 +665,10 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
     );
 }
 
-export function RelationKeys({ schema, relation: r }: { schema: Schema; relation: Relation }) {
+// The note on the relationship a relation draws, from the notes config.
+export const relationNote = (schema: Schema, r: Relation): string | null => schema.doc.links.find((l) => l.relations.includes(r.id))?.note ?? null;
+
+export function RelationKeys({ schema, relation: r, note = true }: { schema: Schema; relation: Relation; note?: boolean }) {
     const parts: string[] = [];
     if (r.pivot) {
         parts.push(`via ${r.pivot.table} (${r.pivot.foreignPivotKey}, ${r.pivot.relatedPivotKey})`);
@@ -695,6 +703,11 @@ export function RelationKeys({ schema, relation: r }: { schema: Schema; relation
                     </span>
                 ))}
             </div>
+            {note && link?.note && (
+                <p className="grid__note">
+                    <b>Note</b> {link.note}
+                </p>
+            )}
         </div>
     );
 }

@@ -1280,6 +1280,26 @@ button:disabled {
     line-height: 1.45;
 }
 
+.relation__keys .grid__note {
+    font-family: var(--font-sans);
+}
+
+.edge-label__note {
+    display: inline-flex;
+    flex: none;
+    color: var(--accent-ink);
+}
+
+.edge-label__note svg {
+    width: 11px;
+    height: 11px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
 .grid__note b {
     color: var(--fg);
     font-weight: 600;

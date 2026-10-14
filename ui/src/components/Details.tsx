@@ -108,7 +108,7 @@ function RelationItem({ relation: r, schema, editor }: { relation: Relation; sch
                     {r.type} · {relationKind(r.type)}
                 </span>
             </div>
-            <RelationKeys schema={schema} relation={r} />
+            <RelationKeys schema={schema} relation={r} note={false} />
         </li>
     );
 }
@@ -359,6 +359,11 @@ function ColumnDetails({ schema, highlight, onOpen, onHighlight, focusedOn, onFo
                                         {' '}
                                         {names.length ? names.join(' · ') : STATE_TEXT[l.state].label}
                                     </span>
+                                    {l.note && (
+                                        <p className="grid__note">
+                                            <b>Note</b> {l.note}
+                                        </p>
+                                    )}
                                 </li>
                             );
                         })}
