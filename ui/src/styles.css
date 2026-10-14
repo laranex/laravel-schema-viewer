@@ -1241,6 +1241,18 @@ button:disabled {
     font-size: var(--text-xs);
 }
 
+.grid__note {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+}
+
+.grid__note b {
+    color: var(--fg);
+    font-weight: 600;
+}
+
 .badges {
     display: flex;
     flex-wrap: wrap;

@@ -528,6 +528,12 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                                                 {casts[c.name] && <span className="badge badge--cast">cast {shortClass(casts[c.name])}</span>}
                                                 {hidden.has(c.name) && <span className="badge">hidden</span>}
                                             </div>
+                                            {c.comment && <p className="grid__note">{c.comment}</p>}
+                                            {c.note && (
+                                                <p className="grid__note">
+                                                    <b>Note</b> {c.note}
+                                                </p>
+                                            )}
                                         </td>
                                     </tr>
                                 );

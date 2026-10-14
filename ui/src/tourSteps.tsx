@@ -162,6 +162,20 @@ export const TOUR_STEPS: TourStep[] = [
         ),
     },
     {
+        target: ['.project-note', '.ui-tabs .ui-tab:nth-child(2)', '.sheet-bar__main'],
+        tab: 'details',
+        title: 'Notes',
+        body: (
+            <ul>
+                <li>
+                    Your team's own notes on the schema, from <code>notes</code> in <code>config/schema-viewer.php</code>, next to the database's comments.
+                </li>
+                <li>The project note shows here before anything is picked; a table's or a column's shows in its details, and in the table's column list.</li>
+                <li>On the diagram, hover a column's type for its comment and note. Search finds words in notes too.</li>
+            </ul>
+        ),
+    },
+    {
         target: ['.ui-tabs .ui-tab:nth-child(3)', '.sheet-bar__hints'],
         tab: 'hints',
         title: 'Hints',
