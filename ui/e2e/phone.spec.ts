@@ -3,7 +3,7 @@ import { openViewer } from './helpers';
 
 test.skip(({ isMobile }) => !isMobile, 'Only a phone shows the sheet and the small-screen note.');
 
-test('says once that a larger screen is easier', async ({ page }) => {
+test('says that a larger screen is easier, until closed; nothing is remembered, so each visit says it again', async ({ page }) => {
     await openViewer(page);
     const note = page.locator('.screen-note');
     await expect(note).toContainText('Easier on a larger screen.');
@@ -11,8 +11,7 @@ test('says once that a larger screen is easier', async ({ page }) => {
     await note.getByRole('button', { name: 'Close' }).click();
     await expect(note).toBeHidden();
     await page.reload();
-    await expect(page.locator('.react-flow__node-table').first()).toBeVisible();
-    await expect(note).toBeHidden();
+    await expect(note).toContainText('Easier on a larger screen.');
 });
 
 test('shows a table in the bottom sheet and the actions in More actions', async ({ page }) => {

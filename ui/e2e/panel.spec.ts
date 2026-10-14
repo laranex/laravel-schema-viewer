@@ -39,8 +39,13 @@ test('counts the hints and opens the rules that ignore one', async ({ page, brow
 });
 
 test('fits every tab and its count on one row at the narrowest panel', async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem('schema-viewer.panel-width', '340'));
     await openViewer(page);
+    // Narrow the panel as far as it goes, with the keyboard on its resizer.
+    const resizer = page.getByRole('separator');
+    await resizer.focus();
+    for (let i = 0; i < 20; i++) {
+        await page.keyboard.press('ArrowRight');
+    }
 
     const tabs = page.getByRole('tablist').first();
     await expect(tabs).toBeVisible();

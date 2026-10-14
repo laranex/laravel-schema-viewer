@@ -78,7 +78,15 @@ function sameData(a: Record<string, unknown>, b: Record<string, unknown>): boole
 
 const sameRoute = (a: Route, b: Route) => a.sourceSide === b.sourceSide && a.targetSide === b.targetSide && a.channelX === b.channelX && a.labelX === b.labelX && a.labelY === b.labelY;
 
-// Remembered per browser; storage can be blocked, and then nothing is remembered.
+// Only the theme is remembered in this browser; storage can be blocked, and then it is not. Earlier versions also
+// kept the view settings below, folded tables by name included; they are cleared, so nothing else stays behind.
+const FORGOTTEN = ['columns', 'folds', 'panel-width', 'arrangement', 'small-screen-note-closed', 'grid', 'shortcut-hints'];
+try {
+    FORGOTTEN.forEach((key) => localStorage.removeItem(`schema-viewer.${key}`));
+} catch {
+    // Storage blocked: there is nothing to clear.
+}
+
 function stored<T>(key: string, fallback: T, valid: (value: unknown) => boolean): T {
     try {
         const value: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
@@ -237,12 +245,10 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         linked.highlight && linked.focus ? { ...seedsOf(schema, linked.highlight)[0], depth: linked.focus, on: linked.highlight } : linked.table && linked.focus ? { ...linked.table, depth: linked.focus } : null,
     );
     // How much of each card shows: one choice for every table, and the tables folded or unfolded one by one.
-    const [columns, setColumnsState] = useState<Fold>(() => linked.columns ?? stored('schema-viewer.columns', 'all', isFold));
-    const [folds, setFolds] = useState<Record<string, Fold>>(() =>
-        stored('schema-viewer.folds', {}, (v) => typeof v === 'object' && v !== null && Object.values(v).every(isFold)),
-    );
+    const [columns, setColumnsState] = useState<Fold>(() => linked.columns ?? 'all');
+    const [folds, setFolds] = useState<Record<string, Fold>>({});
     // The details panel's width, dragged by its edge; null keeps the default.
-    const [panelWidth, setPanelWidth] = useState<number | null>(() => stored('schema-viewer.panel-width', null, (v) => typeof v === 'number' && v >= PANEL_MIN));
+    const [panelWidth, setPanelWidth] = useState<number | null>(null);
     const scopeConnections = useMemo(() => (scope === ALL ? doc.connections.map((c) => c.name) : [scope]), [doc, scope]);
     const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
     const [tab, setTab] = useState<PanelTab>(() => (linked.table || linked.highlight ? 'details' : 'browse'));
@@ -261,27 +267,19 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
     const [toast, setToast] = useState<string | null>(null);
     const [layoutVersion, setLayoutVersion] = useState(0);
-    // How Arrange places the tables, remembered in this browser.
-    const [arrangement, setArrangement] = useState<Arrangement>(() => stored('schema-viewer.arrangement', 'left-right', (v) => ARRANGEMENTS.includes(v as Arrangement)));
+    // How Arrange last placed the tables.
+    const [arrangement, setArrangement] = useState<Arrangement>('left-right');
     const [needsFit, setNeedsFit] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     // Pan mode: dragging anywhere moves the diagram, even over a table. The hand button switches it; holding Space
     // turns it on until the key is released.
     const [panMode, setPanMode] = useState(false);
-    // A phone gets a one-time note that the diagram is easier on a larger screen; closing it is remembered.
-    const [smallScreenNote, setSmallScreenNote] = useState(() => !stored('schema-viewer.small-screen-note-closed', false, (v) => typeof v === 'boolean'));
-    const closeSmallScreenNote = () => {
-        setSmallScreenNote(false);
-        store('schema-viewer.small-screen-note-closed', true);
-    };
-    // The dotted grid behind the diagram; remembered per browser.
-    const [grid, setGrid] = useState(() => stored('schema-viewer.grid', true, (v) => typeof v === 'boolean'));
-    const switchGrid = () => {
-        setGrid((on) => {
-            store('schema-viewer.grid', !on);
-            return !on;
-        });
-    };
+    // A phone gets a note that the diagram is easier on a larger screen, until it is closed.
+    const [smallScreenNote, setSmallScreenNote] = useState(true);
+    const closeSmallScreenNote = () => setSmallScreenNote(false);
+    // The dotted grid behind the diagram.
+    const [grid, setGrid] = useState(true);
+    const switchGrid = () => setGrid((on) => !on);
     const [spacePan, setSpacePan] = useState(false);
     const panning = panMode || spacePan;
     const narrow = useNarrow();
@@ -307,22 +305,9 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     const [dragging, setDragging] = useState<string | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const [helpOpen, setHelpOpen] = useState(false);
-    // Whether each control shows its shortcut key beside it. Off by default; remembered per browser.
-    const [keysOn, setKeysOn] = useState(() => {
-        try {
-            return localStorage.getItem('schema-viewer.shortcut-hints') === 'on';
-        } catch {
-            return false;
-        }
-    });
-    const switchKeys = (on: boolean) => {
-        setKeysOn(on);
-        try {
-            localStorage.setItem('schema-viewer.shortcut-hints', on ? 'on' : 'off');
-        } catch {
-            // Storage blocked: the choice lasts until reload.
-        }
-    };
+    // Whether each control shows its shortcut key beside it. Off by default.
+    const [keysOn, setKeysOn] = useState(false);
+    const switchKeys = (on: boolean) => setKeysOn(on);
     const [tourOpen, setTourOpen] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     // While a tour step explains part of the phone menu, the tour keeps the menu open.
@@ -1034,7 +1019,6 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                 } else {
                     next[id] = fold;
                 }
-                store('schema-viewer.folds', next);
                 return next;
             });
         },
@@ -1048,8 +1032,6 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     const setColumns = (fold: Fold) => {
         setColumnsState(fold);
         setFolds({});
-        store('schema-viewer.columns', fold);
-        store('schema-viewer.folds', {});
         setLayoutVersion((v) => v + 1);
         notify(fold === 'all' ? 'Every column shown.' : fold === 'keys' ? 'Tables folded to their key columns.' : 'Tables folded to their headers.');
     };
@@ -1107,16 +1089,12 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
 
     // Dragging the panel's edge sets its width, kept between the panel's minimum and room for the diagram.
     const mainRef = useRef<HTMLElement>(null);
-    // Dragging remembers the width once, on release; the keyboard and double-click remember it at once.
     // The panel's width as the resizer announces it: the dragged width, or the width the layout gives it.
     const panelDefaultWidth = Math.round(document.querySelector('.panel')?.getBoundingClientRect().width ?? 360);
-    const resizePanel = (width: number | null, remember = true) => {
+    const resizePanel = (width: number | null) => {
         const room = mainRef.current?.getBoundingClientRect().width ?? window.innerWidth;
         const next = width === null ? null : Math.round(Math.min(Math.max(width, PANEL_MIN), room - DIAGRAM_ROOM));
         setPanelWidth(next);
-        if (remember) {
-            store('schema-viewer.panel-width', next);
-        }
         return next;
     };
     const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -1129,14 +1107,10 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         const handle = e.currentTarget;
         handle.setPointerCapture(e.pointerId);
         const right = main.getBoundingClientRect().right;
-        let last: number | null = null;
         const move = (ev: PointerEvent) => {
-            last = resizePanel(right - ev.clientX, false);
+            resizePanel(right - ev.clientX);
         };
         const up = () => {
-            if (last !== null) {
-                store('schema-viewer.panel-width', last);
-            }
             handle.removeEventListener('pointermove', move);
             handle.removeEventListener('pointerup', up);
             handle.removeEventListener('pointercancel', up);
@@ -1351,9 +1325,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     };
 
 
-    const onAutoLayout = (next: Arrangement = arrangement) => {
+    const onAutoLayout = (next: Arrangement) => {
         setArrangement(next);
-        store('schema-viewer.arrangement', next);
         setLayoutVersion((v) => v + 1);
         notify(`Tables arranged ${ARRANGEMENT_TEXT[next].done}.`);
     };
@@ -1436,7 +1409,6 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                 setTab('changes');
                 setSheetOpen(true);
             },
-            A: () => onAutoLayout(),
             C: () => copyLink(),
             '[': () => step(-1),
             ']': () => step(1),
@@ -1678,7 +1650,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                             <FloatButton label={panMode ? 'Pan mode on: drag anywhere to move' : 'Pan mode: drag anywhere to move'} keys="Hold Space" pressed={panMode} extra onClick={() => setPanMode((on) => !on)}>
                                                 <path d="M5.5 8.5 V4 a1 1 0 0 1 2 0 V7.5 M7.5 7.5 V2.8 a1 1 0 0 1 2 0 V7.5 M9.5 7.5 V3.8 a1 1 0 0 1 2 0 V8.5 M11.5 8.5 V6 a1 1 0 0 1 2 0 V10 a4.5 4.5 0 0 1 -4.5 4.5 H8.6 a4 4 0 0 1 -3.1 -1.5 L2.7 9.6 a1.1 1.1 0 0 1 1.7 -1.4 L5.5 9.7" />
                                             </FloatButton>
-                                            <ArrangeMenu current={arrangement} onArrange={onAutoLayout} />
+                                            <ArrangeMenu onArrange={onAutoLayout} />
                                             </>
                                         )}
                                     </div>
@@ -2037,10 +2009,10 @@ const ARRANGEMENT_TEXT: Record<Arrangement, { label: string; hint: string; done:
     },
 };
 
-// Arrange: picks how the tables are placed and places them; the current way is marked with Shift A, which repeats it.
-function ArrangeMenu({ current, onArrange }: { current: Arrangement; onArrange: (arrangement: Arrangement) => void }) {
+// Arrange: picks how the tables are placed, and places them.
+function ArrangeMenu({ onArrange }: { onArrange: (arrangement: Arrangement) => void }) {
     return (
-        <Tooltip content={<>Arrange tables automatically <kbd>Shift A</kbd></>} side="top">
+        <Tooltip content="Arrange tables automatically" side="top">
             <span className="float-bar__extra" data-tour="auto-layout">
                 <Menu
                     label="Arrange tables automatically"
@@ -2057,7 +2029,6 @@ function ArrangeMenu({ current, onArrange }: { current: Arrangement; onArrange: 
                     items={ARRANGEMENTS.map((a) => ({
                         label: ARRANGEMENT_TEXT[a].label,
                         hint: ARRANGEMENT_TEXT[a].hint,
-                        shortcut: a === current ? 'Shift A' : undefined,
                         onSelect: () => onArrange(a),
                     }))}
                 />
@@ -2084,7 +2055,6 @@ const SHORTCUTS: [string[], string][] = [
     [['P'], 'Show or hide package tables, such as Passport\'s oauth_*'],
     [['A', 'D', 'H', 'W'], 'Open the Browse, Details, Hints or Changes tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
-    [['Shift A'], 'Arrange the tables again, the way chosen under Arrange'],
     [['Shift F'], 'Focus on the selected table, relationship or column and what is around it, or leave focus mode'],
     [['C'], 'Show every column, the key columns only, or the table names only'],
     [['Shift C'], 'Copy a link to exactly this view'],
