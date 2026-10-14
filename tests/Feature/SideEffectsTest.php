@@ -88,6 +88,20 @@ it('leaves the cache, jobs, events, logs and HTTP calls of relation methods to s
     Http::assertSentCount(class_exists(Client::class) ? 1 : 0);
 });
 
+it('says it is building only while it reads the models', function (): void {
+    expect(SchemaViewer::building())->toBeFalse();
+
+    noisyDocument();
+
+    expect(Noisy::$calls)->toContain('constructed while building')
+        ->and(SchemaViewer::building())->toBeFalse()
+        ->and(new Noisy)->toBeInstanceOf(Noisy::class)
+        ->and(Noisy::$calls)->toContain('constructed outside a build');
+
+    // calledPosts() sends its request; guardedPosts() skips its own while building.
+    Http::assertNotSent(fn ($request): bool => $request->url() === 'https://hooks.example.test/guarded');
+});
+
 it('notes a model that cannot be constructed instead of failing the document', function (): void {
     config()->set('schema-viewer.models', [dirname(__DIR__).'/Fixtures/Models', dirname(__DIR__).'/Fixtures/Unreadable']);
 

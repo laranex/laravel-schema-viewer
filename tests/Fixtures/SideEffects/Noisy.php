@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Laranex\LaravelSchemaViewer\SchemaViewer;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\Models\Post;
 
 /**
@@ -33,6 +34,7 @@ class Noisy extends Model
         parent::__construct($attributes);
 
         self::$calls[] = 'constructed';
+        self::$calls[] = SchemaViewer::building() ? 'constructed while building' : 'constructed outside a build';
     }
 
     protected static function booted(): void
@@ -61,6 +63,15 @@ class Noisy extends Model
     {
         event('noisy.announced');
         Log::info('noisy relation read');
+
+        return $this->hasMany(Post::class, 'user_id');
+    }
+
+    public function guardedPosts(): HasMany
+    {
+        if (! SchemaViewer::building()) {
+            Http::post('https://hooks.example.test/guarded');
+        }
 
         return $this->hasMany(Post::class, 'user_id');
     }

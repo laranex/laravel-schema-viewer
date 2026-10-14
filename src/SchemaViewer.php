@@ -69,6 +69,11 @@ class SchemaViewer
      */
     public static ?Closure $authUsing = null;
 
+    /**
+     * Whether the models are being read right now.
+     */
+    private static bool $building = false;
+
     public function __construct(
         private readonly Application $app,
         private readonly Config $config,
@@ -90,6 +95,16 @@ class SchemaViewer
     public static function auth(Closure $callback): void
     {
         static::$authUsing = $callback;
+    }
+
+    /**
+     * Whether the package is reading the application's models right now: true while schema-viewer:build, export or check
+     * constructs each model and calls its relation methods, false everywhere else. Check it in a constructor, boot(),
+     * booted() or relation method to skip work that would reach the outside world.
+     */
+    public static function building(): bool
+    {
+        return self::$building;
     }
 
     /**
@@ -135,30 +150,37 @@ class SchemaViewer
         $relations = [];
         $unresolved = [];
 
-        $this->relations->pretend(function () use (&$models, &$relations, &$unresolved, $whileReadingRelations): void {
-            $instances = [];
+        $building = self::$building;
+        self::$building = true;
 
-            foreach ($this->finder->find($this->modelPaths()) as $class) {
-                try {
-                    /** @var Model $model */
-                    $model = new $class;
-                    $models[] = $this->models->inspect($model);
-                    $instances[] = $model;
-                } catch (Throwable $e) {
-                    $unresolved[] = $this->relations->unreadable($class, $e);
+        try {
+            $this->relations->pretend(function () use (&$models, &$relations, &$unresolved, $whileReadingRelations): void {
+                $instances = [];
+
+                foreach ($this->finder->find($this->modelPaths()) as $class) {
+                    try {
+                        /** @var Model $model */
+                        $model = new $class;
+                        $models[] = $this->models->inspect($model);
+                        $instances[] = $model;
+                    } catch (Throwable $e) {
+                        $unresolved[] = $this->relations->unreadable($class, $e);
+                    }
                 }
-            }
 
-            $read = function () use ($instances, &$relations, &$unresolved): void {
-                foreach ($instances as $model) {
-                    $found = $this->relations->resolve($model);
-                    array_push($relations, ...$found['relations']);
-                    array_push($unresolved, ...$found['unresolved']);
-                }
-            };
+                $read = function () use ($instances, &$relations, &$unresolved): void {
+                    foreach ($instances as $model) {
+                        $found = $this->relations->resolve($model);
+                        array_push($relations, ...$found['relations']);
+                        array_push($unresolved, ...$found['unresolved']);
+                    }
+                };
 
-            $whileReadingRelations !== null ? $whileReadingRelations($read) : $read();
-        });
+                $whileReadingRelations !== null ? $whileReadingRelations($read) : $read();
+            });
+        } finally {
+            self::$building = $building;
+        }
 
         $notes = $this->notes();
         $connections = array_map(

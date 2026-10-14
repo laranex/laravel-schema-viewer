@@ -29,7 +29,20 @@ Install it as a dev dependency unless the team wants the viewer on a server.
 
 `schema-viewer:build` reads the database and the models and writes `schema-viewer.json` in the project root, always there (readable JSON: `format`, the schema `document`, each connection's `downloads`). The viewer has no API: its page carries the schema and the downloads from that file, and no model code runs in a web request. Without the file, the page says to run the build. Run it again after migrating or changing a model; on a server, run it in the deploy script after `migrate`. Commit the file only when the repository is private, since it lists every table and column, the models' fillable, hidden, casts and scopes, and source file paths; then every clone and server has the viewer and schema changes show as a diff. Otherwise add `/schema-viewer.json` to `.gitignore` and build it on each machine.
 
-Building constructs every model and calls its relation methods with every connection pretending, model events off, and jobs, mail, notifications, HTTP calls, events and the cache faked; everything is put back afterwards.
+Building constructs every model and calls its relation methods with every connection pretending, model events off, and jobs, mail, notifications, HTTP calls, events and the cache faked; everything is put back afterwards. Code that goes around Laravel's facades and clients still runs for real: a direct Guzzle or SDK call, a raw Redis write, a file write, a log line. `SchemaViewer::building()` is `true` only while the package reads the models (build, export and check), so a constructor, `booted()` or relation method can skip that work. Guard it with `class_exists()`, since a server installed with `composer install --no-dev` has no `SchemaViewer` class, and still return the relation:
+
+```php
+use Laranex\LaravelSchemaViewer\SchemaViewer;
+
+protected static function booted(): void
+{
+    if (class_exists(SchemaViewer::class) && SchemaViewer::building()) {
+        return;
+    }
+
+    // Calls to Slack, Stripe, Redis…
+}
+```
 
 ## Configure
 
@@ -115,7 +128,8 @@ expect(collect($document->hints)->pluck('kind'))->not->toContain(\Laranex\Larave
 
 - Enabling the viewer in production without the `viewSchema` gate or `SchemaViewer::auth()`; schema details help attackers.
 - Expecting the viewer to show a table altered by hand or a model just edited: run `php artisan schema-viewer:build` first.
-- Relation methods that do more than build the relation: the build runs them, with jobs, mail, HTTP, events and the cache faked, but file writes and other clients still run.
+- Relation methods, constructors and `booted()` that call services, write files or use Redis directly: the build runs them for real; skip that work when `SchemaViewer::building()` is `true`, behind a `class_exists()` check.
+- Calling `SchemaViewer::building()` without `class_exists(SchemaViewer::class)` when the package is a dev dependency: it throws on servers installed with `--no-dev`.
 - Writing `hints.ignore` rules by hand: copy the rule `schema-viewer:check` prints or the JSON export's `ignore` field.
 - Ignoring `relation_without_foreign_key` on a regular `belongsTo`: add the foreign key unless the relation crosses connections.
 - Dropping an index the check calls redundant without checking the queries that use it.
