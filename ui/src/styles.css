@@ -2107,8 +2107,11 @@ kbd {
     gap: 2px;
     padding: 8px 8px 0;
     border-bottom: 1px solid var(--line);
-    /* Should a panel still be too narrow, the tabs scroll rather than cut the last one off. */
+    /* Should a panel still be too narrow, the tabs scroll sideways rather than cut the last one off; the row itself
+       never gives up height to the panel's content. */
+    flex: none;
     overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: none;
 }
 

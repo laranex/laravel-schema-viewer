@@ -48,3 +48,13 @@ test('fits every tab and its count on one row at the narrowest panel', async ({ 
     expect(width).toBe(340);
     expect(needed).toBeLessThanOrEqual(width);
 });
+
+test('keeps the tab row whole above a long Browse list', async ({ page }) => {
+    await openViewer(page);
+    await page.getByRole('tab', { name: /Browse/ }).click();
+    await page.getByRole('radio', { name: 'Columns' }).click();
+
+    const height = await page.getByRole('tablist').first().evaluate((el) => el.getBoundingClientRect().height);
+    expect(height).toBeGreaterThan(40);
+    await expect(page.getByRole('tab', { name: /Changes/ })).toBeVisible();
+});
