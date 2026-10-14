@@ -86,4 +86,12 @@ function likely() {
     return snapshot;
 }
 
-export const fixtures = { blog, multi, large, changes, likely };
+// The blog with a note on posts.user_id → users, which four relations draw: two declared on Post, two on User.
+function notes() {
+    const snapshot = blog();
+    const link = snapshot.document.links.find((l) => l.from.table === 'posts' && l.from.columns.join() === 'user_id' && l.to.table === 'users');
+    link.note = 'The author of the post.';
+    return snapshot;
+}
+
+export const fixtures = { blog, multi, large, changes, likely, notes };

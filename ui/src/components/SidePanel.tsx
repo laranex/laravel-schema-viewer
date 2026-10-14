@@ -547,7 +547,7 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                 <section>
                     <h3>Relations</h3>
                     <ul className="relations">
-                        {relations.map((r) => (
+                        {relations.map((r, i) => (
                             <li key={r.id}>
                                 <div className="relation__head">
                                     <SourceLink source={r.source} editor={editor}>
@@ -560,7 +560,8 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                                         {shortClass(r.related)}
                                     </button>
                                 </div>
-                                <RelationKeys schema={schema} relation={r} />
+                                {/* A relationship's note shows once, under the first relation that draws it. */}
+                                <RelationKeys schema={schema} relation={r} note={!relations.slice(0, i).some((o) => sameLink(schema, o, r))} />
                             </li>
                         ))}
                     </ul>
@@ -581,11 +582,6 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
                                         {r.type} · {relationKind(r.type)}
                                     </span>
                                 </div>
-                                {relationNote(schema, r) && (
-                                    <p className="grid__note">
-                                        <b>Note</b> {relationNote(schema, r)}
-                                    </p>
-                                )}
                             </li>
                         ))}
                     </ul>
@@ -665,8 +661,11 @@ function TableDetails({ schema, connection, name, onOpen, onHighlight, editor, f
     );
 }
 
-// The note on the relationship a relation draws, from the notes config.
-export const relationNote = (schema: Schema, r: Relation): string | null => schema.doc.links.find((l) => l.relations.includes(r.id))?.note ?? null;
+// Whether two relations draw the same relationship.
+const sameLink = (schema: Schema, a: Relation, b: Relation): boolean => {
+    const link = schema.doc.links.find((l) => l.relations.includes(a.id));
+    return link !== undefined && link.relations.includes(b.id);
+};
 
 export function RelationKeys({ schema, relation: r, note = true }: { schema: Schema; relation: Relation; note?: boolean }) {
     const parts: string[] = [];
