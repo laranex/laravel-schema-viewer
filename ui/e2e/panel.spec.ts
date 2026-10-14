@@ -37,3 +37,14 @@ test('counts the hints and opens the rules that ignore one', async ({ page, brow
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
 });
+
+test('fits every tab and its count on one row at the narrowest panel', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('schema-viewer.panel-width', '340'));
+    await openViewer(page);
+
+    const tabs = page.getByRole('tablist').first();
+    await expect(tabs).toBeVisible();
+    const { width, needed } = await tabs.evaluate((el) => ({ width: el.clientWidth, needed: el.scrollWidth }));
+    expect(width).toBe(340);
+    expect(needed).toBeLessThanOrEqual(width);
+});

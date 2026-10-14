@@ -2105,15 +2105,25 @@ kbd {
 .ui-tabs {
     display: flex;
     gap: 2px;
-    padding: 8px 12px 0;
+    padding: 8px 8px 0;
     border-bottom: 1px solid var(--line);
+    /* Should a panel still be too narrow, the tabs scroll rather than cut the last one off. */
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.ui-tabs::-webkit-scrollbar {
+    display: none;
 }
 
 .ui-tab {
     display: inline-flex;
+    flex: 1 0 auto;
+    justify-content: center;
     align-items: center;
     gap: 6px;
-    padding: 8px 12px 10px;
+    white-space: nowrap;
+    padding: 8px 8px 10px;
     border: 0;
     border-bottom: 2px solid transparent;
     background: none;

@@ -39,6 +39,8 @@ const ALL = '*';
 
 // From this many tables on screen, edges are drawn thin and muted until a table is selected.
 const DENSE = 60;
+// The narrowest the panel goes: its four tabs and their counts still fit on one row.
+const PANEL_MIN = 340;
 // The narrowest the panel may leave the diagram: room for the floating bar with every control in it.
 const DIAGRAM_ROOM = 480;
 
@@ -233,7 +235,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         stored('schema-viewer.folds', {}, (v) => typeof v === 'object' && v !== null && Object.values(v).every(isFold)),
     );
     // The details panel's width, dragged by its edge; null keeps the default.
-    const [panelWidth, setPanelWidth] = useState<number | null>(() => stored('schema-viewer.panel-width', null, (v) => typeof v === 'number' && v >= 280));
+    const [panelWidth, setPanelWidth] = useState<number | null>(() => stored('schema-viewer.panel-width', null, (v) => typeof v === 'number' && v >= PANEL_MIN));
     const scopeConnections = useMemo(() => (scope === ALL ? doc.connections.map((c) => c.name) : [scope]), [doc, scope]);
     const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
     const [tab, setTab] = useState<PanelTab>(() => (linked.table || linked.highlight ? 'details' : 'browse'));
@@ -1076,7 +1078,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     const panelDefaultWidth = Math.round(document.querySelector('.panel')?.getBoundingClientRect().width ?? 360);
     const resizePanel = (width: number | null, remember = true) => {
         const room = mainRef.current?.getBoundingClientRect().width ?? window.innerWidth;
-        const next = width === null ? null : Math.round(Math.min(Math.max(width, 280), room - DIAGRAM_ROOM));
+        const next = width === null ? null : Math.round(Math.min(Math.max(width, PANEL_MIN), room - DIAGRAM_ROOM));
         setPanelWidth(next);
         if (remember) {
             store('schema-viewer.panel-width', next);
@@ -1637,7 +1639,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                 aria-orientation="vertical"
                                 aria-label="Resize the details panel"
                                 aria-valuenow={panelWidth ?? panelDefaultWidth}
-                                aria-valuemin={280}
+                                aria-valuemin={PANEL_MIN}
                                 tabIndex={0}
                                 onPointerDown={onResizeStart}
                                 onDoubleClick={() => resizePanel(null)}
