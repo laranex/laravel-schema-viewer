@@ -348,14 +348,70 @@ code {
     margin: 0;
 }
 
-/* Pan mode: the hand shows over the whole diagram, tables included. */
+/* Zoomed out, a picture of the diagram stands in for its cards and lines; the picked table and its lines stay live. */
+.diagram-picture {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+.diagram-picture__canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.canvas.is-picture .react-flow__nodes,
+.canvas.is-picture .react-flow__edges,
+.canvas.is-picture .react-flow__edgelabel-renderer {
+    visibility: hidden;
+}
+
+.canvas.is-picture .react-flow__node.selected,
+.canvas.is-picture .link-edge.is-emphasized,
+.canvas.is-picture .edge-label.is-emphasized {
+    visibility: visible;
+}
+
+/* Cursors. The background and the cards take the hand: a drag moves the diagram or the card, a click picks the card.
+   What a click picks or changes on its own, a column, a line, its label or a button, takes the pointer. */
+.edge-label {
+    cursor: pointer;
+}
+
+/* Labels stay above every line, the picked table's raised ones (z-index 10) included, so hovering or clicking a label
+   reaches it and not the line under it. */
+.react-flow .react-flow__edgelabel-renderer {
+    z-index: 11;
+}
+
+.react-flow__minimap {
+    cursor: grab;
+}
+
+.react-flow__minimap:active {
+    cursor: grabbing;
+}
+
+/* On the zoomed-out picture, a table under the pointer can be clicked. */
+.canvas.is-picture.is-over-table .react-flow__pane {
+    cursor: pointer;
+}
+
+/* Pan mode: the hand shows over the whole diagram, tables, columns and lines included; a click still picks them. */
 .canvas.is-panning .react-flow__pane,
-.canvas.is-panning .react-flow__node {
+.canvas.is-panning.is-picture.is-over-table .react-flow__pane,
+.canvas.is-panning .react-flow__node,
+.canvas.is-panning .react-flow__node *,
+.canvas.is-panning .react-flow__edge,
+.canvas.is-panning .edge-label,
+.canvas.is-panning .edge-label * {
     cursor: grab;
 }
 
 .canvas.is-panning .react-flow__pane.dragging,
-.canvas.is-panning .react-flow__pane.dragging .react-flow__node {
+.canvas.is-panning .react-flow__pane.dragging * {
     cursor: grabbing;
 }
 
@@ -966,7 +1022,8 @@ button:disabled {
 
 .browse__modes {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    /* Equal options while they fit, each at least as wide as its label. */
+    grid-template-columns: repeat(3, minmax(max-content, 1fr));
     gap: 2px;
     padding: 3px;
     border-radius: 9px;
@@ -975,6 +1032,8 @@ button:disabled {
 
 .browse__mode {
     height: 28px;
+    padding: 0 8px;
+    white-space: nowrap;
     border: 0;
     border-radius: 7px;
     background: transparent;
@@ -1062,6 +1121,9 @@ button:disabled {
 }
 
 .table-list__row {
+    /* Every row is listed; the browser renders only those near the screen, so long lists stay quick. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 36px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -2789,9 +2851,12 @@ button.badge--focus:hover {
 
 .source {
     border-bottom: 1px dotted var(--line-strong);
+    /* Without an editor it only tells where it is declared, on hover. */
+    cursor: help;
 }
 
 a.source--link {
+    cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 4px;

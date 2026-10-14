@@ -25,13 +25,11 @@ type Props = {
 };
 
 const MODES: { value: BrowseMode; label: string }[] = [
-    { value: 'tables', label: 'Tables' },
+    { value: 'tables', label: 'Tables & Models' },
     { value: 'relationships', label: 'Relationships' },
     { value: 'columns', label: 'Columns' },
 ];
 
-// A long list draws this many rows; the filter narrows it down.
-const ROW_LIMIT = 300;
 
 const STATE_LABEL: Record<Link['state'] | 'through', string> = {
     both: 'FK + relation',
@@ -133,12 +131,6 @@ export function Browse({ schema, tables, connections, several, selected, highlig
         columns: tables.reduce((n, e) => n + e.table.columns.length, 0),
     };
     const count = mode === 'tables' ? tableGroups.reduce((n, g) => n + g.rows.length, 0) : mode === 'relationships' ? relationGroups.reduce((n, g) => n + g.rows.length, 0) : columnGroups.reduce((n, g) => n + g.rows.length, 0);
-    let drawn = 0;
-    const take = <T,>(rows: T[]): T[] => {
-        const room = Math.max(0, ROW_LIMIT - drawn);
-        drawn += Math.min(room, rows.length);
-        return rows.slice(0, room);
-    };
 
     const pickFirst = () => {
         if (mode === 'tables' && tableGroups[0]) {
@@ -189,7 +181,7 @@ export function Browse({ schema, tables, connections, several, selected, highlig
 
             {tableGroups.map((g) => (
                 <Group key={g.connection} label={g.connection} count={g.rows.length} several={several}>
-                    {take(g.rows).map((t) => {
+                    {g.rows.map((t) => {
                         const models = schema.modelsFor(g.connection, t.name).map((m) => shortClass(m.class));
                         const relations = schema.relationsOf(g.connection, t.name).length;
                         const hints = schema.hints(g.connection, t.name).length;
@@ -207,7 +199,7 @@ export function Browse({ schema, tables, connections, several, selected, highlig
 
             {relationGroups.map((g) => (
                 <Group key={g.connection} label={g.connection} count={g.rows.length} several={several}>
-                    {take(g.rows).map((r) => {
+                    {g.rows.map((r) => {
                         const isCurrent = highlight?.kind === 'link' && highlight.id === r.id;
                         if (r.link) {
                             const l = r.link;
@@ -241,7 +233,7 @@ export function Browse({ schema, tables, connections, several, selected, highlig
 
             {columnGroups.map((g) => (
                 <Group key={g.connection} label={g.connection} count={g.rows.length} several={several}>
-                    {take(g.rows).map(({ table, column }) => {
+                    {g.rows.map(({ table, column }) => {
                         const isCurrent = highlight?.kind === 'column' && highlight.connection === g.connection && highlight.table === table.name && highlight.column === column.name;
                         const primary = table.indexes.some((i) => i.primary && i.columns.includes(column.name));
                         const foreign = table.foreignKeys.some((f) => f.columns.includes(column.name));
@@ -265,11 +257,6 @@ export function Browse({ schema, tables, connections, several, selected, highlig
                 </Group>
             ))}
 
-            {count > ROW_LIMIT && (
-                <p className="panel__empty">
-                    The first {ROW_LIMIT} of {count} are listed; filter to find the rest.
-                </p>
-            )}
         </div>
     );
 }

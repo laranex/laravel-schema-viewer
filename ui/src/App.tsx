@@ -7,7 +7,9 @@ import {
     useNodesInitialized,
     useNodesState,
     useReactFlow,
+    useStore,
     useViewport,
+    ViewportPortal,
     type Node,
     type NodeMouseHandler,
 } from '@xyflow/react';
@@ -23,7 +25,7 @@ import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
 import { cardRows, linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
 import { boxWidth, route, rowY, type Box, type Route } from './routing';
-import { boundsOf, COLOR_TOKENS, diagramSvg, svgToPng, type Colors, type ImageEdge, type ImageNode } from './exportImage';
+import { boundsOf, COLOR_TOKENS, diagramSvg, svgToCanvas, svgToPng, type Bounds, type Colors, type ImageEdge, type ImageNode } from './exportImage';
 import { layoutConnections, TALL, WIDE, type StaticDownloads } from './layout';
 import { fontFaces, standaloneHtml } from './standalone';
 import { changedTables } from './components/Changes';
@@ -39,6 +41,11 @@ const ALL = '*';
 
 // From this many tables on screen, edges are drawn thin and muted until a table is selected.
 const DENSE = 60;
+// At this zoom or below, the diagram shows a picture of itself with its columns as placeholder bars, as dbdiagram does:
+// column text is too small to read there, and moving one picture is far smoother than moving thousands of cards and
+// lines. The picture is made a little earlier, so it is ready.
+const PICTURE_ZOOM = 0.4;
+const PREPARE_ZOOM = 0.55;
 // The narrowest the panel goes: its four tabs and their counts still fit on one row.
 const PANEL_MIN = 340;
 // The narrowest the panel may leave the diagram: room for the floating bar with every control in it.
@@ -390,6 +397,31 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     // fit again until the person pans or zooms themselves.
     const userMoved = useRef(false);
     const canvasRef = useRef<HTMLDivElement>(null);
+    // Ctrl or Cmd (the Windows key) with a mouse wheel zooms one step a notch, like the + and − buttons. React Flow
+    // zooms ten times faster with Ctrl held, made for a trackpad pinch, which sends Ctrl and small steps: those still go
+    // to React Flow, and so does every scroll without a key, which moves the diagram.
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) {
+            return;
+        }
+        const onWheel = (e: WheelEvent) => {
+            const notch = e.deltaMode !== 0 || Math.abs(e.deltaY) >= 40;
+            if (!(e.ctrlKey || e.metaKey) || !notch || e.deltaY === 0) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            const { x, y, zoom } = flow.getViewport();
+            const next = Math.min(2, Math.max(0.02, zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+            const box = canvas.getBoundingClientRect();
+            const px = e.clientX - box.left;
+            const py = e.clientY - box.top;
+            flow.setViewport({ x: px - ((px - x) * next) / zoom, y: py - ((py - y) * next) / zoom, zoom: next }, { duration: 80 });
+        };
+        canvas.addEventListener('wheel', onWheel, { capture: true, passive: false });
+        return () => canvas.removeEventListener('wheel', onWheel, { capture: true });
+    }, [flow]);
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) {
@@ -1155,7 +1187,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
 
     // The diagram as an image, as it is shown: the connections in view, the kinds of lines and tables shown, focus mode,
     // folded cards, relation names when they show on every line, and the theme. Nothing hovered, dimmed or picked.
-    const diagramImage = async (area: ImageArea) => {
+    const diagramImage = async (area: ImageArea, picture = false) => {
         const shownNodes = flow.getNodes().filter((n) => !n.hidden);
         const nodesOut: ImageNode[] = [];
         for (const n of shownNodes) {
@@ -1229,7 +1261,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         ) as Colors;
         probe.remove();
         const fonts = await fontFaces().catch(() => '');
-        return { svg: diagramSvg({ nodes: nodesOut, edges: edgesOut, colors, fonts, bounds }), bounds, tables: nodesOut.filter((n) => n.kind === 'table').length };
+        return { svg: diagramSvg({ nodes: nodesOut, edges: edgesOut, colors, fonts, bounds, skeleton: picture, transparent: picture }), bounds, tables: nodesOut.filter((n) => n.kind === 'table').length };
     };
 
     const downloadImage = (format: 'svg' | 'png', area: ImageArea) => {
@@ -1251,6 +1283,51 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                 },
                 (e: Error) => notify(`The image could not be made: ${e.message}`),
             );
+    };
+
+    // The picture shown below PICTURE_ZOOM, painted again when what it shows changes: the layout, the kinds of lines and
+    // tables shown, folded cards, notes, relation names or the theme. The picked table and its lines stay live on it.
+    const zoomedOut = useStore((st) => st.transform[2] <= PICTURE_ZOOM);
+    const nearZoomedOut = useStore((st) => st.transform[2] < PREPARE_ZOOM);
+    const pictureKey = `${boxes.key}#${JSON.stringify(layers)}#${dark}#${scope}`;
+    const [picture, setPicture] = useState<{ canvas: HTMLCanvasElement; bounds: Bounds; key: string } | null>(null);
+    useEffect(() => {
+        if (!nearZoomedOut || picture?.key === pictureKey || nodes.length === 0) {
+            return;
+        }
+        let cancelled = false;
+        const timer = window.setTimeout(() => {
+            diagramImage('whole', true)
+                .then(({ svg, bounds }) => svgToCanvas(svg, bounds.width, bounds.height, PICTURE_ZOOM * Math.max(1, window.devicePixelRatio || 1)).then((canvas) => ({ canvas, bounds })))
+                .then(
+                    ({ canvas, bounds }) => {
+                        if (!cancelled) {
+                            setPicture({ canvas, bounds, key: pictureKey });
+                        }
+                    },
+                    () => undefined,
+                );
+        }, 200);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timer);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [nearZoomedOut, pictureKey, nodes.length]);
+    const showPicture = zoomedOut && picture !== null && picture.key === pictureKey;
+
+    // The table under a point of the picture, where its card would be.
+    const tableAt = (clientX: number, clientY: number): AppNode | undefined => {
+        const at = flow.screenToFlowPosition({ x: clientX, y: clientY });
+        for (const [id, box] of boxes.map) {
+            if (at.x >= box.x && at.x <= box.x + box.width && at.y >= box.y && at.y <= box.y + box.height) {
+                const node = flow.getNode(id) as AppNode | undefined;
+                if (node && node.type !== 'region') {
+                    return node;
+                }
+            }
+        }
+        return undefined;
     };
 
     // The standalone viewer: every connection in one HTML file that opens without the app, built from this page.
@@ -1486,7 +1563,24 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                         ref={mainRef}
                         style={panelWidth !== null ? ({ '--panel-width': `${panelWidth}px` } as CSSProperties) : undefined}
                     >
-                        <div className={`canvas${panning ? ' is-panning' : ''}`} ref={canvasRef}>
+                        <div
+                            className={`canvas${panning ? ' is-panning' : ''}${showPicture ? ' is-picture' : ''}`}
+                            ref={canvasRef}
+                            onMouseMove={(e) => {
+                                // On the picture, the pointer shows over a table, which a click picks.
+                                const canvas = e.currentTarget;
+                                const over = showPicture && (e.target as HTMLElement).classList.contains('react-flow__pane') && tableAt(e.clientX, e.clientY) !== undefined;
+                                canvas.classList.toggle('is-over-table', over);
+                            }}
+                            onDoubleClick={(e) => {
+                                // On the picture, a double-click focuses on the table under it, as on its card.
+                                const node = showPicture && (e.target as HTMLElement).classList.contains('react-flow__pane') ? tableAt(e.clientX, e.clientY) : undefined;
+                                if (node?.type === 'table') {
+                                    setHighlight(null);
+                                    focusOn({ connection: node.data.connection, table: node.data.table.name });
+                                }
+                            }}
+                        >
                             <ReactFlow<AppNode, LinkEdgeType>
                                 nodes={nodes}
                                 edges={edges}
@@ -1515,7 +1609,17 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                 onNodeDragStart={(_, node) => setDragging(node.id)}
                                 onNodeDragStop={() => setDragging(null)}
                                 onlyRenderVisibleElements
-                                onPaneClick={() => {
+                                // As in dbdiagram: scrolling moves the diagram up, down and sideways, and Ctrl, Cmd or the
+                                // Windows key with the wheel zooms, as does a pinch.
+                                panOnScroll
+                                zoomActivationKeyCode={['Control', 'Meta']}
+                                onPaneClick={(event) => {
+                                    // On the picture, a click picks the table under it, as on its card.
+                                    const node = showPicture ? tableAt(event.clientX, event.clientY) : undefined;
+                                    if (node) {
+                                        onNodeClick(event, node);
+                                        return;
+                                    }
                                     setSelected(null);
                                     setHighlight(null);
                                 }}
@@ -1544,6 +1648,11 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                 proOptions={{ hideAttribution: true }}
                             >
                                 {grid && <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />}
+                                {showPicture && (
+                                    <ViewportPortal>
+                                        <DiagramPicture canvas={picture.canvas} bounds={picture.bounds} />
+                                    </ViewportPortal>
+                                )}
                                 {/* Below 1100px the diagram needs the room more than an overview does. */}
                                 {roomy && <MiniMap pannable zoomable nodeStrokeWidth={2} nodeClassName={(n) => n.type ?? ''} style={{ width: 160, height: 110 }} />}
                             </ReactFlow>
@@ -1917,6 +2026,8 @@ const SHORTCUTS: [string[], string][] = [
     [['Esc'], 'Clear the search or selection, close a panel'],
     [['F'], 'Fit the diagram to the screen'],
     [['+', '−'], 'Zoom in or out'],
+    [[`${MOD} Scroll`], 'Zoom in or out at the pointer; a pinch zooms too'],
+    [['Scroll'], 'Move the diagram up, down or sideways'],
     [['Space'], 'Hold to pan: drag anywhere, even over a table'],
     [['L'], 'Show relation names on every edge, or only on the selected table'],
     [['N'], 'Show notes on the cards'],
@@ -1961,4 +2072,19 @@ function ShortcutsHelp({ open, onOpenChange, keysOn, onKeysOn }: { open: boolean
             </dl>
         </Dialog>
     );
+}
+
+// The picture of the diagram shown while zoomed out, laid exactly over where the cards and lines are.
+function DiagramPicture({ canvas, bounds }: { canvas: HTMLCanvasElement; bounds: Bounds }) {
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const host = ref.current;
+        if (!host) {
+            return;
+        }
+        canvas.className = 'diagram-picture__canvas';
+        host.append(canvas);
+        return () => canvas.remove();
+    }, [canvas]);
+    return <div ref={ref} className="diagram-picture" style={{ transform: `translate(${bounds.x}px, ${bounds.y}px)`, width: bounds.width, height: bounds.height }} aria-hidden="true" />;
 }

@@ -90,7 +90,7 @@ function markers(c: Colors): string {
     return out.join('');
 }
 
-function table(n: Extract<ImageNode, { kind: 'table' }>, c: Colors, i: number): string {
+function table(n: Extract<ImageNode, { kind: 'table' }>, c: Colors, i: number, skeleton = false): string {
     const out: string[] = [];
     const clip = `card-${i}`;
     out.push(`<g transform="translate(${n.x} ${n.y})">`);
@@ -148,9 +148,22 @@ function table(n: Extract<ImageNode, { kind: 'table' }>, c: Colors, i: number): 
     }
     out.push(...meta);
 
-    // Rows: the key mark, the name (with ? when nullable) and the type on the right.
+    // Rows: the key mark, the name (with ? when nullable) and the type on the right; as a skeleton, a bar for each.
     let y = HEADER_HEIGHT + 4;
-    for (const row of n.rows) {
+    for (const row of skeleton ? n.rows : []) {
+        const mid = y + ROW_HEIGHT / 2 - 3;
+        if (row.key) {
+            out.push(`<rect x="8" y="${mid}" width="14" height="6" rx="3" fill="${c['accent-soft']}"/>`);
+        }
+        const typeWidth = Math.min(64, 10 + row.type.length * 4);
+        const nameWidth = Math.min(n.width - 38 - 12 - typeWidth - 16, 14 + row.name.length * 5.5);
+        out.push(
+            `<rect x="38" y="${mid}" width="${nameWidth}" height="6" rx="3" fill="${c.line}"/>`,
+            `<rect x="${n.width - 12 - typeWidth}" y="${mid}" width="${typeWidth}" height="6" rx="3" fill="${c.line}" opacity="0.7"/>`,
+        );
+        y += ROW_HEIGHT;
+    }
+    for (const row of skeleton ? [] : n.rows) {
         const base = y + ROW_HEIGHT / 2 + 4;
         if (row.key) {
             out.push(`<text x="8" y="${base - 0.5}" font-family="${SANS}" font-size="9.5" font-weight="600" letter-spacing="0.4" fill="${c['accent-ink']}">${row.key}</text>`);
@@ -164,7 +177,9 @@ function table(n: Extract<ImageNode, { kind: 'table' }>, c: Colors, i: number): 
         );
         y += ROW_HEIGHT;
     }
-    if (n.more) {
+    if (n.more && skeleton) {
+        out.push(`<rect x="38" y="${y + ROW_HEIGHT / 2 - 3}" width="90" height="6" rx="3" fill="${c.line}" opacity="0.7"/>`);
+    } else if (n.more) {
         out.push(`<text x="38" y="${y + ROW_HEIGHT / 2 + 4}" font-family="${SANS}" font-size="11.5" fill="${c.muted}">+ ${n.more} more ${n.more === 1 ? 'column' : 'columns'}</text>`);
     }
 
@@ -173,9 +188,9 @@ function table(n: Extract<ImageNode, { kind: 'table' }>, c: Colors, i: number): 
     return out.join('');
 }
 
-function node(n: ImageNode, c: Colors, i: number): string {
+function node(n: ImageNode, c: Colors, i: number, skeleton = false): string {
     if (n.kind === 'table') {
-        return table(n, c, i);
+        return table(n, c, i, skeleton);
     }
     if (n.kind === 'external') {
         return [
@@ -220,7 +235,9 @@ function label(e: ImageEdge, c: Colors): string {
 }
 
 // The diagram as one standalone SVG document: regions, then edges, then cards, then labels, as the viewer stacks them.
-export function diagramSvg({ nodes, edges, colors, fonts, bounds }: { nodes: ImageNode[]; edges: ImageEdge[]; colors: Colors; fonts: string; bounds: Bounds }): string {
+// With skeleton, columns are placeholder bars, as the viewer shows them zoomed out; with transparent, there is no
+// background, so the viewer's grid shows through.
+export function diagramSvg({ nodes, edges, colors, fonts, bounds, skeleton = false, transparent = false }: { nodes: ImageNode[]; edges: ImageEdge[]; colors: Colors; fonts: string; bounds: Bounds; skeleton?: boolean; transparent?: boolean }): string {
     const { x, y, width, height } = bounds;
     const regions = nodes.filter((n) => n.kind === 'region');
     const cards = nodes.filter((n) => n.kind !== 'region');
@@ -228,10 +245,10 @@ export function diagramSvg({ nodes, edges, colors, fonts, bounds }: { nodes: Ima
         `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(width)}" height="${Math.ceil(height)}" viewBox="${x} ${y} ${width} ${height}">`,
         fonts ? `<style><![CDATA[\n${fonts.replace(/]]>/g, ']] >')}\n]]></style>` : '',
         `<defs>${markers(colors)}</defs>`,
-        `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${colors.bg}"/>`,
+        transparent ? '' : `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${colors.bg}"/>`,
         ...regions.map((n, i) => node(n, colors, i)),
         ...edges.map((e) => edge(e, colors)),
-        ...cards.map((n, i) => node(n, colors, i + regions.length)),
+        ...cards.map((n, i) => node(n, colors, i + regions.length, skeleton)),
         ...edges.map((e) => label(e, colors)),
         '</svg>',
     ].join('\n');
@@ -241,6 +258,24 @@ export function diagramSvg({ nodes, edges, colors, fonts, bounds }: { nodes: Ima
 // area budget.
 export function pngScale(width: number, height: number, wanted: number, area: number): number {
     return Math.min(wanted, 16384 / width, 16384 / height, Math.sqrt(area / (width * height)));
+}
+
+// Paint the SVG on a canvas of at most `area` pixels: the picture the diagram shows while zoomed out.
+export async function svgToCanvas(svg: string, width: number, height: number, wanted: number, area = 16_000_000): Promise<HTMLCanvasElement> {
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        const scale = pngScale(width, height, wanted, area);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas;
+    } finally {
+        URL.revokeObjectURL(url);
+    }
 }
 
 // Paint the SVG on a canvas and encode it as PNG, halving the area until the browser manages it.

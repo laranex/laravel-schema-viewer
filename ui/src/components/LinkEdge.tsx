@@ -68,7 +68,7 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, data, selected }: Ed
     const route = data.floating ? { ...data.route, channelX: (sourceX + targetX) / 2, labelX: (sourceX + targetX) / 2, labelY: (sourceY + targetY) / 2 } : data.route;
     const path = orthogonal(sourceX, sourceY, route.channelX, targetX, targetY);
     const emphasized = data.emphasized || hovered;
-    const className = ['link-edge', `link-edge--${kind}`, data.morph ? 'link-edge--morph' : '', data.dim ? 'is-dim' : '', selected ? 'is-selected' : '', hovered ? 'is-hovered' : '']
+    const className = ['link-edge', `link-edge--${kind}`, data.morph ? 'link-edge--morph' : '', data.dim ? 'is-dim' : '', selected ? 'is-selected' : '', hovered ? 'is-hovered' : '', data.emphasized ? 'is-emphasized' : '']
         .filter(Boolean)
         .join(' ');
     const showLabel = (data.showLabel || hovered) && !data.dim;
