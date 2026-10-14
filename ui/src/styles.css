@@ -1241,6 +1241,38 @@ button:disabled {
     font-size: var(--text-xs);
 }
 
+.table-node__note,
+.col__note {
+    display: inline-flex;
+    flex: none;
+    color: var(--accent-ink);
+    cursor: help;
+}
+
+.table-node__note svg,
+.col__note svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.table-node__note svg {
+    width: 14px;
+    height: 14px;
+}
+
+.col__note {
+    margin-left: 4px;
+    vertical-align: -2px;
+}
+
+.col__note svg {
+    width: 12px;
+    height: 12px;
+}
+
 .grid__note {
     margin: 4px 0 0;
     color: var(--muted);

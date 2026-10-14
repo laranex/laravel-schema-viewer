@@ -57,6 +57,31 @@ function ColumnHandles({ column }: { column: string }) {
     );
 }
 
+// Marks a table or a column that has a comment or a note; hover it to read them.
+function NoteMark({ comment, note, className }: { comment: string | null; note?: string | null; className: string }) {
+    return (
+        <Tooltip
+            content={
+                <>
+                    {comment}
+                    {comment && note && <br />}
+                    {note && (
+                        <>
+                            <b>Note</b> {note}
+                        </>
+                    )}
+                </>
+            }
+        >
+            <span className={className} role="img" aria-label={note ? 'Has a note' : 'Has a comment'}>
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M3.5 2.5 H10 L12.5 5 V13.5 H3.5 Z M6 7 H10 M6 9.5 H10 M6 12 H8.5" />
+                </svg>
+            </span>
+        </Tooltip>
+    );
+}
+
 function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
     const { table } = data;
     const { setFold, highlightColumn, focusColumn } = useContext(TableActions);
@@ -79,6 +104,7 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
                     ))}
                 <div className="table-node__title">
                     <span className="table-node__name">{table.name}</span>
+                    {(table.comment || table.note) && <NoteMark comment={table.comment} note={table.note} className="table-node__note" />}
                     {data.change && (
                         <Tooltip content={data.change === 'new' ? 'New since the previous build: see the Changes tab' : 'Changed since the previous build: see the Changes tab'}>
                             <span className={`table-node__change table-node__change--${data.change}`} aria-label={data.change === 'new' ? 'New table' : 'Changed table'} role="img" />
@@ -138,6 +164,7 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
                                 <span className="col">
                                     {c.name}
                                     {c.nullable && <span className="nullable">?</span>}
+                                    {(c.comment || c.note) && <NoteMark comment={c.comment} note={c.note} className="col__note" />}
                                 </span>
                                 <Tooltip
                                     content={
