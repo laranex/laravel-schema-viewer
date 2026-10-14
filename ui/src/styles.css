@@ -2000,6 +2000,8 @@ kbd {
 
 .ui-menu {
     min-width: 220px;
+    /* Long hints wrap rather than stretch a menu across the screen. */
+    max-width: 360px;
 }
 
 .ui-item {
@@ -2040,6 +2042,7 @@ kbd {
 .ui-item__hint {
     color: var(--muted);
     font-size: var(--text-xs);
+    line-height: 1.45;
 }
 
 .ui-item[data-highlighted] .ui-item__hint {

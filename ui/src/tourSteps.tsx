@@ -72,7 +72,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'Zoom and arrange',
         body: (
             <p>
-                Zoom in and out, fit the whole diagram on screen, and arrange the tables automatically (<kbd>Shift A</kbd>). Click the percentage to type a zoom. The hand turns on pan mode: drag anywhere, even over a table, to move around; or hold <kbd>Space</kbd>.
+                Zoom in and out, fit the whole diagram on screen, and arrange the tables automatically: left to right, as a snowflake or compactly (<kbd>Shift A</kbd> repeats your choice). Click the percentage to type a zoom. The hand turns on pan mode: drag anywhere, even over a table, to move around; or hold <kbd>Space</kbd>.
             </p>
         ),
     },

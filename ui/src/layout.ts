@@ -15,11 +15,18 @@ export const WIDE = 1.6;
 export const TALL = 0.6;
 const PACKABLE = 12;
 
-// Layered layout, referenced tables to the left of the tables that point at them.
+// How Arrange places the tables, as dbdiagram offers them:
+// left-right: in layers along the relationships, referenced tables to the left of the tables that point at them;
+// snowflake: the most connected tables in the middle, the tables they join around them;
+// compact: a tight rectangle in name order, for schemas with few relationships.
+export type Arrangement = 'left-right' | 'snowflake' | 'compact';
+export const ARRANGEMENTS: Arrangement[] = ['left-right', 'snowflake', 'compact'];
+
+// Lays out one connection's tables.
 // aspect: the width:height a packed layout aims for, wide on a desktop and tall on a phone.
-export async function autoLayout(schema: Schema, connection: string, visible: Set<string>, sizes: Record<string, number>, aspect = WIDE): Promise<Positions> {
+export async function autoLayout(schema: Schema, connection: string, visible: Set<string>, sizes: Record<string, number>, aspect = WIDE, arrangement: Arrangement = 'left-right'): Promise<Positions> {
     const ids = [...visible];
-    const key = `${connection}@${aspect}#${ids.map((id) => `${id}:${sizes[id] ?? 120}`).join('|')}`;
+    const key = `${connection}@${aspect}@${arrangement}#${ids.map((id) => `${id}:${sizes[id] ?? 120}`).join('|')}`;
     const cache = layouts.get(schema) ?? new Map<string, Positions>();
     layouts.set(schema, cache);
     const known = cache.get(key);
@@ -35,6 +42,42 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
         ...schema.derived(connection).map((d) => ({ source: nodeId(connection, d.from), target: nodeId(connection, d.to), id: d.id })),
     ].filter((e) => e.source !== e.target && visible.has(e.source) && visible.has(e.target));
 
+    let positions: Positions = {};
+    const children = ids.map((id) => ({ id, width: NODE_WIDTH, height: sizes[id] ?? 120 }));
+    const elkEdges = edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] }));
+    const placed = (result: Awaited<ReturnType<typeof elkLayout>>): Positions =>
+        Object.fromEntries((result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
+
+    if (arrangement === 'snowflake') {
+        // Stress pulls joined tables together, so the most joined end up in the middle; it lets cards overlap, so a
+        // second pass moves them apart from where stress left them.
+        const stress = placed(await elkLayout({ id: 'root', layoutOptions: { 'elk.algorithm': 'stress', 'elk.stress.desiredEdgeLength': '360' }, children, edges: elkEdges }));
+        positions = placed(
+            await elkLayout({
+                id: 'root',
+                layoutOptions: { 'elk.algorithm': 'sporeOverlap', 'elk.spacing.nodeNode': '40' },
+                children: children.map((c) => ({ ...c, x: stress[c.id]?.x ?? 0, y: stress[c.id]?.y ?? 0 })),
+                edges: elkEdges,
+            }),
+        );
+    } else if (arrangement === 'compact') {
+        positions = placed(
+            await elkLayout({
+                id: 'root',
+                layoutOptions: { 'elk.algorithm': 'rectpacking', 'elk.aspectRatio': String(aspect), 'elk.spacing.nodeNode': '40' },
+                children: [...children].sort((a, b) => a.id.localeCompare(b.id)),
+                edges: [],
+            }),
+        );
+    }
+    if (arrangement !== 'left-right') {
+        cache.set(key, positions);
+        if (cache.size > KEEP) {
+            cache.delete(cache.keys().next().value as string);
+        }
+        return positions;
+    }
+
     const result = await elkLayout({
         id: 'root',
         layoutOptions: {
@@ -46,14 +89,11 @@ export async function autoLayout(schema: Schema, connection: string, visible: Se
             'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
             'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
         },
-        children: ids.map((id) => ({ id, width: NODE_WIDTH, height: sizes[id] ?? 120 })),
-        edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
+        children,
+        edges: elkEdges,
     });
 
-    let positions: Positions = {};
-    result.children?.forEach((c) => {
-        positions[c.id] = { x: c.x ?? 0, y: c.y ?? 0 };
-    });
+    positions = placed(result);
     if (ids.length > LARGE || (ids.length >= PACKABLE && tallerThanWide(positions, sizes))) {
         positions = packColumns(positions, sizes, aspect);
     }
@@ -117,9 +157,10 @@ export async function layoutConnections(
     ids: Set<string>,
     sizes: Record<string, number>,
     aspect = WIDE,
+    arrangement: Arrangement = 'left-right',
 ): Promise<{ positions: Positions; regions: Region[] }> {
     if (connections.length === 1) {
-        return { positions: await autoLayout(schema, connections[0], ids, sizes, aspect), regions: [] };
+        return { positions: await autoLayout(schema, connections[0], ids, sizes, aspect, arrangement), regions: [] };
     }
     const blocks: { connection: string; placed: Positions; width: number; height: number }[] = [];
     for (const connection of connections) {
@@ -127,7 +168,7 @@ export async function layoutConnections(
         if (own.size === 0) {
             continue;
         }
-        const raw = await autoLayout(schema, connection, own, sizes, aspect);
+        const raw = await autoLayout(schema, connection, own, sizes, aspect, arrangement);
         const boxes = Object.entries(raw).map(([id, p]) => ({ id, ...p, bottom: p.y + (sizes[id] ?? 120) }));
         const minX = Math.min(...boxes.map((b) => b.x));
         const minY = Math.min(...boxes.map((b) => b.y));

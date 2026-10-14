@@ -4,6 +4,19 @@ import { closeSmallScreenNote, openViewer } from './helpers';
 const zoom = (page: Page) => page.evaluate(() => Number(/scale\(([\d.]+)\)/.exec(document.querySelector<HTMLElement>('.react-flow__viewport')!.style.transform)?.[1]));
 const offset = (page: Page) => page.evaluate(() => document.querySelector<HTMLElement>('.react-flow__viewport')!.style.transform.split('scale')[0]);
 
+// Waits until the opening animation has stopped moving the diagram, so a click lands where it was aimed.
+const settled = async (page: Page) => {
+    let last = '';
+    await expect
+        .poll(async () => {
+            const now = await page.evaluate(() => document.querySelector<HTMLElement>('.react-flow__viewport')!.style.transform);
+            const same = now === last;
+            last = now;
+            return same;
+        }, { intervals: [250] })
+        .toBe(true);
+};
+
 // A table card on screen, clear of the bars and the panel: its name and a point on its header.
 const cardOnScreen = (page: Page) =>
     page.evaluate(() => {
@@ -82,6 +95,7 @@ test.describe('pointer', () => {
 
     test('in pan mode, picks a column and a line with a click, and a drag over a card moves the diagram, not the card', async ({ page }) => {
         await openViewer(page, { hash: 'table=testing:posts&focus=1' });
+        await settled(page);
         await page.getByRole('button', { name: /Pan mode/ }).click();
 
         await page.locator('.edge-label').first().click();

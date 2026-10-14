@@ -26,7 +26,7 @@ import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type Ext
 import { cardRows, linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
 import { boxWidth, route, rowY, type Box, type Route } from './routing';
 import { boundsOf, COLOR_TOKENS, diagramSvg, svgToCanvas, svgToPng, type Bounds, type Colors, type ImageEdge, type ImageNode } from './exportImage';
-import { layoutConnections, TALL, WIDE, type StaticDownloads } from './layout';
+import { ARRANGEMENTS, layoutConnections, TALL, WIDE, type Arrangement, type StaticDownloads } from './layout';
 import { fontFaces, standaloneHtml } from './standalone';
 import { changedTables } from './components/Changes';
 import type { Change, SchemaDocument, Table } from './types';
@@ -261,6 +261,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
     const [toast, setToast] = useState<string | null>(null);
     const [layoutVersion, setLayoutVersion] = useState(0);
+    // How Arrange places the tables, remembered in this browser.
+    const [arrangement, setArrangement] = useState<Arrangement>(() => stored('schema-viewer.arrangement', 'left-right', (v) => ARRANGEMENTS.includes(v as Arrangement)));
     const [needsFit, setNeedsFit] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     // Pan mode: dragging anywhere moves the diagram, even over a table. The hand button switches it; holding Space
@@ -589,7 +591,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         externals.forEach((_, id) => (sizes[id] = EXTERNAL_HEIGHT));
 
         const place = async () => {
-            const { positions, regions } = await layoutConnections(schema, scopeConnections, ids, sizes, narrow ? TALL : WIDE);
+            const { positions, regions } = await layoutConnections(schema, scopeConnections, ids, sizes, narrow ? TALL : WIDE, arrangement);
             if (cancelled) {
                 return;
             }
@@ -640,7 +642,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [schema, scopeConnections, shownTables, externals, layoutVersion, narrow, layers.notes]);
+    }, [schema, scopeConnections, shownTables, externals, layoutVersion, narrow, layers.notes, arrangement]);
 
     const neighbors = useMemo(() => (selected ? schema.neighbors(selected.connection, selected.table, 1) : null), [schema, selected]);
     const pivots = useMemo(() => new Set(scopeConnections.flatMap((c) => [...schema.pivotTables(c)].map((t) => nodeId(c, t)))), [schema, scopeConnections]);
@@ -1349,9 +1351,11 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     };
 
 
-    const onAutoLayout = () => {
+    const onAutoLayout = (next: Arrangement = arrangement) => {
+        setArrangement(next);
+        store('schema-viewer.arrangement', next);
         setLayoutVersion((v) => v + 1);
-        notify('Tables arranged automatically.');
+        notify(`Tables arranged ${ARRANGEMENT_TEXT[next].done}.`);
     };
 
     const connectionOptions = [
@@ -1674,12 +1678,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                             <FloatButton label={panMode ? 'Pan mode on: drag anywhere to move' : 'Pan mode: drag anywhere to move'} keys="Hold Space" pressed={panMode} extra onClick={() => setPanMode((on) => !on)}>
                                                 <path d="M5.5 8.5 V4 a1 1 0 0 1 2 0 V7.5 M7.5 7.5 V2.8 a1 1 0 0 1 2 0 V7.5 M9.5 7.5 V3.8 a1 1 0 0 1 2 0 V8.5 M11.5 8.5 V6 a1 1 0 0 1 2 0 V10 a4.5 4.5 0 0 1 -4.5 4.5 H8.6 a4 4 0 0 1 -3.1 -1.5 L2.7 9.6 a1.1 1.1 0 0 1 1.7 -1.4 L5.5 9.7" />
                                             </FloatButton>
-                                            <FloatButton label="Arrange tables automatically" keys="Shift A" shortcut="Shift+A" onClick={onAutoLayout} tour="auto-layout" extra>
-                                                <rect x="1.5" y="2" width="5" height="4" rx="1" />
-                                                <rect x="9.5" y="2" width="5" height="4" rx="1" />
-                                                <rect x="5.5" y="10" width="5" height="4" rx="1" />
-                                                <path d="M4 6 V8 H12 V6 M8 8 V10" />
-                                            </FloatButton>
+                                            <ArrangeMenu current={arrangement} onArrange={onAutoLayout} />
                                             </>
                                         )}
                                     </div>
@@ -2019,6 +2018,54 @@ function ViewMenu({ label, icon, toggles, choice, counted = true, tour, forceOpe
     );
 }
 
+// What each arrangement is called and does, for the Arrange menu and the note after arranging.
+const ARRANGEMENT_TEXT: Record<Arrangement, { label: string; hint: string; done: string }> = {
+    'left-right': {
+        label: 'Left-right',
+        hint: 'Along the relationships: referenced tables to the left of the tables that point at them. Best for long chains of relationships.',
+        done: 'left to right',
+    },
+    snowflake: {
+        label: 'Snowflake',
+        hint: 'The most connected tables in the middle, the tables they join around them. Best for densely connected schemas.',
+        done: 'as a snowflake',
+    },
+    compact: {
+        label: 'Compact',
+        hint: 'A tight rectangle in name order. Best for schemas with few relationships.',
+        done: 'compactly',
+    },
+};
+
+// Arrange: picks how the tables are placed and places them; the current way is marked with Shift A, which repeats it.
+function ArrangeMenu({ current, onArrange }: { current: Arrangement; onArrange: (arrangement: Arrangement) => void }) {
+    return (
+        <Tooltip content={<>Arrange tables automatically <kbd>Shift A</kbd></>} side="top">
+            <span className="float-bar__extra" data-tour="auto-layout">
+                <Menu
+                    label="Arrange tables automatically"
+                    triggerClass="button button--icon float-bar__icon"
+                    trigger={
+                        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" className="ui-icon">
+                            <rect x="1.5" y="2" width="5" height="4" rx="1" />
+                            <rect x="9.5" y="2" width="5" height="4" rx="1" />
+                            <rect x="5.5" y="10" width="5" height="4" rx="1" />
+                            <path d="M4 6 V8 H12 V6 M8 8 V10" />
+                        </svg>
+                    }
+                    itemsLabel="Arrange tables"
+                    items={ARRANGEMENTS.map((a) => ({
+                        label: ARRANGEMENT_TEXT[a].label,
+                        hint: ARRANGEMENT_TEXT[a].hint,
+                        shortcut: a === current ? 'Shift A' : undefined,
+                        onSelect: () => onArrange(a),
+                    }))}
+                />
+            </span>
+        </Tooltip>
+    );
+}
+
 const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘' : 'Ctrl';
 
 const SHORTCUTS: [string[], string][] = [
@@ -2037,7 +2084,7 @@ const SHORTCUTS: [string[], string][] = [
     [['P'], 'Show or hide package tables, such as Passport\'s oauth_*'],
     [['A', 'D', 'H', 'W'], 'Open the Browse, Details, Hints or Changes tab'],
     [['[', ']'], 'Previous or next connection, or all of them'],
-    [['Shift A'], 'Arrange tables automatically'],
+    [['Shift A'], 'Arrange the tables again, the way chosen under Arrange'],
     [['Shift F'], 'Focus on the selected table, relationship or column and what is around it, or leave focus mode'],
     [['C'], 'Show every column, the key columns only, or the table names only'],
     [['Shift C'], 'Copy a link to exactly this view'],
