@@ -35,7 +35,7 @@ export const TOUR_STEPS: TourStep[] = [
         title: 'The diagram',
         body: (
             <p>
-                Each card is a table. Referenced tables sit to the left of the tables that point at them. Drag cards to arrange them. Scroll or drag the background to move around; hold <kbd>Ctrl</kbd> or <kbd>⌘</kbd> while scrolling, or pinch, to zoom.
+                Each card is a table. Referenced tables sit to the left of the tables that point at them. Drag cards to arrange them; <kbd>Shift</kbd>+click several, or drag a box around them on the background, to move them together. Scroll to move around, or hold <kbd>Space</kbd> and drag; hold <kbd>Ctrl</kbd> or <kbd>⌘</kbd> while scrolling, or pinch, to zoom.
             </p>
         ),
     },

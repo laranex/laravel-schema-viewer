@@ -4,6 +4,7 @@ import {
     MiniMap,
     ReactFlow,
     ReactFlowProvider,
+    SelectionMode,
     useNodesInitialized,
     useNodesState,
     useReactFlow,
@@ -233,6 +234,9 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         return linked.table && opening !== ALL && opening !== linked.table.connection ? linked.table.connection : opening;
     });
     const [selected, setSelected] = useState<TableRef | null>(null);
+    // Several cards picked at once, by Shift+click or a box dragged on the background: they move together. Empty when
+    // one card or none is picked.
+    const [group, setGroup] = useState<string[]>([]);
     // A relationship or column picked in Browse or on the diagram: Details shows it and the diagram lights it up.
     const [highlight, setHighlight] = useState<Highlight | null>(() => linked.highlight ?? null);
     // A relationship or column from the link, brought into view once the diagram is drawn.
@@ -251,6 +255,9 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     const [panelWidth, setPanelWidth] = useState<number | null>(null);
     const scopeConnections = useMemo(() => (scope === ALL ? doc.connections.map((c) => c.name) : [scope]), [doc, scope]);
     const selectedId = selected ? nodeId(selected.connection, selected.table) : null;
+    // The picked cards as of the last click, ahead of React's next render: two quick Shift+clicks each add their card.
+    const pickedRef = useRef<string[]>([]);
+    pickedRef.current = group.length > 0 ? group : selectedId ? [selectedId] : [];
     const [tab, setTab] = useState<PanelTab>(() => (linked.table || linked.highlight ? 'details' : 'browse'));
     const [query, setQuery] = useState('');
     const [layers, setLayers] = useState<Layers>(() => ({
@@ -302,7 +309,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     const sideBySide = useMedia('(min-width: 961px)');
     const [hover] = useState(() => new HoverStore());
     // The card being dragged: its edges float until it is dropped, then every edge is routed again.
-    const [dragging, setDragging] = useState<string | null>(null);
+    const [dragging, setDragging] = useState<Set<string> | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const [helpOpen, setHelpOpen] = useState(false);
     // Whether each control shows its shortcut key beside it. Off by default.
@@ -713,13 +720,13 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                 shown: shownOf(n.id, t),
                 notes: layers.notes,
             };
-            const isSelected = spot ? n.id === spot.main : n.id === selectedId;
+            const isSelected = group.length > 0 ? group.includes(n.id) : spot ? n.id === spot.main : n.id === selectedId;
             if (!!n.selected === isSelected && sameData(n.data, data)) {
                 return n;
             }
             return { ...n, selected: isSelected, data };
         },
-        [cards, selectedId, neighbors, pivots, isDim, linkedColumns, folds, columns, shownOf, spot, layers.notes],
+        [cards, selectedId, neighbors, pivots, isDim, linkedColumns, folds, columns, shownOf, spot, layers.notes, group],
     );
     const decorateRef = useRef(decorate);
     decorateRef.current = decorate;
@@ -866,7 +873,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
             if (!r) {
                 continue;
             }
-            const floating = dragging !== null && (s.source === dragging || s.target === dragging);
+            const floating = dragging !== null && (dragging.has(s.source) || dragging.has(s.target));
             const sourceHandle = `${s.sourceColumn}|s${r.sourceSide}`;
             const targetHandle = `${s.targetColumn}|t${r.targetSide}`;
             const zIndex = s.data.emphasized ? 10 : 0;
@@ -1121,7 +1128,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
     };
 
     const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
-        (_, node: Node) => {
+        (event, node: Node) => {
             if (node.type === 'external') {
                 const d = node.data as { connection: string; table: string };
                 open(d.connection, d.table);
@@ -1132,11 +1139,33 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
             }
             const d = node.data as { connection: string; table: Table };
             setHighlight(null);
+            // Shift+click adds the card to the picked ones, or takes it out.
+            if (event.shiftKey) {
+                const picked = pickedRef.current;
+                pickGroup(picked.includes(node.id) ? picked.filter((id) => id !== node.id) : [...picked, node.id]);
+                return;
+            }
+            pickedRef.current = [node.id];
+            setGroup([]);
             setSelected({ connection: d.connection, table: d.table.name });
             setTab('details');
         },
         [open],
     );
+
+    // Several cards picked: two or more make a group; one is an ordinary pick, none clears it.
+    const pickGroup = (ids: string[]) => {
+        const tables = ids.map((id) => flow.getNode(id)).filter((n): n is TableNodeType => n?.type === 'table');
+        pickedRef.current = tables.map((n) => n.id);
+        if (tables.length > 1) {
+            setGroup(tables.map((n) => n.id));
+            setSelected(null);
+            setTab('details');
+        } else {
+            setGroup([]);
+            setSelected(tables[0] ? { connection: tables[0].data.connection, table: tables[0].data.table.name } : null);
+        }
+    };
 
     const switchConnection = (name: string) => {
         setScope(name);
@@ -1368,6 +1397,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
             Escape: () => {
                 if (helpOpen) setHelpOpen(false);
                 else if (sheetOpen) setSheetOpen(false);
+                else if (group.length > 0) setGroup([]);
                 else if (focus) endFocus();
                 else if (highlight) setHighlight(null);
                 else setSelected(null);
@@ -1582,7 +1612,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                 }}
                                 onEdgeMouseEnter={(_, edge) => hover.set(edge.id)}
                                 onEdgeMouseLeave={() => hover.set(null)}
-                                onNodeDragStart={(_, node) => setDragging(node.id)}
+                                onNodeDragStart={(_, node, moving) => setDragging(new Set([node.id, ...moving.map((n) => n.id)]))}
                                 onNodeDragStop={() => setDragging(null)}
                                 onlyRenderVisibleElements
                                 // As in dbdiagram: scrolling moves the diagram up, down and sideways, and Ctrl, Cmd or the
@@ -1597,6 +1627,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                         return;
                                     }
                                     setSelected(null);
+                                    setGroup([]);
                                     setHighlight(null);
                                 }}
                                 onEdgeClick={(_, edge) => {
@@ -1616,6 +1647,14 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                                     }
                                 }}
                                 nodesConnectable={false}
+                                // As in dbdiagram: dragging the background draws a box that picks every card it touches,
+                                // and Shift+click adds a card; the background moves the diagram in pan mode (the hand, or
+                                // Space held) and on a phone, where a finger has no other way to move it.
+                                panOnDrag={panning || narrow}
+                                selectionOnDrag={!panning && !narrow}
+                                selectionMode={SelectionMode.Partial}
+                                multiSelectionKeyCode="Shift"
+                                onSelectionEnd={() => pickGroup(flow.getNodes().filter((n) => n.selected && n.type === 'table').map((n) => n.id))}
                                 // On a phone a drag moves the diagram, so a finger on a card scrolls instead of moving it.
                                 nodesDraggable={!panning && !narrow}
                                 edgesFocusable={false}
@@ -1748,6 +1787,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                             connections={scopeConnections}
                             tables={visibleTables}
                             selected={selected}
+                            group={group}
                             highlight={highlight}
                             onHighlight={(h) => {
                                 highlightThing(h);
@@ -2047,6 +2087,8 @@ const SHORTCUTS: [string[], string][] = [
     [[`${MOD} Scroll`], 'Zoom in or out at the pointer; a pinch zooms too'],
     [['Scroll'], 'Move the diagram up, down or sideways'],
     [['Space'], 'Hold to pan: drag anywhere, even over a table'],
+    [['Shift click'], 'Add a table to the selection, or take it out; drag one to move them all'],
+    [['Drag'], 'On the background: draw a box that selects every table it touches'],
     [['L'], 'Show relation names on every edge, or only on the selected table'],
     [['N'], 'Show notes on the cards'],
     [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],

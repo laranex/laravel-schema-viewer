@@ -15,6 +15,8 @@ type Props = {
     // The tables in view, listed in the Tables tab.
     tables: { connection: string; table: Table }[];
     selected: { connection: string; table: string } | null;
+    // Several cards picked at once, by node id; Details lists them.
+    group?: string[];
     // A relationship or column shown in Details instead of the selected table.
     highlight: Highlight | null;
     onHighlight: (highlight: Highlight) => void;
@@ -147,7 +149,7 @@ function relationshipTitle(schema: Schema, connection: string, id: string): stri
     return d ? `${d.from} → ${d.to}` : 'Relationship';
 }
 
-export function SidePanel({ schema, connections, tables, selected, highlight, onHighlight, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, focusedOn, onFocusHighlight, onLeaveFocus, onCopyLink, changes }: Props) {
+export function SidePanel({ schema, connections, tables, selected, group = [], highlight, onHighlight, tab, onTab, onOpen, sheet, sheetOpen, onSheet, editor, focused, onFocus, focusedOn, onFocusHighlight, onLeaveFocus, onCopyLink, changes }: Props) {
     const hints = connections.flatMap((c) => schema.hints(c));
     const [filter, setFilter] = useState('');
     const [mode, setMode] = useState<BrowseMode>('tables');
@@ -231,6 +233,8 @@ export function SidePanel({ schema, connections, tables, selected, highlight, on
                             onLeaveFocus={onLeaveFocus}
                             onCopyLink={onCopyLink}
                         />
+                    ) : group.length > 1 ? (
+                        <GroupDetails schema={schema} group={group} onOpen={onOpen} several={connections.length > 1} />
                     ) : (
                         <>
                             {schema.doc.note && (
@@ -707,6 +711,36 @@ export function RelationKeys({ schema, relation: r, note = true }: { schema: Sch
                     <b>Note</b> {link.note}
                 </p>
             )}
+        </div>
+    );
+}
+
+// Several cards picked at once: how many, and each, to open on its own.
+function GroupDetails({ schema, group, onOpen, several }: { schema: Schema; group: string[]; onOpen: (connection: string, table: string) => void; several: boolean }) {
+    const tables = group
+        .map((id) => schema.doc.connections.flatMap((c) => c.tables.map((t) => ({ connection: c.name, table: t }))).find((e) => `${e.connection}.${e.table.name}` === id))
+        .filter((e): e is { connection: string; table: Table } => e !== undefined);
+    return (
+        <div className="details">
+            <header className="details__head">
+                <h2>{tables.length} tables selected</h2>
+                <p className="details__sub">Drag one to move them together. Shift+click a table to add or remove it; Esc clears the selection.</p>
+            </header>
+            <section>
+                <ul className="plain">
+                    {tables.map(({ connection, table }) => (
+                        <li key={`${connection}.${table.name}`}>
+                            <button type="button" className="link-button link-button--code" onClick={() => onOpen(connection, table.name)}>
+                                {several ? `${connection}.` : ''}
+                                {table.name}
+                            </button>{' '}
+                            <span className="muted">
+                                {table.columns.length} col{schema.modelsFor(connection, table.name).length > 0 ? ` · ${schema.modelsFor(connection, table.name).map((m) => shortClass(m.class)).join(', ')}` : ''}
+                            </span>
+                        </li>
+                    ))}
+                </ul>
+            </section>
         </div>
     );
 }

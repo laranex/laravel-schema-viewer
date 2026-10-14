@@ -394,6 +394,11 @@ code {
     cursor: grabbing;
 }
 
+/* Outside pan mode, a drag on the background draws a box that picks tables, so the background keeps the arrow. */
+.canvas:not(.is-panning) .react-flow__pane {
+    cursor: default;
+}
+
 /* On the zoomed-out picture, a table under the pointer can be clicked. */
 .canvas.is-picture.is-over-table .react-flow__pane {
     cursor: pointer;
