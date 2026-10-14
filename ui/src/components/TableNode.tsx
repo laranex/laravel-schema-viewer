@@ -23,6 +23,8 @@ export type TableNodeData = {
     shown: string[];
     // The columns edges can end on, the only ones that get handles.
     ends: string[];
+    // Notes written out on the card, a row each.
+    notes: boolean;
 };
 
 // What a card's own controls do, provided by the viewer.
@@ -78,6 +80,17 @@ function NoteMark({ comment, note, className }: { comment: string | null; note?:
                     <path d="M3.5 2.5 H10 L12.5 5 V13.5 H3.5 Z M6 7 H10 M6 9.5 H10 M6 12 H8.5" />
                 </svg>
             </span>
+        </Tooltip>
+    );
+}
+
+// A note written out on the card while Notes is on: one line, the whole note on hover.
+function NoteRow({ text }: { text: string }) {
+    return (
+        <Tooltip content={text} side="right">
+            <li className="table-node__note-row">
+                <span>{text}</span>
+            </li>
         </Tooltip>
     );
 }
@@ -141,10 +154,11 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
             </header>
             {data.shown.length > 0 && (
                 <ul className="table-node__columns">
+                    {data.notes && table.note && <NoteRow text={table.note} />}
                     {table.columns.filter((c) => shown.has(c.name)).map((c) => {
                         const isPk = data.primary.includes(c.name);
                         const isFk = data.foreign.includes(c.name);
-                        return (
+                        return [
                             <li
                                 key={c.name}
                                 className={data.linked.includes(c.name) ? 'is-linked' : undefined}
@@ -196,8 +210,9 @@ function TableNode({ id, data, selected }: NodeProps<TableNodeType>) {
                                 >
                                     <span className="type">{data.casts[c.name] ? data.casts[c.name].split('\\').pop() : c.type}</span>
                                 </Tooltip>
-                            </li>
-                        );
+                            </li>,
+                            data.notes && c.note ? <NoteRow key={`${c.name}:note`} text={c.note} /> : null,
+                        ];
                     })}
                     {folded.length > 0 && (
                         <li className="table-node__more">

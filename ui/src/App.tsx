@@ -21,7 +21,7 @@ import type { Highlight } from './components/Browse';
 import { DownloadDialog, type ExportFormat } from './components/DownloadDialog';
 import { SidePanel, type PanelTab } from './components/SidePanel';
 import { ExternalNodeView, RegionNodeView, TableActions, TableNodeView, type ExternalNodeType, type RegionNodeType, type TableNodeType } from './components/TableNode';
-import { linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
+import { cardRows, linkKind, NODE_WIDTH, nodeHeight, nodeId, relationKind, Schema, shortClass, shownColumns, type Fold } from './graph';
 import { boxWidth, route, rowY, type Box, type Route } from './routing';
 import { boundsOf, COLOR_TOKENS, diagramSvg, svgToPng, type Colors, type ImageEdge, type ImageNode } from './exportImage';
 import { layoutConnections, TALL, WIDE, type StaticDownloads } from './layout';
@@ -42,7 +42,7 @@ const DENSE = 60;
 // The narrowest the panel may leave the diagram: room for the floating bar with every control in it.
 const DIAGRAM_ROOM = 480;
 
-type Layers = Record<EdgeKind, boolean> & { app: boolean; framework: boolean; package: boolean; allLabels: boolean };
+type Layers = Record<EdgeKind, boolean> & { app: boolean; framework: boolean; package: boolean; allLabels: boolean; notes: boolean };
 
 const nodeTypes = { table: TableNodeView, external: ExternalNodeView, region: RegionNodeView };
 const edgeTypes = { link: LinkEdgeView };
@@ -247,6 +247,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         framework: true,
         package: true,
         allLabels: true,
+        notes: false,
     }));
     const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
     const [toast, setToast] = useState<string | null>(null);
@@ -449,7 +450,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         hotkey: t.hotkey,
     });
     const lineToggles = layerToggles.filter((t) => t.swatch).map(asMenuToggle);
-    const showToggles = [...layerToggles.filter((t) => t.key === 'allLabels').map(asMenuToggle), { label: 'Grid', checked: grid, onChange: switchGrid }];
+    const showToggles = [...layerToggles.filter((t) => t.key === 'allLabels' || t.key === 'notes').map(asMenuToggle), { label: 'Grid', checked: grid, onChange: switchGrid }];
     const tableToggles = layerToggles
         .filter((t) => t.key === 'app' || t.key === 'framework' || t.key === 'package')
         .map((t) => ({ ...asMenuToggle(t), icon: <span className="ui-item__count">{tableCounts[t.key as keyof typeof tableCounts]}</span> }));
@@ -548,7 +549,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
         const sizes: Record<string, number> = {};
         shownTables.forEach((e) => {
             const id = nodeId(e.connection, e.table.name);
-            sizes[id] = nodeHeight(e.table, shownOfRef.current(id, e.table).length);
+            const shown = shownOfRef.current(id, e.table);
+            sizes[id] = nodeHeight(e.table, shown.length, cardRows(e.table, shown, layers.notes).length - shown.length);
         });
         externals.forEach((_, id) => (sizes[id] = EXTERNAL_HEIGHT));
 
@@ -582,7 +584,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                         id: nodeId(c, t.name),
                         type: 'table',
                         position: positions[nodeId(c, t.name)] ?? { x: 0, y: 0 },
-                        data: { connection: c, table: t, models: [], pivot: false, hintCount: 0, dim: false, active: false, primary: [], foreign: [], linked: [], casts: {}, fold: 'all', shown: [], ends: [] },
+                        data: { connection: c, table: t, models: [], pivot: false, hintCount: 0, dim: false, active: false, primary: [], foreign: [], linked: [], casts: {}, fold: 'all', shown: [], ends: [], notes: false },
                         width: NODE_WIDTH,
                     }),
                 ),
@@ -604,7 +606,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [schema, scopeConnections, shownTables, externals, layoutVersion, narrow]);
+    }, [schema, scopeConnections, shownTables, externals, layoutVersion, narrow, layers.notes]);
 
     const neighbors = useMemo(() => (selected ? schema.neighbors(selected.connection, selected.table, 1) : null), [schema, selected]);
     const pivots = useMemo(() => new Set(scopeConnections.flatMap((c) => [...schema.pivotTables(c)].map((t) => nodeId(c, t)))), [schema, scopeConnections]);
@@ -688,6 +690,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                 linked: (spot ? spot.rows.get(n.id) : linkedColumns.get(n.id)) ?? NONE,
                 fold: folds[n.id] ?? columns,
                 shown: shownOf(n.id, t),
+                notes: layers.notes,
             };
             const isSelected = spot ? n.id === spot.main : n.id === selectedId;
             if (!!n.selected === isSelected && sameData(n.data, data)) {
@@ -695,7 +698,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
             }
             return { ...n, selected: isSelected, data };
         },
-        [cards, selectedId, neighbors, pivots, isDim, linkedColumns, folds, columns, shownOf, spot],
+        [cards, selectedId, neighbors, pivots, isDim, linkedColumns, folds, columns, shownOf, spot, layers.notes],
     );
     const decorateRef = useRef(decorate);
     decorateRef.current = decorate;
@@ -809,8 +812,8 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
                 x: n.position.x,
                 y: n.position.y,
                 width: n.measured?.width ?? boxWidth(n.type),
-                height: n.measured?.height ?? (n.type === 'table' ? nodeHeight(n.data.table, n.data.shown.length) : EXTERNAL_HEIGHT),
-                rows: n.type === 'table' ? n.data.shown : ['id'],
+                height: n.measured?.height ?? (n.type === 'table' ? nodeHeight(n.data.table, n.data.shown.length, cardRows(n.data.table, n.data.shown, n.data.notes).length - n.data.shown.length) : EXTERNAL_HEIGHT),
+                rows: n.type === 'table' ? cardRows(n.data.table, n.data.shown, n.data.notes) : ['id'],
                 folded: n.type === 'table',
             };
             map.set(n.id, box);
@@ -1325,6 +1328,7 @@ function Viewer({ doc, example = false, downloads, defaultConnection, editor, ch
             '=': () => flow.zoomIn({ duration: 150 }),
             '-': () => flow.zoomOut({ duration: 150 }),
             l: () => toggle('allLabels'),
+            n: () => toggle('notes'),
             y: () => toggle('app'),
             g: () => toggle('framework'),
             p: () => toggle('package'),
@@ -1742,6 +1746,7 @@ const LAYER_TOGGLES: { key: keyof Layers; label: string; swatch?: EdgeKind; hotk
     { key: 'framework', label: 'Framework tables', hotkey: 'G' },
     { key: 'package', label: 'Package tables', hotkey: 'P' },
     { key: 'allLabels', label: 'Relation names', hotkey: 'L' },
+    { key: 'notes', label: 'Notes', hotkey: 'N' },
 ];
 
 function Swatch({ kind }: { kind: EdgeKind }) {
@@ -1912,6 +1917,7 @@ const SHORTCUTS: [string[], string][] = [
     [['+', '−'], 'Zoom in or out'],
     [['Space'], 'Hold to pan: drag anywhere, even over a table'],
     [['L'], 'Show relation names on every edge, or only on the selected table'],
+    [['N'], 'Show notes on the cards'],
     [['1', '2', '3', '4'], 'Show or hide FK + relation, relation only, FK only, through edges'],
     [['Y'], 'Show or hide your own tables'],
     [['G'], 'Show or hide framework tables'],

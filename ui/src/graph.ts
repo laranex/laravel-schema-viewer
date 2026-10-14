@@ -13,8 +13,19 @@ export type Fold = 'all' | 'keys' | 'none';
 export const shownColumns = (table: Table, fold: Fold, keys: Set<string>) =>
     fold === 'all' ? table.columns.map((c) => c.name) : fold === 'keys' ? table.columns.filter((c) => keys.has(c.name)).map((c) => c.name) : [];
 
-export const nodeHeight = (table: Table, shown = table.columns.length) =>
-    shown === 0 && table.columns.length > 0 ? HEADER_HEIGHT + 2 : HEADER_HEIGHT + (shown + (shown < table.columns.length ? 1 : 0)) * ROW_HEIGHT + 8;
+export const nodeHeight = (table: Table, shown = table.columns.length, noteRows = 0) =>
+    shown === 0 && table.columns.length > 0 ? HEADER_HEIGHT + 2 : HEADER_HEIGHT + (shown + noteRows + (shown < table.columns.length ? 1 : 0)) * ROW_HEIGHT + 8;
+
+// While Notes is on, a card gives each note a row of its own: the table's under the header, a column's under the
+// column. Edges are routed by row, so the rows list names them too.
+export const NOTE_ROW = '\u0000note';
+export const cardRows = (table: Table, shown: string[], notes: boolean): string[] => {
+    if (!notes || shown.length === 0) {
+        return shown;
+    }
+    const noted = new Set(table.columns.filter((c) => c.note).map((c) => c.name));
+    return [...(table.note ? [NOTE_ROW] : []), ...shown.flatMap((c) => (noted.has(c) ? [c, `${NOTE_ROW}:${c}`] : [c]))];
+};
 
 export const shortClass = (cls: string) => cls.split('\\').pop() ?? cls;
 
