@@ -1,7 +1,7 @@
 ---
 name: laravel-schema-viewer
 description: >
-  Install, configure and share laranex/laravel-schema-viewer in a Laravel app: building the schema snapshot with schema-viewer:build, who may open the viewer, which connections and models it reads, editor links, accepting hints with hints.ignore, failing CI with schema-viewer:check, and exporting a standalone HTML viewer. To read the schema itself before changing the database, use the laravel-schema-viewer-schema skill.
+  Install, configure and share laranex/laravel-schema-viewer in a Laravel app: building the schema snapshot with schema-viewer:build, who may open the viewer, which connections and models it reads, editor links, accepting hints with hints.ignore, failing CI with schema-viewer:check, scanning the repository for committed snapshots with schema-viewer:scan, and exporting a standalone HTML viewer. To read the schema itself before changing the database, use the laravel-schema-viewer-schema skill.
 license: MIT
 metadata:
   author: Nay Thu Khant
@@ -27,7 +27,7 @@ php artisan schema-viewer:build
 
 Install it as a dev dependency: the viewer is a development tool (running it on a server is a security exception; see Open it on a server).
 
-`schema-viewer:build` reads the database and the models and writes `schema-viewer.json` in the project root, always there: a laranex-schema 2.0 document ([the shared contract](https://laranex.github.io/schema-viewer-ui/)) in canonical JSON, the format the Laranex schema viewers for Laravel, Python and Node.js share, plus `schema-viewer.changes.json` beside it with what changed since the previous build. The viewer is the shared Laranex viewer, shipped inside the package (no Node.js or npm needed); it has no API: its page carries the document from that file, and no model code runs in a web request. Its Download dialog makes the Mermaid, DBML, Markdown, JSON, SVG, PNG and offline HTML files in the browser. A `schema-viewer.json` written by laravel-schema-viewer 1.x is refused with a message to build it again. Without the file, the page says to run the build. Run it again after migrating or changing a model; on a server, run it in the deploy script after `migrate`. Never commit the file, even in a private repository: it lists every table and column, the models' fillable, hidden, casts and scopes, and source file paths. Add `/schema-viewer.json`, `/schema-viewer.changes.json` and `/schema-viewer/` (the default HTML export folder) to `.gitignore`, and build it on each machine, in CI and in the deploy script.
+`schema-viewer:build` reads the database and the models and writes `schema-viewer.json` in the project root, always there: a laranex-schema 2.0 document ([the shared contract](https://laranex.github.io/schema-viewer-ui/)) in canonical JSON, the format the Laranex schema viewers for Laravel, Python and Node.js share, plus `schema-viewer.changes.json` beside it with what changed since the previous build. The viewer is the shared Laranex viewer, shipped inside the package (no Node.js or npm needed); it has no API: its page carries the document from that file, and no model code runs in a web request. Its Download dialog makes the Mermaid, DBML, Markdown, JSON, SVG, PNG and offline HTML files in the browser. A `schema-viewer.json` written by laravel-schema-viewer 1.x is refused with a message to build it again. Without the file, the page says to run the build. Run it again after migrating or changing a model; on a server, run it in the deploy script after `migrate`. Never commit the file, even in a private repository: it lists every table and column, the models' fillable, hidden, casts and scopes, and source file paths. Add `/schema-viewer.json`, `/schema-viewer.changes.json` and `/schema-viewer/` (the default HTML export folder) to `.gitignore`, and build it on each machine, in CI and in the deploy script. Inside a Git work tree, `schema-viewer:build` warns on standard error when a file it writes is not ignored, and exits 1 without writing when Git already tracks it (run `git rm --cached -- schema-viewer.json`, then ignore it); `schema-viewer:export --output` checks its file the same way.
 
 Building constructs every model and calls its relation methods with every connection pretending, model events off, and jobs, mail, notifications, HTTP calls, events and the cache faked; everything is put back afterwards. Code that goes around Laravel's facades and clients still runs for real: a direct Guzzle or SDK call, a raw Redis write, a file write, a log line. `SchemaViewer::building()` is `true` only while the package reads the models (build, export and check), so a constructor, `booted()` or relation method can skip that work. Guard it with `class_exists()`, since a server installed with `composer install --no-dev` has no `SchemaViewer` class, and still return the relation:
 
@@ -108,6 +108,15 @@ php artisan schema-viewer:diff "$RUNNER_TEMP/base.json" --against=schema-viewer.
 
 The summary names tables and columns to everyone who can read the job. `schema-viewer.changes.json` keeps what changed since the previous build on the same machine, which the viewer's Changes tab and `php artisan schema-viewer:diff` show. `php artisan schema-viewer:build --check` builds in memory, never writes, and exits 1 when the `schema-viewer.json` on disk is missing or out of date (with a short summary of what differs): use it to confirm a deployed build is current.
 
+### Keep snapshots out of Git
+
+```bash
+php artisan schema-viewer:scan --tracked --untracked
+php artisan schema-viewer:scan --artifacts public/build --report build/schema-scan.json
+```
+
+Finds laranex-schema documents by content, not by name: in the Git index (the staged bytes, and files tracked before they were ignored) with `--tracked`, in files Git would add with `--untracked`, in a build output directory (every file, ignore rules not applied) with `--artifacts DIR`, and in every past version with `--history` (fails on a shallow clone). Name at least one scope. It prints one line of counts; `--json` prints the `laranex-schema-scan` report and `--report FILE` writes it, with paths and reasons but never file content. Exit codes: 0 clean, 1 a snapshot found, 2 the scan failed or is incomplete, 3 something looks like a snapshot; fail CI on any non-zero exit. A synthetic fixture committed on purpose goes in `.laranex-schema-allowlist.json` at the project root by exact path and SHA-256 (`{"format":"laranex-schema-allowlist","version":"1.0","entries":[{"path":"…","sha256":"…"}]}`); a changed or moved file is reported again. Run `schema-viewer:scan --tracked` in a Git pre-commit hook. Base64-compressed payloads, SVG, PNG, DBML, Mermaid and Markdown exports are not detected: keep them out of the repository yourself.
+
 ### Share the viewer without the app
 
 ```bash
@@ -141,3 +150,4 @@ expect(collect($document->hints)->pluck('kind'))->not->toContain(\Laranex\Larave
 - Dropping an index the check calls redundant without checking the queries that use it.
 - Committing `schema-viewer.json`, `schema-viewer.changes.json` or an export, even in a private repository: build them where they are needed instead.
 - Publishing an HTML export where the schema should not be seen.
+- Allowlisting a real application's snapshot to make `schema-viewer:scan` pass: remove it from Git instead (`git rm --cached`), and from the history if it was pushed.

@@ -32,6 +32,30 @@ Requires PHP 8.1+ and Laravel 10 (10.36 or later), 11, 12 or 13.
 composer require laranex/laravel-schema-viewer --dev
 ```
 
+## Keep the schema out of Git
+
+`schema-viewer:build` (and `schema-viewer:export --output`) warn when the file they write is not git-ignored, and refuse to write one Git already tracks (`git rm --cached -- schema-viewer.json` untracks it). `schema-viewer:scan` finds schema snapshots by content in what Git tracks or would add, in build output and, on request, in the history, and fails on any it finds; exit codes 0 clean, 1 found, 2 scan failed or incomplete, 3 uncertain. Name at least one scope:
+
+```bash
+php artisan schema-viewer:scan --tracked --untracked                       # the repository
+php artisan schema-viewer:scan --artifacts public/build --report scan.json  # build output; the report has paths, never content
+```
+
+A Git pre-commit hook (`.git/hooks/pre-commit`, executable):
+
+```sh
+#!/bin/sh
+exec php artisan schema-viewer:scan --tracked
+```
+
+or a Composer script, `"scan": "@php artisan schema-viewer:scan --tracked --untracked"`, run with `composer scan`. In CI, run it after the build and fail the job on any non-zero exit:
+
+```yaml
+- run: php artisan schema-viewer:scan --tracked --untracked --report schema-scan.json
+```
+
+A synthetic fixture you commit on purpose is listed by exact path and SHA-256 in `.laranex-schema-allowlist.json` at the project root. The scan does not decode compressed or encoded content, and does not read SVG, PNG, DBML, Mermaid or Markdown exports: once exported, a file is yours to keep out of the repository.
+
 ## Documentation
 
 The full documentation lives at **[laranex.vercel.app/laravel-schema-viewer](https://laranex.vercel.app/laravel-schema-viewer)**:

@@ -11,6 +11,7 @@ dataset('skills', [
         '## Use',
         '### Enforce the hints in CI',
         '### Build the document in CI',
+        '### Keep snapshots out of Git',
         '### Share the viewer without the app',
         '### Open it on a server',
         '## Test your app',
