@@ -23,7 +23,7 @@ final class Archive
      */
     private const EXCLUDED = [
         '.github/', '.agents/', '.claude/', '.claude', 'build/', 'scripts/', 'skills/', 'tests/', 'workbench/',
-        '.editorconfig', '.gitattributes', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'phpstan.neon.dist', 'phpunit.xml.dist',
+        '.editorconfig', '.gitattributes', '.gitignore', '.laranex-schema-allowlist.json', 'AGENTS.md', 'CLAUDE.md', 'phpstan.neon.dist', 'phpunit.xml.dist',
         'pint.json', 'testbench.yaml',
     ];
 

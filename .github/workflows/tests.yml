@@ -110,7 +110,9 @@ jobs:
 
   assets:
     # Release gate: the git archive Composer installs carries the verified viewer assets, matching ui.lock.json, the
-    # registry tarball and ui.stamp.json, and none of the development files.
+    # registry tarball and ui.stamp.json, and none of the development files. The repository and that archive hold no
+    # schema snapshot: php artisan schema-viewer:scan fails the job on any non-zero exit (1 confirmed, 2 incomplete or
+    # failed, 3 uncertain), and the archive must hold no document at all, allowed or not.
     runs-on: ubuntu-latest
 
     name: Viewer assets
@@ -123,10 +125,38 @@ jobs:
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: 8.4
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, sqlite, pdo_sqlite
+          tools: composer:v2
           coverage: none
 
       - name: Check the assets against the lock, the registry and the git archive
         run: php scripts/ui.php check --registry --archive
+
+      - name: Install dependencies
+        run: |
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress --no-scripts
+          composer run prepare
+
+      - name: Scan the repository for schema snapshots
+        run: |
+          mkdir -p build/scan
+          php vendor/bin/testbench schema-viewer:scan --tracked --untracked --report build/scan/tree.json
+
+      - name: Scan the git archive Composer installs
+        run: |
+          mkdir -p build/scan build/archive
+          git archive --format=tar HEAD | tar -x -C build/archive
+          php vendor/bin/testbench schema-viewer:scan --artifacts build/archive --report build/scan/archive.json
+          jq -e '.counts.allowed == 0' build/scan/archive.json
+
+      - name: Upload the scan reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: schema-scan-reports
+          path: build/scan
+          if-no-files-found: ignore
+          retention-days: 7
 
   viewer:
     # The shared viewer as the package serves it: the workbench app, a real build, and headless Chrome under the page's

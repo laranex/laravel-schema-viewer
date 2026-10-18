@@ -103,6 +103,12 @@
         ],
         "ui:check": [
             "@php scripts/ui.php check"
+        ],
+        "allowlist": [
+            "@php scripts/allowlist.php"
+        ],
+        "scan": [
+            "@php vendor/bin/testbench schema-viewer:scan --tracked --untracked"
         ]
     },
     "extra": {

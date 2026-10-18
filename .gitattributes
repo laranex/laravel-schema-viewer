@@ -20,5 +20,6 @@
 /AGENTS.md          export-ignore
 /AGENTS_PACKAGE.md  export-ignore
 /build              export-ignore
+/.laranex-schema-allowlist.json export-ignore
 /scripts            export-ignore
 /skills            export-ignore
