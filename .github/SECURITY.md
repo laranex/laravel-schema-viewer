@@ -10,6 +10,8 @@ Only the latest major version receives security fixes.
 
 If you discover a security vulnerability within Laravel Schema Viewer, please send an email to Nay Thu Khant at naythukhant644@gmail.com. All security vulnerabilities will be promptly addressed.
 
+You can also report it privately through [GitHub private vulnerability reporting](https://github.com/laranex/laravel-schema-viewer/security/advisories/new). Do not put vulnerability details or a real schema snapshot in a public issue, pull request or discussion.
+
 ## Security model
 
 Laravel Schema Viewer is a development tool. The generic, cross-framework policy is the shared viewer's [security page](https://laranex.github.io/schema-viewer-ui/security.html); this section covers what the Laravel package does itself and what is left to you.
