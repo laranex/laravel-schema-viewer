@@ -30,7 +30,7 @@ final class AssetController
         $path = $version === $assets->version() && $file !== $assets->entry('page') ? $assets->path($file) : null;
 
         if ($path === null || $type === null) {
-            throw new NotFoundHttpException;
+            throw new NotFoundHttpException('', null, 0, ['Cache-Control' => 'no-store']);
         }
 
         return new BinaryFileResponse($path, 200, [

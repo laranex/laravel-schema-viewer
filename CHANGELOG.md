@@ -11,6 +11,10 @@ All notable changes to `laravel-schema-viewer` will be documented in this file.
 - The viewer is the shared Laranex viewer (laranex-schema-viewer-ui 0.3.0), served from the package's verified copy: same layout, icons and line ends, in the shared palette. Links copied from the old viewer no longer open their view: the hash now names ids, such as `#table=mysql:orders&focus=mysql:orders&depth=1`.
 - Mermaid, DBML and Markdown exports follow the shared exporters, byte for byte what the viewer's Download dialog makes: `UK` marks, nullable foreign keys as `|o`, coverage notes, and notes about what a format leaves out (on standard error). The standalone HTML export is the shared offline page with its own Content-Security-Policy.
 
+### Security
+- In the local environment the viewer opens only to requests from this machine to this machine: a loopback peer address (127.0.0.0/8, ::1) and a `localhost`, `*.localhost` or loopback Host, read from the request itself, never from proxy headers. Any other request (another machine on the network, a tunnel such as ngrok, a public name) needs the `viewSchema` gate or `SchemaViewer::auth()`, as outside `local`.
+- Denials (403) and missing viewer files (404) are sent with `Cache-Control: no-store` and say nothing about the schema; viewer files are cached privately, never publicly.
+
 ### Added
 - The viewer page sends a strict Content-Security-Policy (`script-src 'self'`, no inline script) and serves only the files of the viewer's manifest, under its fingerprint.
 - `schema-viewer:export --orm` adds the Eloquent relationships and inferred associations to Mermaid and Markdown, labelled apart from the foreign keys; `--connection` scopes the JSON export to one connection.

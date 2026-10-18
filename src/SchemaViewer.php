@@ -108,8 +108,11 @@ class SchemaViewer
     }
 
     /**
-     * Whether the request may open the viewer: the auth() callback when one is set, otherwise, in the local environment,
-     * every request on a host of this machine and, elsewhere, the users the viewSchema gate allows.
+     * Whether the request may open the viewer: the auth() callback when one is set. Otherwise, in the local environment,
+     * a request from this machine to this machine: its connection comes from a loopback address (127.0.0.0/8 or ::1)
+     * and its Host header names one (localhost, *.localhost, 127.0.0.0/8 or ::1). Any other request, in any
+     * environment, needs a user the viewSchema gate allows. Both are read from the request itself, never from proxy
+     * headers, so a tunnel or a reverse proxy on the machine does not count as local.
      */
     public static function check(Request $request, ?Application $app = null): bool
     {
@@ -123,7 +126,7 @@ class SchemaViewer
             return false;
         }
 
-        if ($app->environment('local')) {
+        if ($app->environment('local') && self::fromLoopback($request)) {
             return true;
         }
 
@@ -134,6 +137,36 @@ class SchemaViewer
         $gate = $app->make(Gate::class);
 
         return $gate->has('viewSchema') && $gate->forUser($request->user())->allows('viewSchema');
+    }
+
+    /**
+     * Whether the request reached this machine from this machine: a loopback peer address and a loopback Host.
+     */
+    private static function fromLoopback(Request $request): bool
+    {
+        $peer = $request->server->get('REMOTE_ADDR');
+        $host = (string) $request->headers->get('host', '');
+        // [::1]:8000, 127.0.0.1:8000 or localhost:8000: the host without its port.
+        $host = strtolower(preg_match('/^\[([^\]]+)\](?::\d+)?$/', $host, $match) === 1 ? $match[1] : (string) preg_replace('/:\d+$/', '', $host));
+
+        return is_string($peer) && self::loopbackAddress($peer)
+            && ($host === 'localhost' || str_ends_with($host, '.localhost') || self::loopbackAddress($host));
+    }
+
+    private static function loopbackAddress(string $address): bool
+    {
+        $packed = @inet_pton($address);
+
+        if ($packed === false) {
+            return false;
+        }
+
+        // ::ffff:127.0.0.1, IPv4 as IPv6, counts as its IPv4 address.
+        if (strlen($packed) === 16 && str_starts_with($packed, str_repeat("\0", 10)."\xff\xff")) {
+            $packed = substr($packed, 12);
+        }
+
+        return strlen($packed) === 4 ? $packed[0] === "\x7f" : $packed === str_repeat("\0", 15)."\x01";
     }
 
     /**

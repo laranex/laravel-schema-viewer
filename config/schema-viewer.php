@@ -9,9 +9,13 @@ return [
     |
     | Unset, the viewer is on in the local environment and off everywhere
     | else. Set it to true or false to decide for every environment.
+    | Turning it on outside local is a security exception, not a
+    | recommended deployment: the schema helps attackers.
     |
-    | In the local environment everyone may open it; elsewhere only users
-    | the viewSchema gate allows, as with Telescope. Decide yourself with
+    | In the local environment it opens to requests from this machine to
+    | this machine (a loopback address and a localhost or loopback Host);
+    | every other request, in any environment, needs a user the viewSchema
+    | gate allows. Without that gate it answers 403. Decide yourself with
     | SchemaViewer::auth() in a service provider.
     |
     | The viewer shows schema-viewer.json in the project root, which php
@@ -26,8 +30,9 @@ return [
     | Route
     |--------------------------------------------------------------------------
     |
-    | Where the viewer is served. Outside the local environment, a user also
-    | needs the viewSchema gate: Gate::define('viewSchema', fn ($user) => ...).
+    | Where the viewer is served. Apart from loopback requests in the local
+    | environment, a user needs the viewSchema gate:
+    | Gate::define('viewSchema', fn ($user) => ...).
     | SchemaViewer::auth(fn ($request) => ...) replaces both checks.
     |
     */

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Vite;
 use Laranex\LaravelSchemaViewer\Http\Controllers\ViewerController;
+use Laranex\LaravelSchemaViewer\Http\Middleware\Authorize;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 use Laranex\LaravelSchemaViewer\Viewer\ViewerAssets;
 
@@ -221,6 +222,37 @@ it('refuses a viewer file whose size is not the manifest\'s', function (): void 
     expect($assets->path('app.js'))->toBeNull()
         ->and($assets->path('app.css'))->toBeNull()
         ->and(fn () => $assets->contents('app.js'))->toThrow(RuntimeException::class, 'does not match its manifest');
+});
+
+it('guards every route of the viewer with Authorize', function (): void {
+    $routes = collect(app('router')->getRoutes()->getRoutes())->filter(fn ($route): bool => str_starts_with((string) $route->getName(), 'schema-viewer.'));
+
+    expect($routes->map(fn ($route): string => (string) $route->getName())->sort()->values()->all())->toBe(['schema-viewer.asset', 'schema-viewer.index']);
+
+    foreach ($routes as $route) {
+        expect($route->gatherMiddleware())->toContain(Authorize::class)
+            // Exact paths: no route of the viewer catches anything else.
+            ->and($route->uri())->not->toContain('?}')
+            ->and($route->wheres)->not->toContain('.*');
+    }
+});
+
+it('keeps denials and missing files out of caches, and says nothing about the schema in them', function (): void {
+    Schema::create('secret_payroll_runs', fn (Blueprint $table) => $table->id());
+    buildSnapshot();
+    SchemaViewer::auth(fn (): bool => false);
+
+    foreach (['/schema-viewer', assetUrl('app.js')] as $uri) {
+        $denied = $this->get($uri, ['Accept-Encoding' => 'gzip'])->assertForbidden()->assertHeader('Cache-Control', 'no-store, private');
+
+        expect((string) $denied->getContent())->not->toContain('secret_payroll_runs');
+    }
+
+    SchemaViewer::auth(fn (): bool => true);
+
+    $this->get(assetUrl('missing.js'))->assertNotFound()->assertHeader('Cache-Control', 'no-store, private');
+    $this->get('/schema-viewer/assets/000000000000/app.js')->assertNotFound()->assertHeader('Cache-Control', 'no-store, private');
+    $this->get('/schema-viewer', ['Accept-Encoding' => 'gzip'])->assertOk()->assertHeader('Content-Encoding', 'gzip')->assertHeader('Cache-Control', 'no-store, private');
 });
 
 it('can live on another path', function (): void {
