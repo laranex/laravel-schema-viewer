@@ -39,6 +39,7 @@ class SchemaViewerServiceProvider extends ServiceProvider
             Console\ExportCommand::class,
             Console\CheckCommand::class,
             Console\DiffCommand::class,
+            Console\ScanCommand::class,
         ]);
 
         $this->publishes([

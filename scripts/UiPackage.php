@@ -53,7 +53,7 @@ final class UiPackage
      * Contract directories the tests read; each must hold cases.
      */
     public const CONTRACT_DIRECTORIES = [
-        'fixtures/valid', 'fixtures/invalid', 'conformance/graph', 'conformance/inference', 'conformance/migrations',
+        'fixtures/valid', 'fixtures/invalid', 'conformance/graph', 'conformance/inference', 'conformance/migrations', 'conformance/scan',
     ];
 
     /**

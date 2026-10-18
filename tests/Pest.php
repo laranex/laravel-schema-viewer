@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
+use Laranex\LaravelSchemaViewer\Contract\Json;
+use Laranex\LaravelSchemaViewer\Contract\Scan;
+use Laranex\LaravelSchemaViewer\Contract\Shape;
 use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 use Laranex\LaravelSchemaViewer\Scripts\UiPackage;
 use Laranex\LaravelSchemaViewer\Snapshot;
@@ -105,7 +108,7 @@ function nodePackage(): string
     register_shutdown_function(fn () => (new Filesystem)->deleteDirectory($root));
 
     foreach (UiPackage::members((string) file_get_contents((new UiPackage(dirname(__DIR__)))->cached())) as $path => $content) {
-        if ($path === 'contract/check.mjs' || $path === 'package.json' || (str_starts_with($path, 'dist/lib/') && str_ends_with($path, '.js'))) {
+        if ($path === 'contract/check.mjs' || $path === 'contract/scan.mjs' || $path === 'package.json' || (str_starts_with($path, 'dist/lib/') && str_ends_with($path, '.js'))) {
             @mkdir(dirname($root.'/'.$path), 0755, true);
             file_put_contents($root.'/'.$path, $content);
         }
@@ -143,4 +146,48 @@ function nodeExports(string $json, array $requests): array
     expect($code)->toBe(0, implode("\n", $output));
 
     return json_decode(implode("\n", $output), true, 512, JSON_THROW_ON_ERROR);
+}
+
+/**
+ * The problems of a laranex-schema-scan report: its shape against the shared contract/scan-report.schema.json (from
+ * the verified tarball, strictly), and the rules the shared validateScanReport() adds: version 1.0, an exit code that
+ * follows the errors and findings, counts that count them, the shared order, commits exactly on history findings and
+ * the allowlist scope exactly on stale entries.
+ *
+ * @return list<string>
+ */
+function scanReportProblems(mixed $report): array
+{
+    $errors = [];
+    Shape::checkAgainst(Json::decode(contractFiles()['scan-report.schema.json']), $report, $errors, true);
+
+    if ($errors !== [] || ! is_array($report)) {
+        return $errors;
+    }
+
+    if ($report['version'] !== Scan::VERSION) {
+        $errors[] = 'version';
+    }
+
+    if ($report['exitCode'] !== Scan::exitCode($report['findings'], $report['errors'])) {
+        $errors[] = 'exit code';
+    }
+
+    foreach (['confirmed', 'tampered', 'moved', 'uncertain', 'allowed', 'incomplete', 'stale'] as $status) {
+        if ($report['counts'][$status] !== count(array_filter($report['findings'], fn (array $f): bool => $f['status'] === $status))) {
+            $errors[] = "count {$status}";
+        }
+    }
+
+    foreach ($report['findings'] as $i => $finding) {
+        if ($i > 0 && Scan::byList(Scan::findingOrder($report['findings'][$i - 1]), Scan::findingOrder($finding)) > 0) {
+            $errors[] = "order at {$i}";
+        }
+
+        if (($finding['scope'] === 'history') !== ($finding['commit'] !== null) || ($finding['scope'] === 'allowlist') !== ($finding['status'] === 'stale')) {
+            $errors[] = "finding {$i}";
+        }
+    }
+
+    return $errors;
 }

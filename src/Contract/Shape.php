@@ -31,7 +31,19 @@ final class Shape
     public static function check(mixed $value, array &$errors, bool $strict): void
     {
         $schema = self::schema();
-        self::node($schema, $value, '$', $errors, $strict);
+        self::node($schema, $schema, $value, '$', $errors, $strict);
+    }
+
+    /**
+     * Check a value against another JSON Schema the shared shapes generate (the scan report's or the allowlist's);
+     * the errors are appended.
+     *
+     * @param  array<string, mixed>  $schema
+     * @param  list<string>  $errors
+     */
+    public static function checkAgainst(array $schema, mixed $value, array &$errors, bool $strict): void
+    {
+        self::node($schema, $schema, $value, '$', $errors, $strict);
     }
 
     /**
@@ -54,10 +66,11 @@ final class Shape
     }
 
     /**
+     * @param  array<string, mixed>  $root
      * @param  array<string, mixed>  $node
      * @param  list<string>  $errors
      */
-    private static function node(array $node, mixed $value, string $path, array &$errors, bool $strict): void
+    private static function node(array $root, array $node, mixed $value, string $path, array &$errors, bool $strict): void
     {
         if ($node === []) {
             return;
@@ -65,8 +78,8 @@ final class Shape
 
         if (isset($node['$ref'])) {
             $name = substr((string) $node['$ref'], strlen('#/$defs/'));
-            $definition = self::schema()['$defs'][$name] ?? throw new LogicException("Unknown schema reference {$node['$ref']}.");
-            self::node($definition, $value, $path, $errors, $strict);
+            $definition = $root['$defs'][$name] ?? throw new LogicException("Unknown schema reference {$node['$ref']}.");
+            self::node($root, $definition, $value, $path, $errors, $strict);
 
             return;
         }
@@ -80,7 +93,7 @@ final class Shape
         }
 
         if (isset($node['enum'])) {
-            if (! is_string($value) || ! in_array($value, $node['enum'], true)) {
+            if (! in_array($value, $node['enum'], true)) {
                 $errors[] = sprintf('%s: expected one of %s, got %s', $path, implode(', ', $node['enum']), self::stringify($value));
             }
 
@@ -93,7 +106,7 @@ final class Shape
             }
 
             if ($value !== null) {
-                self::node($node['anyOf'][0], $value, $path, $errors, $strict);
+                self::node($root, $node['anyOf'][0], $value, $path, $errors, $strict);
             }
 
             return;
@@ -107,7 +120,7 @@ final class Shape
                     $errors[] = "{$path}: expected a string, got {$kind}";
                 } elseif (isset($node['minLength']) && mb_strlen($value) < $node['minLength']) {
                     $errors[] = "{$path}: expected at least {$node['minLength']} characters";
-                } elseif (isset($node['pattern']) && preg_match('/'.str_replace('/', '\/', $node['pattern']).'/uD', $value) !== 1) {
+                } elseif (isset($node['pattern']) && preg_match(self::regex($node['pattern']), $value) !== 1) {
                     $errors[] = sprintf('%s: %s does not match %s', $path, Json::compact($value), $node['pattern']);
                 }
 
@@ -145,7 +158,7 @@ final class Shape
                 }
 
                 foreach ($value as $i => $item) {
-                    self::node($node['items'], $item, "{$path}[{$i}]", $errors, $strict);
+                    self::node($root, $node['items'], $item, "{$path}[{$i}]", $errors, $strict);
                 }
 
                 return;
@@ -169,7 +182,7 @@ final class Shape
                             continue;
                         }
 
-                        self::node($property, $members[$name], "{$path}.{$name}", $errors, $strict);
+                        self::node($root, $property, $members[$name], "{$path}.{$name}", $errors, $strict);
                     }
 
                     if ($strict) {
@@ -195,7 +208,7 @@ final class Shape
                             continue;
                         }
 
-                        self::node($node['additionalProperties'], $member, "{$path}.{$key}", $errors, $strict);
+                        self::node($root, $node['additionalProperties'], $member, "{$path}.{$key}", $errors, $strict);
                     }
                 }
 
@@ -203,6 +216,17 @@ final class Shape
         }
 
         throw new LogicException('Unsupported form in the laranex-schema JSON Schema at '.$path.': '.Json::compact($node));
+    }
+
+    /**
+     * A JSON Schema pattern (a JavaScript regular expression with the u flag) for PCRE: slashes escaped, and \uXXXX
+     * written as \x{XXXX}.
+     */
+    private static function regex(string $pattern): string
+    {
+        $pattern = (string) preg_replace('/(?<!\\\\)((?:\\\\\\\\)*)\\\\u([0-9a-fA-F]{4})/', '$1\\x{$2}', $pattern);
+
+        return '/'.str_replace('/', '\/', $pattern).'/uD';
     }
 
     private static function kindOf(mixed $value): string
