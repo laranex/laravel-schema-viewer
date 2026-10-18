@@ -168,64 +168,6 @@ jobs:
           for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:8000/schema-viewer && break; sleep 1; done
           VIEWER_URL=http://127.0.0.1:8000/schema-viewer CHROME_BIN=google-chrome node scripts/browser-smoke.mjs
 
-  browser:
-    # The old viewer (ui/, dist/), no longer served, in Chromium and WebKit, until it is removed.
-    runs-on: ubuntu-latest
-
-    name: Browser
-
-    defaults:
-      run:
-        working-directory: ui
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: The committed build matches the source
-        run: |
-          npm run build
-          git diff --exit-code -- ../dist
-
-      - name: Playwright version
-        id: playwright
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Cache the browsers
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-
-      - name: Install the browsers
-        run: npx playwright install --with-deps chromium webkit
-
-      - name: Browser tests
-        run: npx playwright test
-
-      - name: Upload the report
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: playwright-report
-          path: |
-            ui/playwright-report
-            ui/test-results
-          retention-days: 7
-
   databases:
     # The inspector reads each database's own catalog, so the suite also runs on every database Laravel supports.
     runs-on: ubuntu-latest

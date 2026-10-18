@@ -44,29 +44,20 @@ composer test
 
 ## The viewer
 
-The viewer is a React app in `ui/`, built into `dist/`, which is committed. After changing it, build it and commit `dist/` with your change; CI fails when `dist/` does not match `ui/src`. Use the Node version in `ui/.nvmrc`, so the build is the same as CI's:
+The viewer is the shared [laranex-schema-viewer-ui](https://www.npmjs.com/package/laranex-schema-viewer-ui) package, pinned by `ui.lock.json` (version, tarball and integrity). Its verified files are committed under `resources/viewer/` and `resources/contract/`, and `ui.stamp.json` records their SHA-256; CI fails when they differ from the locked tarball. After changing `ui.lock.json`, install and check them:
 
 ```bash
-cd ui
-npm ci
-npm run typecheck
-npm run build
+composer ui:fetch
+composer ui:check
 ```
 
-## Browser tests
+## Browser test
 
-`ui/e2e` tests the built viewer in Chromium and WebKit, on a desktop and a phone, with [Playwright](https://playwright.dev) and axe for accessibility. They serve `dist/` with a small Node server (`ui/e2e/server.mjs`) on a real snapshot of the shared blog schema:
+`scripts/browser-smoke.mjs` opens the viewer as the package serves it in headless Chrome, under the page's own Content-Security-Policy, with no Node.js dependencies:
 
 ```bash
-cd ui
-npx playwright install chromium webkit
-npm run build
-npm run test:e2e
+composer build
+php vendor/bin/testbench schema-viewer:build
+php vendor/bin/testbench serve --port=8000 &
+VIEWER_URL=http://127.0.0.1:8000/schema-viewer node scripts/browser-smoke.mjs
 ```
-
-`ui/e2e/fixtures/blog.json` is what `schema-viewer:build` writes for the test schema, and `tests/Feature/UiFixtureTest.php` fails when it falls behind. Write it again with:
-
-```bash
-SCHEMA_VIEWER_UPDATE_UI_FIXTURE=1 vendor/bin/pest tests/Feature/UiFixtureTest.php
-```
-

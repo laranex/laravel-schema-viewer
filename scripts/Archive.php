@@ -22,7 +22,7 @@ final class Archive
      * Development paths no distribution carries (directories end with a slash).
      */
     private const EXCLUDED = [
-        '.github/', '.agents/', '.claude/', '.claude', 'build/', 'scripts/', 'skills/', 'tests/', 'ui/', 'workbench/',
+        '.github/', '.agents/', '.claude/', '.claude', 'build/', 'scripts/', 'skills/', 'tests/', 'workbench/',
         '.editorconfig', '.gitattributes', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'phpstan.neon.dist', 'phpunit.xml.dist',
         'pint.json', 'testbench.yaml',
     ];
