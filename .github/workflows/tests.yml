@@ -73,6 +73,15 @@ jobs:
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress --no-scripts
           composer run prepare
 
+      - name: Shared viewer assets
+        # The committed assets must be exactly the locked npm tarball's. ui:fetch also caches the verified tarball,
+        # which the contract tests read their fixtures from.
+        shell: bash
+        run: |
+          composer ui:fetch
+          git diff --exit-code -- resources ui.stamp.json
+          composer ui:check
+
       - name: PHPStan
         run: composer analyse
 
@@ -89,11 +98,35 @@ jobs:
 
       - name: Test Suite
         if: runner.os != 'Windows'
+        env:
+          SCHEMA_VIEWER_CONTRACT: required
         run: composer test:unit
 
       - name: Test Suite (Windows)
         if: runner.os == 'Windows'
+        env:
+          SCHEMA_VIEWER_CONTRACT: required
         run: vendor/bin/pest
+
+  assets:
+    # Release gate: the git archive Composer installs carries the verified viewer assets, matching ui.lock.json, the
+    # registry tarball and ui.stamp.json, and none of the development files.
+    runs-on: ubuntu-latest
+
+    name: Viewer assets
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: 8.4
+          coverage: none
+
+      - name: Check the assets against the lock, the registry and the git archive
+        run: php scripts/ui.php check --registry --archive
 
   browser:
     # The viewer itself, in Chromium and WebKit on a desktop and a phone, against the committed dist/.

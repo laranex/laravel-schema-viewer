@@ -1,0 +1,33 @@
+Laranex Schema Viewer UI is licensed under the MIT License (see LICENSE).
+
+The viewer's visual design, layout, palette and interaction model follow
+Laranex Python Schema Viewer, src/laranex_schema_viewer/static/, inspected at
+commit de08475 (https://github.com/laranex/python-schema-viewer).
+
+The automatic layout (arrange modes and packed columns)
+and orthogonal edge routing are adapted from Laranex Laravel Schema Viewer,
+ui/src/elk.ts, ui/src/layout.ts and ui/src/routing.ts, inspected at commit
+62b056a (https://github.com/laranex/laravel-schema-viewer).
+
+The icons (src/viewer/icons.tsx) and the brand mark (src/viewer/brand.ts),
+which is also the favicon and the documentation site's logo, are adapted from
+Laranex Laravel Schema Viewer, ui/src/App.tsx and ui/src/components/*.tsx,
+inspected at commit 62b056a: the same shapes, proportions and viewBoxes, drawn
+in the viewer's own theme colors. The icons Laravel has no counterpart for
+(select, details, changes, compare, migrations, behind, branch, circle) are
+drawn for this package in the same style. No third-party icon set is used.
+The line ends (crow's foot, bar, double bar and through arrow) are adapted from
+ui/src/components/LinkEdge.tsx at the same commit and drawn the same way in
+images (src/viewer/graph.ts END_SHAPES).
+
+The laranex-schema contract takes its structure and camelCase naming from
+Laravel Schema Viewer's serialized document (src/Schema/*.php) and its
+provenance-preserving rules from Python Schema Viewer's snapshot contract
+(src/laranex_schema_viewer/document.py). The graph rules follow Laravel's
+src/Graph/SchemaGraph.php. All fixtures are synthetic.
+
+Copyright (c) Laranex. Used under the MIT License reproduced in LICENSE.
+
+The standalone bundle includes IBM Plex Sans and IBM Plex Mono
+(SIL Open Font License 1.1, via @fontsource), elkjs (Eclipse Public License
+2.0), React and React DOM (MIT) and @xyflow/react (MIT).

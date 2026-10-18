@@ -4,6 +4,7 @@ parameters:
     paths:
         - src
         - config
+        - scripts
     tmpDir: build/phpstan
     configDirectories:
         - '%currentWorkingDirectory%/config'
