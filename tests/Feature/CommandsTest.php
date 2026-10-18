@@ -159,6 +159,42 @@ it('reports a missing viewer asset', function (): void {
         ->toThrow(RuntimeException::class, 'The viewer manifest at');
 });
 
+it('refuses to write an export where the application serves it to the web', function (string $format, Closure $output): void {
+    @mkdir(storage_path('app/public'), 0755, true);
+    @mkdir(public_path(), 0755, true);
+
+    $this->artisan('schema-viewer:export', ['--format' => $format, '--output' => $output()])
+        ->expectsOutputToContain('Refusing to write the export inside [')
+        ->assertExitCode(2);
+
+    expect(glob(public_path('schema*')))->toBe([])
+        ->and(glob(storage_path('app/public/schema*')))->toBe([]);
+})->with([
+    'a file in public/' => ['mermaid', fn (): string => public_path('schema.mmd')],
+    'a folder in public/, relative to the application' => ['html', fn (): string => 'public/schema'],
+    'the public folder itself' => ['html', fn (): string => 'public'],
+    'a way back into public/' => ['html', fn (): string => 'docs/../public/schema.html'],
+    'storage/app/public' => ['json', fn (): string => storage_path('app/public/schema.json')],
+    'a link to public/' => ['dbml', function (): string {
+        symlink(public_path(), base_path('exports'));
+
+        return base_path('exports/schema.dbml');
+    }],
+    'the public/storage link' => ['markdown', function (): string {
+        symlink(storage_path('app/public'), public_path('storage'));
+
+        return base_path('public/storage/schema.md');
+    }],
+]);
+
+it('writes exports outside the web root, and says they are sensitive', function (): void {
+    $this->artisan('schema-viewer:export', ['--format' => 'html', '--output' => 'build/schema-viewer'])
+        ->expectsOutputToContain('An export of a private schema is sensitive: storing and sharing it is up to you.')
+        ->assertSuccessful();
+
+    expect(base_path('build/schema-viewer/index.html'))->toBeFile();
+});
+
 it('rejects an unknown format or connection', function (): void {
     $this->artisan('schema-viewer:export', ['--format' => 'png'])->assertExitCode(2);
     $this->artisan('schema-viewer:export', ['--format' => 'dbml', '--connection' => 'nope'])->assertExitCode(2);

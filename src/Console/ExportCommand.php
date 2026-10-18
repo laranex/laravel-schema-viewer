@@ -61,18 +61,32 @@ final class ExportCommand extends Command
         }
 
         $output = $this->option('output');
-
-        foreach ($warnings as $warning) {
-            $this->note($warning['message'], is_string($output) && $output !== '');
-        }
+        $toFile = $format === 'html' || (is_string($output) && $output !== '');
 
         if ($format === 'html') {
-            $output = $this->htmlPath(is_string($output) && $output !== '' ? $output : 'schema-viewer');
-
-            if ($output === null) {
-                return self::FAILURE;
-            }
+            $output = $this->htmlFolder(is_string($output) && $output !== '' ? $output : 'schema-viewer');
+        } elseif (is_string($output) && $output !== '') {
+            $output = $this->absolute($output, (string) getcwd());
         }
+
+        // The application's web root would publish the schema to anyone who guesses the URL.
+        $public = is_string($output) && $output !== '' ? $this->publicRoot($output) : null;
+
+        if ($public !== null) {
+            $this->components->error("Refusing to write the export inside [{$public}], which the application serves to the web. Choose a path outside public/ and storage/app/public.");
+
+            return self::INVALID;
+        }
+
+        if ($format === 'html' && ($output = $this->htmlFile($output)) === null) {
+            return self::FAILURE;
+        }
+
+        foreach ($warnings as $warning) {
+            $this->note($warning['message'], $toFile);
+        }
+
+        $this->note('An export of a private schema is sensitive: storing and sharing it is up to you.', $toFile);
 
         if (is_string($output) && $output !== '') {
             if (@file_put_contents($output, $content) === false) {
@@ -107,15 +121,20 @@ final class ExportCommand extends Command
     }
 
     /**
-     * The standalone viewer goes to the given .html file, or to index.html inside the given folder, which is created
-     * when missing. Relative paths start at the application's base path.
+     * Where the standalone viewer goes: the given .html file, or the given folder; relative paths start at the
+     * application's base path.
      */
-    private function htmlPath(string $output): ?string
+    private function htmlFolder(string $output): string
     {
-        if (! preg_match('#^([a-zA-Z]:)?[\\\\/]#', $output)) {
-            $output = $this->laravel->basePath($output);
-        }
+        return $this->absolute($output, $this->laravel->basePath());
+    }
 
+    /**
+     * The standalone viewer's file: the .html file itself, or index.html inside the folder, which is created when
+     * missing.
+     */
+    private function htmlFile(string $output): ?string
+    {
         if (str_ends_with(strtolower($output), '.html')) {
             return $output;
         }
@@ -127,5 +146,65 @@ final class ExportCommand extends Command
         }
 
         return rtrim($output, '\\/').DIRECTORY_SEPARATOR.'index.html';
+    }
+
+    private function absolute(string $path, string $base): string
+    {
+        return preg_match('#^([a-zA-Z]:)?[\\\\/]#', $path) === 1 ? $path : rtrim($base, '\\/').DIRECTORY_SEPARATOR.$path;
+    }
+
+    /**
+     * The folder the application serves to the web (public/, or storage/app/public behind the public/storage link)
+     * that holds the path, if one does: checked on the path as the file system resolves it, symbolic links included.
+     */
+    private function publicRoot(string $path): ?string
+    {
+        $resolved = self::resolve($path);
+
+        foreach ([$this->laravel->publicPath(), $this->laravel->storagePath('app'.DIRECTORY_SEPARATOR.'public')] as $root) {
+            foreach (array_unique([self::resolve($root), self::normalize($root)]) as $candidate) {
+                if ($resolved === $candidate || str_starts_with($resolved, rtrim($candidate, '/').'/')) {
+                    return $root;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A path with its nearest existing folder resolved through symbolic links, and the rest normalized.
+     */
+    private static function resolve(string $path): string
+    {
+        $path = self::normalize($path);
+        $rest = [];
+
+        while (($real = realpath($path)) === false && $path !== dirname($path)) {
+            array_unshift($rest, basename($path));
+            $path = dirname($path);
+        }
+
+        return self::normalize(($real !== false ? $real : $path).($rest !== [] ? '/'.implode('/', $rest) : ''));
+    }
+
+    /**
+     * Forward slashes, no "." or ".." segments.
+     */
+    private static function normalize(string $path): string
+    {
+        $path = str_replace('\\', '/', $path);
+        $prefix = preg_match('#^([a-zA-Z]:)?/#', $path, $match) === 1 ? $match[0] : '';
+        $segments = [];
+
+        foreach (explode('/', substr($path, strlen($prefix))) as $segment) {
+            if ($segment === '..') {
+                array_pop($segments);
+            } elseif ($segment !== '' && $segment !== '.') {
+                $segments[] = $segment;
+            }
+        }
+
+        return $prefix.implode('/', $segments);
     }
 }
