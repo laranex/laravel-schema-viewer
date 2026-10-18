@@ -128,8 +128,48 @@ jobs:
       - name: Check the assets against the lock, the registry and the git archive
         run: php scripts/ui.php check --registry --archive
 
+  viewer:
+    # The shared viewer as the package serves it: the workbench app, a real build, and headless Chrome under the page's
+    # own Content-Security-Policy (scripts/browser-smoke.mjs, no Node.js dependencies).
+    runs-on: ubuntu-latest
+
+    name: Viewer in a browser
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: 8.4
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, sqlite, pdo_sqlite
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: |
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress --no-scripts
+          composer run prepare
+
+      - name: Build the workbench and its schema snapshot
+        run: |
+          composer build
+          php vendor/bin/testbench schema-viewer:build
+
+      - name: Open the viewer in Chrome
+        run: |
+          php vendor/bin/testbench serve --port=8000 > serve.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:8000/schema-viewer && break; sleep 1; done
+          VIEWER_URL=http://127.0.0.1:8000/schema-viewer CHROME_BIN=google-chrome node scripts/browser-smoke.mjs
+
   browser:
-    # The viewer itself, in Chromium and WebKit on a desktop and a phone, against the committed dist/.
+    # The old viewer (ui/, dist/), no longer served, in Chromium and WebKit, until it is removed.
     runs-on: ubuntu-latest
 
     name: Browser
