@@ -22,7 +22,7 @@ Laravel has no single schema file. The tables live in the database, and the rela
 - **Straight to the code.** Model and relation names open in your editor at the line that declares them.
 - **Downloads and commands.** The database schema as Mermaid, DBML, Markdown or JSON, the whole viewer as one HTML file, and a check that fails your CI on the hints you choose.
 
-Run `php artisan schema-viewer:build` and open `/schema-viewer` in your local environment. The build writes `schema-viewer.json` in your project root, a [laranex-schema 2.0](https://laranex.github.io/schema-viewer-ui/) document, and the viewer's page carries it; run it again after migrating. The viewer is the shared Laranex Schema Viewer, the same one the Python and Node.js packages use, shipped inside the package: nothing to build, and no Node.js or npm needed.
+Run `php artisan schema-viewer:build` and open `/schema-viewer` in your local environment. The build writes `schema-viewer.json` in your project root, a [laranex-schema 2.0](https://laranex.github.io/schema-viewer-ui/) document, and the viewer's page carries it; run it again after migrating. It lists your whole schema: keep it out of version control (add `/schema-viewer.json`, `/schema-viewer.changes.json` and `/schema-viewer/` to `.gitignore`) and build it where you need it, in CI included. The viewer is the shared Laranex Schema Viewer, the same one the Python and Node.js packages use, shipped inside the package: nothing to build, and no Node.js or npm needed.
 
 ## Installation
 

@@ -14,6 +14,7 @@ All notable changes to `laravel-schema-viewer` will be documented in this file.
 ### Security
 - In the local environment the viewer opens only to requests from this machine to this machine: a loopback peer address (127.0.0.0/8, ::1) and a `localhost`, `*.localhost` or loopback Host, read from the request itself, never from proxy headers. Any other request (another machine on the network, a tunnel such as ngrok, a public name) needs the `viewSchema` gate or `SchemaViewer::auth()`, as outside `local`.
 - `schema-viewer:export` refuses to write into `public/` or `storage/app/public` (resolved through symbolic links), so an export is never published by the application's own web root, and notes on standard error that an export of a private schema is sensitive. Once exported, storing and sharing the file is up to you.
+- The documentation and agent skills no longer suggest committing `schema-viewer.json`, even in a private repository: add it, `schema-viewer.changes.json` and `/schema-viewer/` to `.gitignore` and build the document in CI and in the deploy script. `schema-viewer:build --check` no longer says to commit the file. Enabling the viewer outside `local` is documented as a security exception that needs the application's own `viewSchema` gate.
 - Denials (403) and missing viewer files (404) are sent with `Cache-Control: no-store` and say nothing about the schema; viewer files are cached privately, never publicly.
 
 ### Added

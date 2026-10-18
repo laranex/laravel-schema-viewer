@@ -51,7 +51,7 @@ final class BuildCommand extends Command
     }
 
     /**
-     * Whether the committed snapshot matches the schema now, for CI.
+     * Whether the snapshot on disk matches the schema now, without writing it.
      */
     private function check(Snapshot $snapshot): int
     {
@@ -67,7 +67,7 @@ final class BuildCommand extends Command
         $existing = $snapshot->current();
 
         if ($existing === null) {
-            $this->components->error("No schema snapshot at [{$path}]. Run php artisan schema-viewer:build and commit it.");
+            $this->components->error("No schema snapshot at [{$path}]. Run php artisan schema-viewer:build.");
 
             return self::FAILURE;
         }
@@ -80,7 +80,7 @@ final class BuildCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->components->error("The schema snapshot [{$path}] is out of date. Run php artisan schema-viewer:build and commit it.");
+        $this->components->error("The schema snapshot [{$path}] is out of date. Run php artisan schema-viewer:build.");
 
         foreach (array_slice($summary, 0, 10) as $line) {
             $this->line('  '.$line);

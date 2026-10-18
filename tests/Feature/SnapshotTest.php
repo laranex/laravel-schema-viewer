@@ -197,7 +197,7 @@ it('checks that the snapshot is up to date without writing it', function (): voi
     Schema::create('gadgets', fn (Blueprint $table) => $table->id());
 
     $this->artisan('schema-viewer:build', ['--check' => true])
-        ->expectsOutputToContain('The schema snapshot [schema-viewer.json] is out of date. Run php artisan schema-viewer:build and commit it.')
+        ->expectsOutputToContain('The schema snapshot [schema-viewer.json] is out of date. Run php artisan schema-viewer:build.')
         ->expectsOutputToContain('Table gadgets added: 1 column')
         ->assertFailed();
 
@@ -208,7 +208,7 @@ it('checks that the snapshot is up to date without writing it', function (): voi
 
 it('fails the check when there is no snapshot', function (): void {
     $this->artisan('schema-viewer:build', ['--check' => true])
-        ->expectsOutputToContain('No schema snapshot at [schema-viewer.json]. Run php artisan schema-viewer:build and commit it.')
+        ->expectsOutputToContain('No schema snapshot at [schema-viewer.json]. Run php artisan schema-viewer:build.')
         ->assertFailed();
 
     expect($this->snapshot)->not->toBeFile();
