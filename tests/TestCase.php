@@ -106,7 +106,8 @@ abstract class TestCase extends Orchestra
         }
         $app['config']->set('database.default', 'testing');
 
-        // CI also runs the suite on real databases: SCHEMA_VIEWER_DB=mysql, mariadb, pgsql or sqlsrv.
+        // CI also runs the suite on real databases: SCHEMA_VIEWER_DB=mysql, mariadb, pgsql or sqlsrv (and, locally,
+        // SCHEMA_VIEWER_DB_DATABASE and SCHEMA_VIEWER_DB_PASSWORD for a server set up otherwise).
         $database = getenv('SCHEMA_VIEWER_DB');
 
         if (is_string($database) && $database !== '' && $database !== 'sqlite') {
@@ -114,13 +115,13 @@ abstract class TestCase extends Orchestra
                 'driver' => $database === 'mariadb' ? 'mariadb' : $database,
                 'host' => '127.0.0.1',
                 'port' => (int) getenv('SCHEMA_VIEWER_DB_PORT'),
-                'database' => $database === 'sqlsrv' ? 'master' : 'testing',
+                'database' => getenv('SCHEMA_VIEWER_DB_DATABASE') ?: ($database === 'sqlsrv' ? 'master' : 'testing'),
                 'username' => match ($database) {
                     'pgsql' => 'postgres',
                     'sqlsrv' => 'sa',
                     default => 'root',
                 },
-                'password' => 'Schema-Viewer-1',
+                'password' => getenv('SCHEMA_VIEWER_DB_PASSWORD') ?: 'Schema-Viewer-1',
                 'charset' => $database === 'pgsql' || $database === 'sqlsrv' ? 'utf8' : 'utf8mb4',
                 'prefix' => '',
                 'search_path' => 'public',

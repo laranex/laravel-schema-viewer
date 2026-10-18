@@ -7,42 +7,57 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Vite;
+use Laranex\LaravelSchemaViewer\Http\Controllers\ViewerController;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Laranex\LaravelSchemaViewer\Viewer\ViewerAssets;
 
 beforeEach(function (): void {
     $this->rebootWith('local');
 });
+
+/**
+ * The URL of one of the shared viewer's files, as the page links it.
+ */
+function assetUrl(string $file): string
+{
+    return '/schema-viewer/assets/'.(new ViewerAssets)->version().'/'.$file;
+}
 
 it('is open in the local environment', function (): void {
     $this->get('/schema-viewer')
         ->assertOk()
         ->assertHeader('Content-Type', 'text/html; charset=utf-8')
         ->assertHeader('Cache-Control', 'no-store, private')
-        ->assertSee('window.__SCHEMA_VIEWER__', false);
+        ->assertHeader('Content-Security-Policy', ViewerController::POLICY)
+        ->assertHeader('X-Content-Type-Options', 'nosniff')
+        ->assertSee('<script type="application/json" id="schema-viewer-data">', false);
 });
 
-it('tells the page which connection to open on', function (): void {
-    $config = function (): array {
-        preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', (string) $this->get('/schema-viewer')->getContent(), $match);
+it('serves the shared viewer under a strict policy, with no inline script', function (): void {
+    buildSnapshot();
+    $html = (string) $this->get('/schema-viewer')->getContent();
 
-        return json_decode($match[1], true);
-    };
+    expect(ViewerController::POLICY)->toBe("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+        ->and($html)->toContain('<script type="module" src="http://localhost'.assetUrl('app.js').'"></script>')
+        ->and($html)->toContain('<link rel="stylesheet" href="http://localhost'.assetUrl('app.css').'">')
+        ->and($html)->toContain('<link rel="icon" href="http://localhost'.assetUrl('favicon.svg').'" type="image/svg+xml">')
+        ->and($html)->toContain('<div id="schema-viewer"></div>')
+        // Every script is a file of the bundle or data: nothing the policy would have to allow inline.
+        ->and(preg_match_all('/<script(?![^>]*(\bsrc=|type="application\/json"))/', $html))->toBe(0);
+});
 
-    expect($config()['defaultConnection'])->toBe('all');
+it('tells the page which connection to open on, by id', function (): void {
+    expect(viewerConfig($this)['defaultConnection'])->toBeNull();
 
     config()->set('schema-viewer.default_connection', 'testing');
-    expect($config()['defaultConnection'])->toBe('testing');
+    expect(viewerConfig($this)['defaultConnection'])->toBe('connection:testing');
 
     config()->set('schema-viewer.default_connection', '');
-    expect($config()['defaultConnection'])->toBe('all');
+    expect(viewerConfig($this)['defaultConnection'])->toBeNull();
 });
 
 it('tells the page how to open files in the editor', function (): void {
-    $editor = function (): mixed {
-        preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', (string) $this->get('/schema-viewer')->getContent(), $match);
-
-        return json_decode($match[1], true)['editor'];
-    };
+    $editor = fn (): mixed => viewerConfig($this)['editor'];
     $root = rtrim(str_replace('\\', '/', base_path()), '/');
 
     expect($editor())->toBeNull();
@@ -84,11 +99,7 @@ it('drops editor names that are not schemes', function (): void {
 it('reads app.editor only in the local environment, so the app path stays private elsewhere', function (): void {
     $this->rebootWith('production', ['enabled' => true]);
     Gate::define('viewSchema', fn (?User $user): bool => true);
-    $editor = function (): mixed {
-        preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/', (string) $this->get('/schema-viewer')->assertOk()->getContent(), $match);
-
-        return json_decode($match[1], true)['editor'];
-    };
+    $editor = fn (): mixed => viewerConfig($this)['editor'];
 
     config()->set('app.editor', 'phpstorm');
     expect($editor())->toBeNull();
@@ -118,22 +129,21 @@ it('needs the viewSchema gate when enabled outside the local environment', funct
     $this->actingAs($admin)->get('/schema-viewer')->assertOk();
 });
 
-it('carries the schema document and every connection\'s downloads in the page', function (): void {
+it('carries the laranex-schema document in the page, without prepared downloads', function (): void {
     buildSnapshot();
 
     $config = viewerConfig($this);
 
-    expect($config['schema']['version'])->toBe(1)
-        ->and($config['schema']['connections'][0]['name'])->toBe('testing')
-        ->and($config['schema'])->toHaveKeys(['connections', 'models', 'relations', 'links', 'derivedLinks', 'hints'])
-        ->and(array_keys($config['downloads']['testing']))->toBe(['mermaid', 'dbml', 'markdown']);
+    expect($config['document'])->toMatchArray(['format' => 'laranex-schema', 'version' => '2.0'])
+        ->and($config['document']['connections'][0]['name'])->toBe('testing')
+        ->and(array_keys($config))->toBe(['document', 'changes', 'editor', 'defaultConnection']);
 });
 
 it('registers the page and its assets only, no API', function (): void {
     $uris = collect(app('router')->getRoutes()->getRoutes())->map(fn ($route): string => $route->uri())
         ->filter(fn (string $uri): bool => str_starts_with($uri, 'schema-viewer'))->sort()->values()->all();
 
-    expect($uris)->toBe(['schema-viewer', 'schema-viewer/assets/{file}']);
+    expect($uris)->toBe(['schema-viewer', 'schema-viewer/assets/{version}/{file}']);
 
     $this->get('/schema-viewer/api/schema')->assertNotFound();
     $this->get('/schema-viewer/api/export?format=dbml')->assertNotFound();
@@ -161,24 +171,56 @@ it('keeps the schema from ending the script it is carried in', function (): void
     buildSnapshot();
 
     $html = (string) $this->get('/schema-viewer')->getContent();
-    $posts = collect(viewerConfig($this)['schema']['connections'][0]['tables'])->firstWhere('name', 'posts');
+    $posts = collect(viewerConfig($this)['document']['connections'][0]['tables'])->firstWhere('name', 'posts');
 
     expect(substr_count($html, '</script>'))->toBe(2)
         ->and($html)->not->toContain('<script>alert(1)')
         ->and($html)->not->toContain('<!--')
         ->and($html)->not->toContain("\u{2028}")
-        ->and(collect($posts['columns'])->firstWhere('name', 'note')['default'])->toContain('</script><script>alert(1)</script>');
+        ->and(collect($posts['columns'])->firstWhere('name', 'note')['default']['value'])->toContain('</script><script>alert(1)</script>');
 });
 
-it('serves the built assets and nothing else', function (): void {
-    $this->get('/schema-viewer/assets/app.js')->assertOk()->assertHeader('Content-Type', 'text/javascript; charset=utf-8');
-    $this->get('/schema-viewer/assets/app.css')->assertOk();
+it('serves exactly the files of the shared viewer\'s manifest, under its fingerprint', function (): void {
+    $manifest = json_decode((string) file_get_contents(__DIR__.'/../../resources/viewer/manifest.json'), true);
 
-    $font = basename((string) glob(__DIR__.'/../../dist/assets/*.woff2')[0]);
-    $this->get('/schema-viewer/assets/assets/'.$font)->assertOk()->assertHeader('Content-Type', 'font/woff2');
-    $this->get('/schema-viewer/assets/index.html')->assertNotFound();
-    $this->get('/schema-viewer/assets/missing.js')->assertNotFound();
-    $this->get('/schema-viewer/assets/..%2Fcomposer.json')->assertNotFound();
+    foreach ($manifest['files'] as $file) {
+        if ($file['path'] === 'index.html') {
+            continue;
+        }
+
+        $response = $this->get(assetUrl($file['path']))->assertOk()
+            ->assertHeader('Cache-Control', 'immutable, max-age=31536000, private')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        expect(hash('sha256', (string) $response->streamedContent()))->toBe($file['sha256']);
+    }
+
+    $this->get(assetUrl('app.js'))->assertHeader('Content-Type', 'text/javascript; charset=utf-8');
+    $this->get(assetUrl('favicon.ico'))->assertHeader('Content-Type', 'image/x-icon');
+    $font = collect($manifest['files'])->pluck('path')->first(fn (string $path): bool => str_ends_with($path, '.woff2'));
+    $this->get(assetUrl($font))->assertHeader('Content-Type', 'font/woff2');
+
+    // The viewer's own page, its manifest, files it does not list, and another fingerprint.
+    $this->get(assetUrl('index.html'))->assertNotFound();
+    $this->get(assetUrl('manifest.json'))->assertNotFound();
+    $this->get(assetUrl('LICENSE'))->assertNotFound();
+    $this->get(assetUrl('missing.js'))->assertNotFound();
+    $this->get(assetUrl('..%2F..%2Fcomposer.json'))->assertNotFound();
+    $this->get(assetUrl('assets/../app.js'))->assertNotFound();
+    $this->get('/schema-viewer/assets/000000000000/app.js')->assertNotFound();
+    $this->get('/schema-viewer/assets/app.js')->assertNotFound();
+});
+
+it('refuses a viewer file whose size is not the manifest\'s', function (): void {
+    $assets = new ViewerAssets(sys_get_temp_dir().'/schema-viewer-assets-'.bin2hex(random_bytes(4)));
+    $root = (new ReflectionProperty($assets, 'root'))->getValue($assets);
+    mkdir($root);
+    copy(__DIR__.'/../../resources/viewer/manifest.json', $root.'/manifest.json');
+    file_put_contents($root.'/app.js', 'truncated');
+
+    expect($assets->path('app.js'))->toBeNull()
+        ->and($assets->path('app.css'))->toBeNull()
+        ->and(fn () => $assets->contents('app.js'))->toThrow(RuntimeException::class, 'does not match its manifest');
 });
 
 it('can live on another path', function (): void {
@@ -195,6 +237,6 @@ it('gives its scripts the CSP nonce the application set for Vite', function (): 
 
     $html = (string) $this->get('/schema-viewer')->getContent();
 
-    expect(substr_count($html, 'nonce="n0nce-&quot;x"'))->toBe(3)
-        ->and($html)->toContain('<script nonce="n0nce-&quot;x">window.__SCHEMA_VIEWER__');
+    expect(substr_count($html, 'nonce="n0nce-&quot;x"'))->toBe(2)
+        ->and($html)->toContain('src="http://localhost'.assetUrl('app.js').'" nonce="n0nce-&quot;x"></script>');
 });

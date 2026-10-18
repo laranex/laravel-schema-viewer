@@ -17,5 +17,5 @@ Route::group([
     'as' => 'schema-viewer.',
 ], function (): void {
     Route::get('/', ViewerController::class)->name('index');
-    Route::get('assets/{file}', AssetController::class)->where('file', '[A-Za-z0-9_./-]+')->name('asset');
+    Route::get('assets/{version}/{file}', AssetController::class)->where(['version' => '[0-9a-f]{12}', 'file' => '[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*'])->name('asset');
 });

@@ -4,84 +4,102 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Diff;
 
+use Laranex\LaravelSchemaViewer\Contract\Json;
+
 /**
- * What changed between two schema documents, as decoded from JSON: connections, tables, columns, indexes, foreign keys,
- * models, relations and links that were added, removed or changed. Hints are left out: they have their own list, and a
- * new rule or setting can change them while the schema stays the same. A field one side does not have, because a
- * version of the package wrote it without that field, is never a change. A renamed table or column shows as one removed
+ * What changed between two laranex-schema 2.x documents: connections, tables, columns, indexes, foreign keys, models,
+ * relationships and links that were added, removed or changed. Diagnostics are left out: they have their own list, and
+ * a new rule or setting can change them while the schema stays the same. A renamed table or column shows as one removed
  * and one added.
  *
- * Each change is an array: type, change (added, removed or changed), connection and table where they apply, name, and
- * fields ([before, after] by field) for a change, a small before for a removal, a small after for an addition, and a
- * message for links.
+ * Each change is what the shared viewer's Changes tab shows (its ViewerChange): type, change (added, removed or
+ * changed), subject (the id of what it is about, which the viewer opens), label, message, and fields ([before, after]
+ * by field) for a change; connection and table (names) say where it is.
  */
 final class SchemaDiff
 {
-    private const ORDER = ['connection', 'table', 'column', 'index', 'foreign_key', 'model', 'relation', 'link'];
+    private const ORDER = ['connection', 'table', 'column', 'index', 'foreignKey', 'model', 'relationship', 'link'];
 
-    private const TABLE_FIELDS = ['comment', 'note'];
+    private const TABLE_FIELDS = ['comment', 'note', 'owner'];
 
-    private const COLUMN_FIELDS = ['type', 'nullable', 'default', 'autoIncrement', 'comment', 'note'];
+    private const COLUMN_FIELDS = ['type', 'nullable', 'default', 'autoIncrement', 'collation', 'enum', 'generated', 'comment', 'note'];
 
-    private const INDEX_FIELDS = ['columns', 'unique', 'primary', 'partial', 'expression'];
+    private const INDEX_FIELDS = ['parts', 'unique', 'backs', 'method', 'partial', 'expression', 'included'];
 
     private const FOREIGN_KEY_FIELDS = ['name', 'onUpdate', 'onDelete'];
 
-    private const MODEL_FIELDS = ['table', 'connection', 'primaryKey', 'casts', 'fillable', 'hidden', 'softDeletes', 'timestamps'];
+    private const MODEL_FIELDS = ['tables', 'primaryKey', 'extensions'];
 
-    private const RELATION_FIELDS = ['type', 'related', 'keys', 'pivot', 'morph', 'through'];
+    private const RELATIONSHIP_FIELDS = ['type', 'relatedModel', 'relatedTable', 'keys', 'pivot', 'polymorphic', 'through'];
 
     /**
-     * @param  array<mixed>  $before
-     * @param  array<mixed>  $after
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
      * @return list<array<string, mixed>>
      */
     public static function diff(array $before, array $after): array
     {
         $changes = [];
+        $old = self::keyed($before['connections'] ?? [], 'id');
+        $new = self::keyed($after['connections'] ?? [], 'id');
 
-        $old = self::keyed(self::list($before['connections'] ?? []), fn (array $c): string => self::string($c['name'] ?? ''));
-        $new = self::keyed(self::list($after['connections'] ?? []), fn (array $c): string => self::string($c['name'] ?? ''));
-
-        foreach (array_diff_key($new, $old) as $name => $connection) {
-            $changes[] = ['type' => 'connection', 'change' => 'added', 'connection' => $name, 'after' => ['tables' => count(self::list($connection['tables'] ?? []))]];
+        foreach (array_diff_key($new, $old) as $id => $connection) {
+            $changes[] = self::change('connection', 'added', $id, $connection['name'], $connection['name'], null, self::count(count($connection['tables']), 'table'));
         }
 
-        foreach (array_diff_key($old, $new) as $name => $connection) {
-            $changes[] = ['type' => 'connection', 'change' => 'removed', 'connection' => $name, 'before' => ['tables' => count(self::list($connection['tables'] ?? []))]];
+        foreach (array_diff_key($old, $new) as $id => $connection) {
+            $changes[] = self::change('connection', 'removed', $id, $connection['name'], $connection['name'], null, self::count(count($connection['tables']), 'table'));
         }
 
-        foreach (array_intersect_key($new, $old) as $name => $connection) {
-            array_push($changes, ...self::tables($name, self::list($old[$name]['tables'] ?? []), self::list($connection['tables'] ?? [])));
+        foreach (array_intersect_key($new, $old) as $id => $connection) {
+            array_push($changes, ...self::tables($connection['name'], $old[$id]['tables'], $connection['tables']));
         }
 
-        array_push($changes, ...self::entities(
-            'model',
-            self::list($before['models'] ?? []),
-            self::list($after['models'] ?? []),
-            fn (array $m): string => self::string($m['class'] ?? ''),
-            self::MODEL_FIELDS,
-            fn (array $m): array => ['name' => self::string($m['class'] ?? ''), 'connection' => self::string($m['connection'] ?? ''), 'table' => self::string($m['table'] ?? '')],
-            fn (array $m): array => ['table' => $m['table'] ?? null],
-        ));
+        $models = fn (array $document): array => self::keyed($document['models'] ?? [], 'id');
+        $oldModels = $models($before);
+        $newModels = $models($after);
 
-        array_push($changes, ...self::entities(
-            'relation',
-            self::list($before['relations'] ?? []),
-            self::list($after['relations'] ?? []),
-            fn (array $r): string => self::string($r['id'] ?? ''),
-            self::RELATION_FIELDS,
-            fn (array $r): array => ['name' => self::string($r['id'] ?? '')],
-            fn (array $r): array => ['type' => $r['type'] ?? null, 'related' => $r['related'] ?? null],
-        ));
+        foreach (array_diff_key($newModels, $oldModels) as $id => $model) {
+            $changes[] = self::change('model', 'added', $id, $model['className'], null, null, self::tablesOf($model));
+        }
 
-        array_push($changes, ...self::links(self::list($before['links'] ?? []), self::list($after['links'] ?? [])));
+        foreach (array_diff_key($oldModels, $newModels) as $id => $model) {
+            $changes[] = self::change('model', 'removed', $id, $model['className'], null, null, self::tablesOf($model));
+        }
 
-        usort($changes, fn (array $a, array $b): int => [
-            self::string($a['connection'] ?? ''), self::string($a['table'] ?? ''), array_search($a['type'], self::ORDER, true), self::string($a['name'] ?? ''), self::string($a['change']), self::string($a['message'] ?? ''),
-        ] <=> [
-            self::string($b['connection'] ?? ''), self::string($b['table'] ?? ''), array_search($b['type'], self::ORDER, true), self::string($b['name'] ?? ''), self::string($b['change']), self::string($b['message'] ?? ''),
-        ]);
+        foreach (array_intersect_key($newModels, $oldModels) as $id => $model) {
+            $fields = self::fields($oldModels[$id], $model, self::MODEL_FIELDS);
+
+            if ($fields !== []) {
+                $changes[] = self::change('model', 'changed', $id, $model['className'], null, null, null, $fields);
+            }
+        }
+
+        $relationships = fn (array $document): array => self::keyed($document['relationships'] ?? [], 'id');
+        $oldRelationships = $relationships($before);
+        $newRelationships = $relationships($after);
+        $relationshipLabel = fn (array $r): string => self::shortRelation($r['id']).'()';
+
+        foreach (array_diff_key($newRelationships, $oldRelationships) as $id => $r) {
+            $changes[] = self::change('relationship', 'added', $id, $relationshipLabel($r), null, null, $r['type'].' '.$r['cardinality']);
+        }
+
+        foreach (array_diff_key($oldRelationships, $newRelationships) as $id => $r) {
+            $changes[] = self::change('relationship', 'removed', $id, $relationshipLabel($r), null, null, $r['type'].' '.$r['cardinality']);
+        }
+
+        foreach (array_intersect_key($newRelationships, $oldRelationships) as $id => $r) {
+            $fields = self::fields($oldRelationships[$id], $r, self::RELATIONSHIP_FIELDS);
+
+            if ($fields !== []) {
+                $changes[] = self::change('relationship', 'changed', $id, $relationshipLabel($r), null, null, null, $fields);
+            }
+        }
+
+        array_push($changes, ...self::links($before, $after));
+
+        $key = fn (array $c): array => [(string) ($c['connection'] ?? ''), (string) ($c['table'] ?? ''), (int) array_search($c['type'], self::ORDER, true), (string) $c['label'], (string) $c['change'], (string) ($c['message'] ?? '')];
+        usort($changes, fn (array $a, array $b): int => $key($a) <=> $key($b));
 
         return $changes;
     }
@@ -93,22 +111,17 @@ final class SchemaDiff
      */
     public static function describe(array $change): string
     {
-        $type = self::string($change['type'] ?? '');
-        $label = match ($type) {
-            'connection' => 'Connection '.self::string($change['connection'] ?? ''),
-            'table' => 'Table '.self::string($change['table'] ?? ''),
-            'column' => 'Column '.self::string($change['table'] ?? '').'.'.self::string($change['name'] ?? ''),
-            'index' => 'Index '.self::string($change['name'] ?? '').' on '.self::string($change['table'] ?? ''),
-            'foreign_key' => 'Foreign key '.self::string($change['name'] ?? '').' on '.self::string($change['table'] ?? ''),
-            'model' => 'Model '.self::string($change['name'] ?? ''),
-            'relation' => 'Relation '.self::string($change['name'] ?? ''),
-            default => self::string($change['message'] ?? ''),
-        };
+        $type = (string) ($change['type'] ?? '');
+        $label = (string) ($change['label'] ?? '');
 
         if ($type === 'link') {
-            return $label;
+            return (string) ($change['message'] ?? $label);
         }
 
+        $noun = match ($type) {
+            'foreignKey' => 'Foreign key',
+            default => ucfirst($type),
+        };
         $details = [];
 
         foreach (is_array($change['fields'] ?? null) ? $change['fields'] : [] as $field => $values) {
@@ -116,53 +129,49 @@ final class SchemaDiff
             $details[] = $field.' '.self::show($values[0] ?? null).' → '.self::show($values[1] ?? null);
         }
 
-        foreach (['after', 'before'] as $side) {
-            foreach (is_array($change[$side] ?? null) ? $change[$side] : [] as $field => $value) {
-                $details[] = $field.' '.self::show($value);
-            }
+        if (is_string($change['message'] ?? null) && $change['message'] !== '') {
+            $details[] = $change['message'];
         }
 
-        return $label.' '.self::string($change['change'] ?? '').($details !== [] ? ': '.implode(', ', $details) : '');
+        return $noun.' '.$label.' '.((string) ($change['change'] ?? '')).($details !== [] ? ': '.implode(', ', $details) : '');
     }
 
     /**
-     * @param  list<array<mixed>>  $before
-     * @param  list<array<mixed>>  $after
+     * @param  list<array<string, mixed>>  $before
+     * @param  list<array<string, mixed>>  $after
      * @return list<array<string, mixed>>
      */
     private static function tables(string $connection, array $before, array $after): array
     {
         $changes = [];
-        $old = self::keyed($before, fn (array $t): string => self::string($t['name'] ?? ''));
-        $new = self::keyed($after, fn (array $t): string => self::string($t['name'] ?? ''));
+        $old = self::keyed($before, 'id');
+        $new = self::keyed($after, 'id');
+        $label = fn (array $t): string => ($t['schema'] !== null ? $t['schema'].'.' : '').$t['name'];
 
-        foreach (array_diff_key($new, $old) as $name => $table) {
-            $changes[] = ['type' => 'table', 'change' => 'added', 'connection' => $connection, 'table' => $name, 'after' => ['columns' => count(self::list($table['columns'] ?? []))]];
+        foreach (array_diff_key($new, $old) as $id => $table) {
+            $changes[] = self::change('table', 'added', $id, $label($table), $connection, $label($table), self::count(count($table['columns']), 'column'));
         }
 
-        foreach (array_diff_key($old, $new) as $name => $table) {
-            $changes[] = ['type' => 'table', 'change' => 'removed', 'connection' => $connection, 'table' => $name, 'before' => ['columns' => count(self::list($table['columns'] ?? []))]];
+        foreach (array_diff_key($old, $new) as $id => $table) {
+            $changes[] = self::change('table', 'removed', $id, $label($table), $connection, $label($table), self::count(count($table['columns']), 'column'));
         }
 
-        foreach (array_intersect_key($new, $old) as $name => $table) {
-            $fields = self::fields($old[$name], $table, self::TABLE_FIELDS);
+        foreach (array_intersect_key($new, $old) as $id => $table) {
+            $name = $label($table);
+            $fields = self::fields($old[$id], $table, self::TABLE_FIELDS);
 
             if ($fields !== []) {
-                $changes[] = ['type' => 'table', 'change' => 'changed', 'connection' => $connection, 'table' => $name, 'fields' => $fields];
+                $changes[] = self::change('table', 'changed', $id, $name, $connection, $name, null, $fields);
             }
-
-            $at = ['connection' => $connection, 'table' => $name];
-            $byName = fn (array $item): string => self::string($item['name'] ?? '');
 
             array_push(
                 $changes,
-                ...self::entities('column', self::list($old[$name]['columns'] ?? []), self::list($table['columns'] ?? []), $byName, self::COLUMN_FIELDS,
-                    fn (array $c): array => $at + ['name' => self::string($c['name'] ?? '')], fn (array $c): array => ['type' => $c['type'] ?? null]),
-                ...self::entities('index', self::list($old[$name]['indexes'] ?? []), self::list($table['indexes'] ?? []), $byName, self::INDEX_FIELDS,
-                    fn (array $i): array => $at + ['name' => self::string($i['name'] ?? '')], fn (array $i): array => ['columns' => $i['columns'] ?? null]),
-                ...self::entities('foreign_key', self::list($old[$name]['foreignKeys'] ?? []), self::list($table['foreignKeys'] ?? []),
-                    fn (array $f): string => (string) json_encode([$f['columns'] ?? null, $f['foreignTable'] ?? null, $f['foreignColumns'] ?? null]), self::FOREIGN_KEY_FIELDS,
-                    fn (array $f): array => $at + ['name' => self::string($f['name'] ?? '')], fn (array $f): array => ['references' => self::string($f['foreignTable'] ?? '')]),
+                ...self::entities('column', $old[$id]['columns'], $table['columns'], fn (array $c): string => $c['name'], self::COLUMN_FIELDS,
+                    fn (array $c): array => [$id, $name.'.'.$c['name'], $connection, $name], fn (array $c): string => (string) $c['type']),
+                ...self::entities('index', $old[$id]['indexes'], $table['indexes'], fn (array $i): string => $i['id'], self::INDEX_FIELDS,
+                    fn (array $i): array => [$i['id'], ($i['name'] ?? 'unnamed').' on '.$name, $connection, $name], fn (array $i): string => '('.implode(', ', array_map(fn (array $p): string => (string) ($p['column'] ?? $p['expression']), $i['parts'])).')'),
+                ...self::entities('foreignKey', $old[$id]['foreignKeys'], $table['foreignKeys'], fn (array $f): string => (string) json_encode([$f['columns'], $f['foreignTable'], $f['foreignColumns']]), self::FOREIGN_KEY_FIELDS,
+                    fn (array $f): array => [$f['id'], ($f['name'] ?? 'unnamed').' on '.$name, $connection, $name], fn (array $f): string => 'references '.$f['foreignTable']),
             );
         }
 
@@ -172,33 +181,45 @@ final class SchemaDiff
     /**
      * Added, removed and changed items of one kind, matched by key.
      *
-     * @param  list<array<mixed>>  $before
-     * @param  list<array<mixed>>  $after
-     * @param  callable(array<mixed>): string  $key
+     * @param  list<array<string, mixed>>  $before
+     * @param  list<array<string, mixed>>  $after
+     * @param  callable(array<string, mixed>): string  $key
      * @param  list<string>  $compared
-     * @param  callable(array<mixed>): array<string, mixed>  $where
-     * @param  callable(array<mixed>): array<string, mixed>  $summary
+     * @param  callable(array<string, mixed>): array{string, string, string, string}  $where  Subject id, label, connection and table.
+     * @param  callable(array<string, mixed>): string  $summary
      * @return list<array<string, mixed>>
      */
     private static function entities(string $type, array $before, array $after, callable $key, array $compared, callable $where, callable $summary): array
     {
         $changes = [];
-        $old = self::keyed($before, $key);
-        $new = self::keyed($after, $key);
+        $old = [];
+        $new = [];
+
+        foreach ($before as $item) {
+            $old[$key($item)] ??= $item;
+        }
+
+        foreach ($after as $item) {
+            $new[$key($item)] ??= $item;
+        }
 
         foreach (array_diff_key($new, $old) as $item) {
-            $changes[] = ['type' => $type, 'change' => 'added', ...$where($item), 'after' => $summary($item)];
+            [$subject, $label, $connection, $table] = $where($item);
+            $changes[] = self::change($type, 'added', $subject, $label, $connection, $table, $summary($item));
         }
 
         foreach (array_diff_key($old, $new) as $item) {
-            $changes[] = ['type' => $type, 'change' => 'removed', ...$where($item), 'before' => $summary($item)];
+            [$subject, $label, $connection, $table] = $where($item);
+            // A removed item is no longer in the document: its table is what the viewer can open.
+            $changes[] = self::change($type, 'removed', $type === 'column' ? $subject : null, $label, $connection, $table, $summary($item));
         }
 
         foreach (array_intersect_key($new, $old) as $id => $item) {
             $fields = self::fields($old[$id], $item, $compared);
 
             if ($fields !== []) {
-                $changes[] = ['type' => $type, 'change' => 'changed', ...$where($item), 'fields' => $fields];
+                [$subject, $label, $connection, $table] = $where($item);
+                $changes[] = self::change($type, 'changed', $subject, $label, $connection, $table, null, $fields);
             }
         }
 
@@ -206,75 +227,90 @@ final class SchemaDiff
     }
 
     /**
-     * Links whose state moved (a relation that gained or lost its foreign key, a foreign key that gained or lost a
-     * relation), and links whose note changed.
+     * Links whose state moved (a relationship that gained or lost its foreign key, a foreign key that gained or lost a
+     * relationship), and links whose note changed.
      *
-     * @param  list<array<mixed>>  $before
-     * @param  list<array<mixed>>  $after
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
      * @return list<array<string, mixed>>
      */
     private static function links(array $before, array $after): array
     {
-        $key = fn (array $l): string => (string) json_encode([$l['from'] ?? null, $l['to'] ?? null]);
-        $old = self::keyed($before, $key);
+        $names = [];
+        $tables = [];
+
+        foreach ([$before, $after] as $document) {
+            foreach ($document['connections'] ?? [] as $connection) {
+                foreach ($connection['tables'] as $table) {
+                    $names[$table['id']] ??= $connection['name'];
+                    $tables[$table['id']] ??= ($table['schema'] !== null ? $table['schema'].'.' : '').$table['name'];
+                }
+            }
+        }
+
+        $old = self::keyed($before['links'] ?? [], 'id');
         $changes = [];
 
-        foreach (self::keyed($after, $key) as $id => $link) {
-            $was = $old[$id]['state'] ?? null;
-            $is = $link['state'] ?? null;
-            $from = is_array($link['from'] ?? null) ? $link['from'] : [];
-            $to = is_array($link['to'] ?? null) ? $link['to'] : [];
-            $name = self::string($from['table'] ?? '').'.'.implode(', ', self::strings($from['columns'] ?? [])).' → '.self::string($to['table'] ?? '').'.'.implode(', ', self::strings($to['columns'] ?? []));
-
-            // A note only counts when both sides have the field, as for tables and columns.
-            if (isset($old[$id]) && array_key_exists('note', $old[$id]) && array_key_exists('note', $link) && $old[$id]['note'] !== $link['note']) {
-                $changes[] = [
-                    'type' => 'link',
-                    'change' => 'changed',
-                    'connection' => self::string($from['connection'] ?? ''),
-                    'table' => self::string($from['table'] ?? ''),
-                    'name' => $name,
-                    'id' => self::string($link['id'] ?? ''),
-                    'fields' => ['note' => [$old[$id]['note'], $link['note']]],
-                    'message' => sprintf('Relationship %s note: %s → %s', $name, self::show($old[$id]['note']), self::show($link['note'])),
-                ];
-            }
-
-            if (! is_string($was) || ! is_string($is) || $was === $is) {
+        foreach (self::keyed($after['links'] ?? [], 'id') as $id => $link) {
+            if (! isset($old[$id])) {
                 continue;
             }
 
-            $relations = implode(' and ', array_map(fn (string $id): string => self::shortRelation($id).'()', self::strings($link['relations'] ?? $old[$id]['relations'] ?? [])));
-            $foreignKey = self::string($link['foreignKey'] ?? $old[$id]['foreignKey'] ?? '');
+            $from = $tables[$link['from']['table']] ?? $link['from']['table'];
+            $name = $from.'.'.implode(', ', $link['from']['columns']).' → '.($tables[$link['to']['table']] ?? $link['to']['table']).'.'.implode(', ', $link['to']['columns']);
+            $connection = $names[$link['from']['table']] ?? null;
+            $was = $old[$id]['state'];
+            $is = $link['state'];
+
+            if ($old[$id]['note'] !== $link['note']) {
+                $changes[] = self::change('link', 'changed', $id, $name, $connection, $from, sprintf('Relationship %s note: %s → %s', $name, self::show($old[$id]['note']), self::show($link['note'])), ['note' => [$old[$id]['note'], $link['note']]]);
+            }
+
+            if ($was === $is) {
+                continue;
+            }
+
+            $relations = implode(' and ', array_map(fn (string $r): string => self::shortRelation($r).'()', $link['relationships'] !== [] ? $link['relationships'] : $old[$id]['relationships']));
+            $several = str_contains($relations, ' and ');
+            $foreignKey = self::foreignKeyName($link['foreignKey'] ?? $old[$id]['foreignKey']);
 
             $message = match ($was.'>'.$is) {
-                'relation>both' => sprintf('%s %s now backed by a foreign key', $relations, str_contains($relations, ' and ') ? 'are' : 'is'),
-                'both>relation' => sprintf('%s lost %s foreign key %s', $relations, str_contains($relations, ' and ') ? 'their' : 'its', self::string($old[$id]['foreignKey'] ?? '')),
-                'foreign_key>both' => sprintf('Foreign key %s now has a relation: %s', $foreignKey, $relations),
-                'both>foreign_key' => sprintf('Foreign key %s no longer has a relation', $foreignKey),
+                'relationship>both' => sprintf('%s %s now backed by a foreign key', $relations, $several ? 'are' : 'is'),
+                'both>relationship' => sprintf('%s lost %s foreign key %s', $relations, $several ? 'their' : 'its', self::foreignKeyName($old[$id]['foreignKey'])),
+                'foreign_key>both' => sprintf('Foreign key %s now has a relationship: %s', $foreignKey, $relations),
+                'both>foreign_key' => sprintf('Foreign key %s no longer has a relationship', $foreignKey),
                 default => sprintf('%s is now %s instead of %s', $name, $is, $was),
             };
 
-            $changes[] = [
-                'type' => 'link',
-                'change' => 'changed',
-                'connection' => self::string($from['connection'] ?? ''),
-                'table' => self::string($from['table'] ?? ''),
-                'name' => $name,
-                'id' => self::string($link['id'] ?? ''),
-                'fields' => ['state' => [$was, $is]],
-                'message' => trim($message),
-            ];
+            $changes[] = self::change('link', 'changed', $id, $name, $connection, $from, $message, ['state' => [$was, $is]]);
         }
 
         return $changes;
     }
 
     /**
-     * The compared fields that differ, as [before, after]; a field one side lacks is left out.
+     * @param  array<string, array{mixed, mixed}>|null  $fields
+     * @return array<string, mixed>
+     */
+    private static function change(string $type, string $change, ?string $subject, string $label, ?string $connection, ?string $table, ?string $message, ?array $fields = null): array
+    {
+        return array_filter([
+            'type' => $type,
+            'change' => $change,
+            'subject' => $subject,
+            'label' => $label,
+            'message' => $message,
+            'fields' => $fields,
+            'connection' => $connection,
+            'table' => $table,
+        ], fn (mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * The compared fields that differ, as [before, after].
      *
-     * @param  array<mixed>  $before
-     * @param  array<mixed>  $after
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
      * @param  list<string>  $compared
      * @return array<string, array{mixed, mixed}>
      */
@@ -283,8 +319,11 @@ final class SchemaDiff
         $fields = [];
 
         foreach ($compared as $field) {
-            if (array_key_exists($field, $before) && array_key_exists($field, $after) && $before[$field] !== $after[$field]) {
-                $fields[$field] = [$before[$field], $after[$field]];
+            $old = $before[$field] ?? null;
+            $new = $after[$field] ?? null;
+
+            if (Json::canonical($old) !== Json::canonical($new)) {
+                $fields[$field] = [$old, $new];
             }
         }
 
@@ -292,40 +331,40 @@ final class SchemaDiff
     }
 
     /**
-     * @param  list<array<mixed>>  $items
-     * @param  callable(array<mixed>): string  $key
-     * @return array<string, array<mixed>>
+     * @return array<string, array<string, mixed>>
      */
-    private static function keyed(array $items, callable $key): array
+    private static function keyed(mixed $items, string $key): array
     {
         $keyed = [];
 
-        foreach ($items as $item) {
-            $keyed[$key($item)] ??= $item;
+        foreach (is_array($items) ? $items : [] as $item) {
+            if (is_array($item) && is_string($item[$key] ?? null)) {
+                $keyed[$item[$key]] ??= $item;
+            }
         }
 
         return $keyed;
     }
 
     /**
-     * @return list<array<mixed>>
+     * @param  array<string, mixed>  $model
      */
-    private static function list(mixed $value): array
+    private static function tablesOf(array $model): ?string
     {
-        return is_array($value) ? array_values(array_filter($value, 'is_array')) : [];
+        return $model['tables'] !== [] ? 'tables '.implode(', ', $model['tables']) : null;
     }
 
-    /**
-     * @return list<string>
-     */
-    private static function strings(mixed $value): array
+    private static function count(int $n, string $noun): string
     {
-        return is_array($value) ? array_values(array_map(fn (mixed $item): string => self::string($item), $value)) : [];
+        return $n.' '.$noun.($n === 1 ? '' : 's');
     }
 
-    private static function string(mixed $value): string
+    private static function foreignKeyName(mixed $id): string
     {
-        return is_scalar($value) ? (string) $value : '';
+        $id = is_string($id) ? $id : '';
+        $at = strrpos($id, ':fk:');
+
+        return $at === false ? $id : substr($id, $at + 4);
     }
 
     private static function shortRelation(string $id): string

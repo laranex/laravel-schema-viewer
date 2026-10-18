@@ -23,7 +23,15 @@ final class Json
      */
     public static function canonical(mixed $value): string
     {
-        return self::encode($value, '')."\n";
+        return self::encode($value, '', true)."\n";
+    }
+
+    /**
+     * JavaScript's JSON.stringify(value, null, 2) and a newline: as canonical(), with object keys in their given order.
+     */
+    public static function pretty(mixed $value): string
+    {
+        return self::encode($value, '', false)."\n";
     }
 
     /**
@@ -93,7 +101,7 @@ final class Json
         return $value;
     }
 
-    private static function encode(mixed $value, string $indent): string
+    private static function encode(mixed $value, string $indent, bool $sort): string
     {
         $inner = $indent.'  ';
 
@@ -104,11 +112,13 @@ final class Json
                 return '{}';
             }
 
-            ksort($members, SORT_STRING);
+            if ($sort) {
+                ksort($members, SORT_STRING);
+            }
             $lines = [];
 
             foreach ($members as $key => $member) {
-                $lines[] = $inner.self::scalar((string) $key).': '.self::encode($member, $inner);
+                $lines[] = $inner.self::scalar((string) $key).': '.self::encode($member, $inner, $sort);
             }
 
             return "{\n".implode(",\n", $lines)."\n".$indent.'}';
@@ -119,7 +129,7 @@ final class Json
                 return '[]';
             }
 
-            return "[\n".implode(",\n", array_map(fn (mixed $item): string => $inner.self::encode($item, $inner), $value))."\n".$indent.']';
+            return "[\n".implode(",\n", array_map(fn (mixed $item): string => $inner.self::encode($item, $inner, $sort), $value))."\n".$indent.']';
         }
 
         return self::scalar($value);

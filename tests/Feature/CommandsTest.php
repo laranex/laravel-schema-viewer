@@ -6,8 +6,11 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Laranex\LaravelSchemaViewer\Contract\Json;
+use Laranex\LaravelSchemaViewer\Contract\Validator;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Laranex\LaravelSchemaViewer\Viewer\ViewerAssets;
 
 function exportAs(string $format): string
 {
@@ -16,11 +19,23 @@ function exportAs(string $format): string
     return Artisan::output();
 }
 
-it('exports the whole document as JSON', function (): void {
-    $json = json_decode(exportAs('json'), true);
+it('exports the whole document as laranex-schema 2.0 JSON', function (): void {
+    $text = exportAs('json');
+    $json = Json::decode($text);
 
-    expect($json['version'])->toBe(1)
+    expect($json['version'])->toBe('2.0')
+        ->and($text)->toBe(Json::canonical($json))
+        ->and(Validator::validate($json, strict: true))->toBe([])
         ->and($json['connections'][0]['name'])->toBe('testing');
+});
+
+it('exports the ORM declarations with --orm, labelled apart from the foreign keys', function (): void {
+    Artisan::call('schema-viewer:export', ['--format' => 'mermaid', '--orm' => true]);
+    $mermaid = Artisan::output();
+    Artisan::call('schema-viewer:export', ['--format' => 'markdown', '--orm' => true]);
+
+    expect($mermaid)->toContain('posts }o..o| users : "ORM: Post::author (BelongsTo)"')
+        ->and(Artisan::output())->toContain('# ORM declarations');
 });
 
 it('exports a Mermaid diagram of the database: tables and foreign keys only', function (): void {
@@ -31,7 +46,7 @@ it('exports a Mermaid diagram of the database: tables and foreign keys only', fu
         ->and($mermaid)->toContain('    posts {')
         ->and($mermaid)->toMatch('/\n        \w+ user_id FK\n/')
         ->and($mermaid)->toContain('users ||--o{ posts : "user_id"')
-        ->and($mermaid)->toContain('categories ||--o{ categories : "parent_id"')
+        ->and($mermaid)->toContain('categories |o--o{ categories : "parent_id"')
         ->and($mermaid)->not->toContain('categories ||--o{ posts')
         ->and($mermaid)->not->toContain('Post::');
 });
@@ -69,7 +84,7 @@ it('exports DBML for a table with an index on an expression', function (): void 
 it('exports Markdown that describes the database only', function (): void {
     $markdown = exportAs('markdown');
 
-    expect($markdown)->toContain('# Database schema: testing ('.testDriver().')')
+    expect($markdown)->toContain('# Database schema: testing ('.(testDriver() === 'pgsql' ? 'postgresql' : testDriver()).')')
         ->and($markdown)->toContain('## posts')
         ->and($markdown)->toMatch('/\| `user_id` \| .+ \|  \|  \| FK → users.id \|  \|/')
         ->and($markdown)->toMatch('/- `posts_user_id_foreign`: \(user_id\) → users \(id\), on update (no action|restrict), on delete cascade/')
@@ -93,22 +108,28 @@ it('exports the viewer as one standalone HTML file that needs no server', functi
     $this->artisan('schema-viewer:export', ['--format' => 'html', '--output' => $folder])->assertSuccessful();
 
     $html = (string) file_get_contents($folder.'/index.html');
-    $config = json_decode(unpackedScript($html, 'schema-viewer-config'), true);
+    $config = offlineData($html);
+    preg_match('/<script type="module" id="lsv-offline-app">(.*)<\/script>\n<\/body>/s', $html, $script);
+    preg_match('/script-src \'sha256-([^\']+)\'/', $html, $hash);
 
     expect($html)->toStartWith('<!doctype html>')
-        ->and($html)->toContain('<div id="root"></div>')
+        ->and($html)->toContain('<div id="schema-viewer"></div>')
         ->and($html)->toContain('url(data:font/woff2;base64,')
+        ->and($html)->toContain('<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22')
         ->and($html)->not->toContain('./assets/')
-        ->and(substr_count(strtolower($html), '</script'))->toBe(3)
-        ->and($html)->toContain(HtmlExporter::LOADER)
-        ->and(unpackedScript($html, 'schema-viewer-app'))->toBe(file_get_contents(dirname(__DIR__, 2).'/dist/app.js'))
-        ->and($config)->not->toHaveKey('schemaUrl')
-        ->and($config['defaultConnection'])->toBe('all')
-        ->and($config['schema']['connections'][0]['name'])->toBe('testing')
-        ->and($config['schema']['relations'])->not->toBeEmpty()
-        ->and($config['downloads']['testing']['mermaid'])->toStartWith('erDiagram')
-        ->and($config['downloads']['testing']['dbml'])->toContain('Table posts {')
-        ->and($config['downloads']['testing']['markdown'])->toContain('## posts');
+        ->and($html)->not->toContain('.woff)')
+        ->and(substr_count(strtolower($html), '</script'))->toBe(2)
+        // The page allows its one script by hash, and nothing from the network.
+        ->and($html)->toContain("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'sha256-")
+        ->and(base64_encode(hash('sha256', $script[1], true)))->toBe($hash[1])
+        ->and($script[1])->toBe(preg_replace('/<(\/?script|!--)/i', '\\x3C$1', (new ViewerAssets)->contents('offline.js')))
+        ->and(array_keys($config))->toBe(['document', 'changes', 'defaultConnection'])
+        ->and($config['defaultConnection'])->toBeNull()
+        ->and($config['document']['version'])->toBe('2.0')
+        ->and($config['document']['connections'][0]['name'])->toBe('testing')
+        ->and($config['document']['relationships'])->not->toBeEmpty()
+        // No editor links: they would carry the application's paths.
+        ->and($config)->not->toHaveKey('editor');
 
     unlink($folder.'/index.html');
     rmdir($folder);
@@ -122,22 +143,20 @@ it('writes the standalone viewer to a named HTML file', function (): void {
         ->expectsOutputToContain('Schema exported to')
         ->assertSuccessful();
 
-    expect(unpackedScript((string) file_get_contents($path), 'schema-viewer-config'))->toContain('"defaultConnection":"testing"');
+    expect(offlineData((string) file_get_contents($path))['defaultConnection'])->toBe('connection:testing');
     unlink($path);
 });
 
-it('builds the same page as the viewer\'s own HTML download', function (): void {
-    // ui/src/standalone.ts writes the page in the browser; both must start it the same way.
-    $standalone = (string) file_get_contents(dirname(__DIR__, 2).'/ui/src/standalone.ts');
+it('keeps the document from ending the script it is carried in', function (): void {
+    $html = (new HtmlExporter)->export(['note' => '</script><script>alert(1)</script><!--'] + Json::decode(exportAs('json')));
 
-    expect($standalone)->toContain('const LOADER = `'.HtmlExporter::LOADER.'`;')
-        ->and($standalone)->toContain('id="schema-viewer-config"')
-        ->and($standalone)->toContain('id="schema-viewer-app"');
+    expect(substr_count(strtolower($html), '</script'))->toBe(2)
+        ->and(offlineData($html)['document']['note'])->toBe('</script><script>alert(1)</script><!--');
 });
 
 it('reports a missing viewer asset', function (): void {
-    expect(fn () => (new HtmlExporter(sys_get_temp_dir().'/no-dist-'.uniqid()))->export(app(SchemaViewer::class)->document()))
-        ->toThrow(RuntimeException::class, 'The viewer asset [app.js] is missing');
+    expect(fn () => (new HtmlExporter(new ViewerAssets(sys_get_temp_dir().'/no-viewer-'.uniqid())))->export(Json::decode(exportAs('json'))))
+        ->toThrow(RuntimeException::class, 'The viewer manifest at');
 });
 
 it('rejects an unknown format or connection', function (): void {
@@ -187,13 +206,15 @@ it('passes the check when only other kinds remain', function (): void {
 });
 
 /**
- * A packed script of a standalone HTML export: base64 of gzip.
+ * The data of a standalone HTML export: its document, changes and default connection.
+ *
+ * @return array<string, mixed>
  */
-function unpackedScript(string $html, string $id): string
+function offlineData(string $html): array
 {
-    preg_match('/<script type="application\/octet-stream" id="'.$id.'">([A-Za-z0-9+\/=]+)<\/script>/', $html, $match);
+    preg_match('/<script type="application\/json" id="schema-viewer-data">(.+?)<\/script>/s', $html, $match);
 
-    return (string) gzdecode((string) base64_decode($match[1] ?? '', true));
+    return json_decode($match[1] ?? 'null', true, 512, JSON_THROW_ON_ERROR);
 }
 
 /**

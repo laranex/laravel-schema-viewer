@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Laranex\LaravelSchemaViewer\Http\Middleware\Authorize;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Laranex\LaravelSchemaViewer\Viewer\ViewerAssets;
 
 it('is open to everyone in the local environment by default', function (): void {
     $this->rebootWith('local');
@@ -52,8 +53,8 @@ it('asks the auth callback on every route with the request', function (string $u
 
     expect($seen)->toBe([ltrim((string) parse_url($uri, PHP_URL_PATH), '/')]);
 })->with([
-    'viewer' => '/schema-viewer',
-    'asset' => '/schema-viewer/assets/app.js',
+    'viewer' => fn (): string => '/schema-viewer',
+    'asset' => fn (): string => '/schema-viewer/assets/'.(new ViewerAssets)->version().'/app.js',
 ]);
 
 it('lets an exception in the auth callback through instead of opening the viewer', function (): void {

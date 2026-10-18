@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Schema;
 
-use JsonSerializable;
-
 /**
  * What an Eloquent model declares about its table.
  */
-final class ModelInfo implements JsonSerializable
+final class ModelInfo
 {
     /**
      * @param  class-string  $class
@@ -41,30 +39,4 @@ final class ModelInfo implements JsonSerializable
         public readonly array $observers,
         public readonly ?Source $source = null,
     ) {}
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function jsonSerialize(): array
-    {
-        return [
-            'class' => $this->class,
-            'connection' => $this->connection,
-            'table' => $this->table,
-            'primaryKey' => $this->primaryKey,
-            'keyType' => $this->keyType,
-            'incrementing' => $this->incrementing,
-            'timestamps' => $this->timestamps,
-            'softDeletes' => $this->softDeletes,
-            'casts' => (object) $this->casts,
-            'fillable' => $this->fillable,
-            'guarded' => $this->guarded,
-            'hidden' => $this->hidden,
-            'appends' => $this->appends,
-            'scopes' => $this->scopes,
-            'globalScopes' => $this->globalScopes,
-            'observers' => $this->observers,
-            'source' => $this->source,
-        ];
-    }
 }

@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Schema;
 
-use JsonSerializable;
-
 /**
  * An Eloquent relation method, read from the relation object it returns.
  */
-final class RelationInfo implements JsonSerializable
+final class RelationInfo
 {
     /**
      * @param  class-string  $model
@@ -45,26 +43,5 @@ final class RelationInfo implements JsonSerializable
     public function id(): string
     {
         return $this->model.'::'.$this->name;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function jsonSerialize(): array
-    {
-        return [
-            'id' => $this->id(),
-            'model' => $this->model,
-            'name' => $this->name,
-            'type' => $this->type,
-            'related' => $this->related,
-            'keys' => $this->from && $this->to ? ['from' => $this->from, 'to' => $this->to] : null,
-            'pivot' => $this->pivot,
-            'morph' => $this->morph,
-            'through' => $this->through,
-            'constraints' => $this->constraints,
-            'inverse' => $this->inverse,
-            'source' => $this->source,
-        ];
     }
 }

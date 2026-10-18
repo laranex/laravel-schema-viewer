@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Schema;
 
-use JsonSerializable;
-
 /**
  * A table index, the primary key included.
  */
-final class Index implements JsonSerializable
+final class Index
 {
     /**
      * @param  list<string>  $columns  The columns as Laravel reports them: expression key parts are left out, and included columns are listed too.
@@ -64,22 +62,5 @@ final class Index implements JsonSerializable
     public function typeFamily(): string
     {
         return in_array($this->type, [null, 'btree', 'clustered', 'nonclustered'], true) ? 'btree' : $this->type;
-    }
-
-    /**
-     * @return array{name: string, columns: list<string>, unique: bool, primary: bool, type: string|null, partial: bool, expression: bool, included: list<string>}
-     */
-    public function jsonSerialize(): array
-    {
-        return [
-            'name' => $this->name,
-            'columns' => $this->columns,
-            'unique' => $this->unique,
-            'primary' => $this->primary,
-            'type' => $this->type,
-            'partial' => $this->partial,
-            'expression' => $this->expression,
-            'included' => $this->included,
-        ];
     }
 }

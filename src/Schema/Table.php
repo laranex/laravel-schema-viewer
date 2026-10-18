@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Schema;
 
-use JsonSerializable;
-
 /**
  * A database table with its columns, indexes and foreign keys.
  */
-final class Table implements JsonSerializable
+final class Table
 {
     /**
      * @param  string  $name  The name models use: without the connection's table prefix, schema-qualified outside the default schema.
@@ -88,22 +86,5 @@ final class Table implements JsonSerializable
         }
 
         return false;
-    }
-
-    /**
-     * @return array{name: string, comment: string|null, note: string|null, framework: bool, package: string|null, columns: list<Column>, indexes: list<Index>, foreignKeys: list<ForeignKey>}
-     */
-    public function jsonSerialize(): array
-    {
-        return [
-            'name' => $this->name,
-            'comment' => $this->comment,
-            'note' => $this->note,
-            'framework' => $this->framework,
-            'package' => $this->package,
-            'columns' => $this->columns,
-            'indexes' => $this->indexes,
-            'foreignKeys' => $this->foreignKeys,
-        ];
     }
 }

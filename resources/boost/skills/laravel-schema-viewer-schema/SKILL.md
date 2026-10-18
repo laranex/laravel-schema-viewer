@@ -21,7 +21,7 @@ The app needs the package (`composer require laranex/laravel-schema-viewer --dev
 
 ### Read the snapshot
 
-When `schema-viewer.json` exists in the project root, read it first: it is what the viewer shows, written by `php artisan schema-viewer:build`. `document` holds the same JSON as `schema-viewer:export --format=json` below, and `downloads.<connection>` the Mermaid, DBML and Markdown of each connection. It is as fresh as the last time someone ran the build; if a migration or model changed since, run `php artisan schema-viewer:build` or use the export commands.
+When `schema-viewer.json` exists in the project root, read it first: it is what the viewer shows, written by `php artisan schema-viewer:build`, the same laranex-schema 2.0 document as `schema-viewer:export --format=json` below. It is as fresh as the last time someone ran the build; if a migration or model changed since, run `php artisan schema-viewer:build` or use the export commands. A file written by laravel-schema-viewer 1.x (it starts with `"format": 2`) is out of date: build it again.
 
 ### Read the database
 
@@ -36,18 +36,19 @@ Markdown lists every table of one connection with its columns (type, null, defau
 php artisan schema-viewer:export --format=json
 ```
 
-JSON covers every connection and adds the Laravel side: `models` (table, casts, fillable, hidden, scopes, observers), `relations` (type, keys, pivot, morph columns, constraints, inverse), `links` (one per pair of columns, with `state` `both`, `relation` or `foreign_key`) and `hints`. Use it to answer "which relation uses this column" or "is this relation backed by a foreign key".
+JSON is a laranex-schema 2.0 document of every connection (`--connection=` for one): `connections[].tables[]` with `columns`, `indexes` (`parts`, `unique`, `backs`, `partial`, `expression`, `included`) and `foreignKeys`; `models` (`className`, `tables`, Eloquent facts such as casts, fillable, hidden, scopes and observers in `extensions.eloquent`); `relationships` (`type`, `cardinality`, `keys`, `pivot`, `polymorphic`, `through`, `constraints`, `inverse`); `links` (one per pair of column sets, with `state` `both`, `relationship` or `foreign_key`); `inferredAssociations` (foreign keys no relationship declares); and `diagnostics` (the hints). Ids: `connection:<name>`, tables `<connection>:<table>`, models by class, relationships `Class::method`. Use it to answer "which relation uses this column" or "is this relation backed by a foreign key".
 
-`--format=mermaid` and `--format=dbml` produce an ER diagram of one connection's database for a README, a pull request or dbdiagram.io.
+`--format=mermaid` and `--format=dbml` produce an ER diagram of one connection's database for a README, a pull request or dbdiagram.io; add `--orm` to Mermaid or Markdown to also list the Eloquent relationships, labelled apart from the foreign keys.
 
 ### Answer questions from the JSON
 
-- Which relation uses this column? Find the `links` entry whose `from` or `to` holds it; its `relations` name the methods (`App\Models\Order::user`).
-- Is this relation backed by a foreign key? Its link's `state` is `both` (foreign key and relation), `relation` (no foreign key) or `foreign_key` (no relation).
-- Where is it declared? Each model and relation has a `source`: a file relative to the app's root and a line.
-- What does a model add on top of its table? `models[]` lists `casts`, `fillable`, `guarded`, `hidden`, `appends`, `scopes`, `globalScopes` and `observers`.
+- Which relation uses this column? Find the `links` entry whose `from` or `to` holds it (`{table: "mysql:orders", columns: ["user_id"]}`); its `relationships` name the methods (`App\Models\Order::user`).
+- Is this relation backed by a foreign key? Its link's `state` is `both` (foreign key and relationship), `relationship` (no foreign key) or `foreign_key` (no relationship).
+- Where is it declared? Each model and relationship has a `source`: a file relative to the app's root and a line.
+- What does a model add on top of its table? `models[].extensions.eloquent` lists `casts`, `fillable`, `guarded`, `hidden`, `appends`, `scopes`, `globalScopes` and `observers`.
 - Through relations (has-one-through, has-many-through) are in `derivedLinks`, with the tables they pass `via`.
-- What did the team write about it? The document's `note`, and each table's, column's and link's `note`, come from the app's notes config, next to the database's own `comment`; read both before naming or changing something.
+- What could not be read? Each connection's `coverage.database.features` says what the inspection covers (Laravel reads no check constraints), and `diagnostics` of category `inspection` and `extraction` say why.
+- What did the team write about it? The document's `note`, and each table's, column's and relationship's `note`, come from the app's notes config, next to the database's own `comment`; read both before naming or changing something.
 
 ### Find where the database and the models disagree
 
@@ -91,13 +92,13 @@ php artisan schema-viewer:diff base.json --format=json
 php artisan schema-viewer:diff base.json --against=schema-viewer.json --format=markdown
 ```
 
-Without arguments it prints the `changes` stored in `schema-viewer.json`: what the last build that found a difference changed (null before there was one; hints are not included), without touching the database. With an older snapshot it compares that file with the schema now, or with `--against` two files without running any model code. Each change has a `type` (connection, table, column, index, foreign_key, model, relation, link), a `change` (added, removed, changed), where it is, and `fields` ([before, after]) for a change. A renamed table or column shows as one removed and one added. To review a branch, compare with the base branch's file: `git show origin/main:schema-viewer.json > base.json`.
+Without arguments it prints the changes kept in `schema-viewer.changes.json`: what the last build that found a difference changed (null before there was one; diagnostics are not included), without touching the database. With an older laranex-schema document it compares that file with the schema now, or with `--against` two files without running any model code. Each change has a `type` (connection, table, column, index, foreignKey, model, relationship, link), a `change` (added, removed, changed), the `subject` id the viewer opens, a `label`, where it is, and `fields` ([before, after]) for a change. A renamed table or column shows as one removed and one added. To review a branch, compare with the base branch's file: `git show origin/main:schema-viewer.json > base.json`.
 
 ### Point a person at a table, relationship or column
 
 Visit `/schema-viewer` in the local environment (after `php artisan schema-viewer:build`): every table of the connection, the models on them, and each relation drawn as an edge with its methods and kind (one-to-many, many-to-many, polymorphic, has-many-through).
 
-To point someone at one table, link to it: `/schema-viewer#connection=all&table=mysql:orders&focus=1` opens every connection with the `orders` table of the `mysql` connection selected and focus mode on it and its direct neighbors (`focus` takes 1 to 3 links; leave it out to show the whole diagram). To point at a column instead, use `column=mysql:orders.user_id`; Copy link in the viewer's details panel (Shift C) copies a link to exactly what is on screen, relationships included. The same hash works on a static HTML export.
+To point someone at one table, link to it by its id: `/schema-viewer#table=mysql:orders&focus=mysql:orders&depth=1` opens the `orders` table of the `mysql` connection, in focus mode with its direct neighbors (`depth` takes 1 to 3; leave out `focus` to show the whole diagram). Add `&column=user_id` to point at a column, `#link=<link id>` at a line, and `#connection=connection:mysql` to show one connection. Copy link (Shift C) copies a link to exactly what is on screen. The same hash works on a static HTML export.
 
 ## Avoid
 

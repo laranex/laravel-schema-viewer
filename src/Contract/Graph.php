@@ -102,12 +102,16 @@ final class Graph
             sort($relationships, SORT_STRING);
             $notes = $link['notes'];
             sort($notes, SORT_STRING);
-            unset($link['notes']);
 
+            // In graph.ts's key order, so a scoped JSON export writes the same bytes.
             $result[] = [
-                ...$link,
+                'id' => $link['id'],
+                'from' => $link['from'],
+                'to' => $link['to'],
+                'foreignKey' => $link['foreignKey'],
                 'relationships' => $relationships,
                 'state' => $link['foreignKey'] !== null ? ($relationships !== [] ? 'both' : 'foreign_key') : 'relationship',
+                'polymorphic' => $link['polymorphic'],
                 // The note of the first relationship, by id, that has one.
                 'note' => $notes !== [] ? explode("\0", $notes[0], 2)[1] : null,
             ];

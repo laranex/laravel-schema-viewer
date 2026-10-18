@@ -50,7 +50,7 @@ final class SchemaGraph
      * @param  array<string, array<string, string>>  $relationshipNotes  Notes on relationships by the table that holds the key (plain, or
      *                                                                   prefixed with a connection and a colon, which wins), then by its columns, comma separated.
      */
-    public function build(array $connections, array $models, array $relations, array $unresolved, array $ignore = [], ?string $generatedAt = null, ?string $note = null, array $relationshipNotes = []): SchemaDocument
+    public function build(array $connections, array $models, array $relations, array $unresolved, array $ignore = [], ?string $note = null, array $relationshipNotes = []): SchemaDocument
     {
         $this->models = [];
 
@@ -67,7 +67,7 @@ final class SchemaGraph
         }
 
         try {
-            return $this->document($connections, $models, $relations, $unresolved, $ignore, $generatedAt, $note, $relationshipNotes);
+            return $this->document($connections, $models, $relations, $unresolved, $ignore, $note, $relationshipNotes);
         } finally {
             $this->models = $this->morphTargets = [];
         }
@@ -81,7 +81,7 @@ final class SchemaGraph
      * @param  list<IgnoreRule>  $ignore  Hints to leave out.
      * @param  array<string, array<string, string>>  $relationshipNotes
      */
-    private function document(array $connections, array $models, array $relations, array $unresolved, array $ignore, ?string $generatedAt, ?string $note, array $relationshipNotes): SchemaDocument
+    private function document(array $connections, array $models, array $relations, array $unresolved, array $ignore, ?string $note, array $relationshipNotes): SchemaDocument
     {
         $this->pairInverses($relations);
 
@@ -160,7 +160,6 @@ final class SchemaGraph
         ));
 
         return new SchemaDocument(
-            generatedAt: $generatedAt ?? gmdate('Y-m-d\TH:i:s\Z'),
             connections: $connections,
             models: $models,
             relations: $relations,

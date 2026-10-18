@@ -7,6 +7,7 @@ namespace Laranex\LaravelSchemaViewer\Console;
 use Illuminate\Console\Command;
 use Laranex\LaravelSchemaViewer\Diff\SchemaDiff;
 use Laranex\LaravelSchemaViewer\Snapshot;
+use Laranex\LaravelSchemaViewer\SnapshotUnavailable;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
@@ -14,8 +15,8 @@ use Throwable;
 final class DiffCommand extends Command
 {
     protected $signature = 'schema-viewer:diff
-        {base? : An older schema-viewer.json to compare with; without it, the changes the snapshot lists}
-        {--against= : Compare the base with this schema-viewer.json instead of the schema now}
+        {base? : An older laranex-schema document (schema-viewer.json) to compare with; without it, the changes since the previous build}
+        {--against= : Compare the base with this laranex-schema document instead of the schema now}
         {--format=text : text, json or markdown}';
 
     protected $description = 'Show what changed in the schema: since the previous build, or between two snapshots';
@@ -40,15 +41,13 @@ final class DiffCommand extends Command
                 return self::INVALID;
             }
 
-            $current = $snapshot->decoded($snapshot->current());
-
-            if ($current === null) {
-                $this->components->error(sprintf('No readable schema snapshot at [%s]. Run php artisan schema-viewer:build.', $snapshot->displayPath()));
+            try {
+                return $this->show($snapshot->changes(), $format);
+            } catch (SnapshotUnavailable $e) {
+                $this->components->error($e->getMessage());
 
                 return self::INVALID;
             }
-
-            return $this->show($current['changes'], $format);
         }
 
         $before = $this->read($snapshot, $base);
@@ -65,7 +64,7 @@ final class DiffCommand extends Command
             }
         } else {
             try {
-                $after = $snapshot->decoded($snapshot->render()['contents']);
+                $after = $snapshot->render()['document'];
             } catch (Throwable $e) {
                 $this->components->error('The schema could not be read: '.$e->getMessage());
 
@@ -73,13 +72,13 @@ final class DiffCommand extends Command
             }
         }
 
-        return $this->show(SchemaDiff::diff($before['document'], $after['document'] ?? []), $format);
+        return $this->show(SchemaDiff::diff($before, $after), $format);
     }
 
     /**
-     * A snapshot file, relative to the working directory or the project root.
+     * A laranex-schema document, relative to the working directory or the project root.
      *
-     * @return array{document: array<mixed>, changes: list<array<string, mixed>>|null}|null
+     * @return array<string, mixed>|null
      */
     private function read(Snapshot $snapshot, string $path): ?array
     {
@@ -91,14 +90,13 @@ final class DiffCommand extends Command
             return null;
         }
 
-        $contents = (string) file_get_contents($file);
-        $decoded = $snapshot->decoded(str_starts_with($contents, "\u{FEFF}") ? substr($contents, 3) : $contents);
+        try {
+            return $snapshot->decode((string) file_get_contents($file, false, null, 0, Snapshot::MAX_BYTES + 1), $file);
+        } catch (SnapshotUnavailable $e) {
+            $this->components->error($e->getMessage());
 
-        if ($decoded === null) {
-            $this->components->error("[{$path}] was written by another version of laravel-schema-viewer, or is not a schema snapshot.");
+            return null;
         }
-
-        return $decoded;
     }
 
     /**
@@ -107,14 +105,14 @@ final class DiffCommand extends Command
     private function show(?array $changes, string $format): int
     {
         if ($format === 'json') {
-            $this->raw(json_encode(['version' => 1, 'changes' => $changes], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
+            $this->raw(json_encode(['version' => 2, 'changes' => $changes], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
 
             return self::SUCCESS;
         }
 
         if ($changes === null || $changes === []) {
             $message = $changes === null
-                ? 'Nothing to compare yet. Once a later schema-viewer:build finds that tables, columns, indexes, foreign keys, models or relations changed, this lists what changed.'
+                ? 'Nothing to compare yet. Once a later schema-viewer:build finds that tables, columns, indexes, foreign keys, models or relationships changed, this lists what changed.'
                 : 'No schema changes.';
             $format === 'markdown' ? $this->raw("## Schema changes\n\n{$message}\n") : $this->components->info($message);
 
@@ -124,11 +122,11 @@ final class DiffCommand extends Command
         $groups = [];
 
         foreach ($changes as $change) {
-            $table = is_string($change['table'] ?? null) && $change['table'] !== '' ? $change['connection'].'.'.$change['table'] : null;
+            $table = is_string($change['table'] ?? null) && $change['table'] !== '' ? ($change['connection'] ?? '').'.'.$change['table'] : null;
             $groups[$table ?? match ($change['type']) {
                 'connection' => 'Connections',
                 'model' => 'Models',
-                'relation' => 'Relations',
+                'relationship' => 'Relationships',
                 default => 'Schema',
             }][] = SchemaDiff::describe($change);
         }

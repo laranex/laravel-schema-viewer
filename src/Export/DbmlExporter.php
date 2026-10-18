@@ -4,132 +4,391 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Export;
 
-use Laranex\LaravelSchemaViewer\Schema\ConnectionSchema;
-use Laranex\LaravelSchemaViewer\Schema\Table;
-
 /**
- * DBML for dbdiagram.io: one connection's tables with their keys and indexes, then one Ref per foreign key.
+ * DBML as dbdiagram.io reads it, a port of laranex-schema-viewer-ui's export/dbml.ts: an optional Project note, named
+ * enums, every table with its columns, keys, indexes, checks and notes, then one Ref per foreign key. Only physical
+ * foreign keys become Refs; ORM relationships never do.
  */
-final class DbmlExporter
+final class DbmlExporter implements Exporter
 {
-    /**
-     * @param  string|null  $note  The project's note, written as the Project block's.
-     */
-    public function export(ConnectionSchema $connection, ?string $note = null): string
+    public function extension(): string
     {
+        return 'dbml';
+    }
+
+    public function export(array $document, ?array $connections = null, bool $orm = false): array
+    {
+        $ctx = new ExportContext(Exporters::normalized($document), $connections);
+        $ctx->sourceWarnings();
+
+        if ($ctx->several) {
+            $ctx->warn('lossy_conversion', 'document', null, null, 'DBML has one namespace per file: with several connections, each table is named by its connection and table, such as "app.public.users".');
+        }
+
+        $views = array_map($ctx->view(...), $ctx->scopedTables());
         $blocks = [];
 
-        if ($note !== null) {
-            $blocks[] = 'Project '.$this->name($connection->name)." {\n  Note: '".$this->escape($note)."'\n}";
+        if ($ctx->doc['note'] !== null) {
+            $blocks[] = 'Project '.self::name(count($ctx->connections) === 1 ? $ctx->connections[0]['name'] : 'schema')." {\n  Note: ".self::quoted($ctx->doc['note'])."\n}";
         }
 
-        foreach ($connection->tables as $table) {
-            $primary = [];
-            $extraIndexes = [];
-            foreach ($table->indexes as $index) {
-                if ($index->primary) {
-                    $primary = $index->columns;
-                } elseif ($index->columns !== [] && (count($index->columns) > 1 || ! $index->unique)) {
-                    // An index on expressions only, such as lower(email), reports no columns; DBML cannot name it.
-                    $extraIndexes[] = $index;
-                }
-            }
+        array_push($blocks, ...$this->enums($ctx, $views));
 
-            $lines = ['Table '.$this->name($table->name).' {'];
-            foreach ($table->columns as $column) {
-                $settings = array_filter([
-                    count($primary) === 1 && $primary[0] === $column->name ? 'pk' : '',
-                    $column->autoIncrement ? 'increment' : '',
-                    $column->nullable ? '' : 'not null',
-                    $this->isUniqueColumn($table, $column->name) ? 'unique' : '',
-                    // An auto-increment column's default (PostgreSQL's nextval(...)) is the increment itself.
-                    $column->default !== null && ! $column->autoIncrement ? 'default: `'.str_replace('`', "'", $column->default).'`' : '',
-                    $column->comment !== null || $column->note !== null ? "note: '".$this->escape($this->joined($column->comment, $column->note))."'" : '',
-                ]);
-                $lines[] = '  '.$this->name($column->name).' '.$this->type($column->type).($settings !== [] ? ' ['.implode(', ', $settings).']' : '');
-            }
-
-            if (count($primary) > 1 || $extraIndexes !== []) {
-                $lines[] = '';
-                $lines[] = '  indexes {';
-
-                if (count($primary) > 1) {
-                    $lines[] = '    ('.implode(', ', array_map($this->name(...), $primary)).') [pk]';
-                }
-                foreach ($extraIndexes as $index) {
-                    $columns = count($index->columns) > 1 ? '('.implode(', ', array_map($this->name(...), $index->columns)).')' : $this->name($index->columns[0]);
-                    $lines[] = '    '.$columns.' ['.($index->unique ? 'unique, ' : '')."name: '".$this->escape($index->name)."']";
-                }
-                $lines[] = '  }';
-            }
-
-            if ($table->comment !== null || $table->note !== null) {
-                $lines[] = "  Note: '".$this->escape($this->joined($table->comment, $table->note))."'";
-            }
-
-            $lines[] = '}';
-            $blocks[] = implode("\n", $lines);
+        foreach ($views as $view) {
+            $blocks[] = $this->table($ctx, $view);
         }
 
-        $refs = [];
-        foreach ($connection->tables as $table) {
-            foreach ($table->foreignKeys as $fk) {
-                $settings = array_filter([$fk->onDelete !== 'no action' ? 'delete: '.$fk->onDelete : '', $fk->onUpdate !== 'no action' ? 'update: '.$fk->onUpdate : '']);
-                $refs[] = sprintf(
-                    'Ref %s: %s.%s %s %s.%s%s',
-                    $this->name($fk->name),
-                    $this->name($table->name),
-                    $this->columns($fk->columns),
-                    $table->isUnique($fk->columns) ? '-' : '>',
-                    $this->name($fk->foreignTable),
-                    $this->columns($fk->foreignColumns),
-                    $settings !== [] ? ' ['.implode(', ', $settings).']' : '',
-                );
-            }
-        }
+        $refs = $this->references($ctx, $views);
 
-        return implode("\n\n", $blocks).($refs !== [] ? "\n\n".implode("\n", $refs) : '')."\n";
+        return ['content' => implode("\n\n", $blocks).($refs !== [] ? "\n\n".implode("\n", $refs) : '')."\n", 'warnings' => $ctx->warnings];
     }
 
     /**
-     * The database's comment and the config's note in DBML's one note: "comment · note".
+     * A name as written: bare when it is an identifier, otherwise quoted with " and \ escaped.
      */
-    private function joined(?string $comment, ?string $note): string
+    public static function name(string $name): string
     {
-        return implode(' · ', array_filter([$comment, $note], fn (?string $text): bool => $text !== null));
+        return preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) === 1 ? $name : '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $name).'"';
     }
 
-    private function isUniqueColumn(Table $table, string $column): bool
+    private static function type(string $type): string
     {
-        foreach ($table->indexes as $index) {
-            if ($index->unique && ! $index->primary && $index->columns === [$column]) {
-                return true;
-            }
+        return preg_match('/^[A-Za-z0-9_(),]+$/', $type) === 1 ? $type : '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $type).'"';
+    }
+
+    /**
+     * A single-quoted string: \ and ' escaped, line breaks as spaces.
+     */
+    private static function quoted(string $text): string
+    {
+        return "'".(string) preg_replace('/\r\n|\r|\n/', ' ', str_replace(['\\', "'"], ['\\\\', "\\'"], $text))."'";
+    }
+
+    private static function joined(?string ...$texts): string
+    {
+        return implode(' · ', array_filter($texts, fn (?string $t): bool => $t !== null));
+    }
+
+    /**
+     * schema.table, or the connection-qualified name as one quoted name when the file holds several connections.
+     *
+     * @param  array<string, mixed>  $table
+     */
+    private static function tableRef(ExportContext $ctx, array $table): string
+    {
+        if ($ctx->several) {
+            return self::name($ctx->labelOf($table));
         }
 
-        return false;
+        return $table['schema'] !== null && $table['schema'] !== '' ? self::name($table['schema']).'.'.self::name($table['name']) : self::name($table['name']);
     }
 
     /**
      * @param  list<string>  $columns
      */
-    private function columns(array $columns): string
+    private static function columnsRef(array $columns): string
     {
-        return count($columns) === 1 ? $this->name($columns[0]) : '('.implode(', ', array_map($this->name(...), $columns)).')';
+        return count($columns) === 1 ? self::name($columns[0]) : '('.implode(', ', array_map(self::name(...), $columns)).')';
     }
 
-    private function name(string $name): string
+    /**
+     * Named enum types, once each, in the order their columns appear.
+     *
+     * @param  list<TableView>  $views
+     * @return list<string>
+     */
+    private function enums(ExportContext $ctx, array $views): array
     {
-        return preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) === 1 ? $name : '"'.str_replace('"', '', $name).'"';
+        $seen = [];
+        $out = [];
+
+        foreach ($views as $view) {
+            foreach ($view->columns as $column) {
+                $enum = $column['enum'];
+
+                if ($enum === null || $enum['name'] === null) {
+                    continue;
+                }
+
+                if (isset($seen[$enum['name']])) {
+                    if ($seen[$enum['name']] !== $enum['values']) {
+                        $ctx->warn('lossy_conversion', 'column', $view->table['id'], "{$view->label}.{$column['name']}", "Enum {$enum['name']} has different values on {$view->label}.{$column['name']}; DBML keeps the first list.");
+                    }
+
+                    continue;
+                }
+
+                $seen[$enum['name']] = $enum['values'];
+                $out[] = 'Enum '.self::name($enum['name'])." {\n".implode("\n", array_map(fn (string $v): string => '  "'.str_replace(['\\', '"'], ['\\\\', '\\"'], $v).'"', $enum['values']))."\n}";
+            }
+        }
+
+        return $out;
     }
 
-    private function type(string $type): string
+    private function table(ExportContext $ctx, TableView $view): string
     {
-        return preg_match('/^[A-Za-z0-9_(),]+$/', $type) === 1 ? $type : '"'.str_replace('"', '', $type).'"';
+        $table = $view->table;
+        $label = $view->label;
+        $lines = ['Table '.self::tableRef($ctx, $table).' {'];
+        $primaryKey = $view->primaryKey();
+        $single = count($primaryKey) === 1 ? $primaryKey[0] : null;
+        // Single-column uniqueness written on the column, and so not repeated under indexes.
+        $onColumn = [];
+
+        foreach ($view->columns as $column) {
+            $found = $view->uniqueColumn($column['name']);
+            // Only an index the column setting says everything about; any other stays under indexes with its details.
+            $unique = $found !== null && (! isset($found['parts']) || self::plain($found)) ? $found : null;
+
+            if ($unique !== null) {
+                $onColumn[$unique['id']] = true;
+
+                if ($unique['name'] !== null) {
+                    $kind = isset($unique['parts']) ? 'index' : 'constraint';
+                    $ctx->warn('lossy_conversion', $kind, $unique['id'], $label, "The unique {$kind} {$unique['name']} on {$label}.{$column['name']} is written as the column's unique setting; its name is not kept.");
+                }
+            }
+
+            $settings = array_values(array_filter([
+                $single === $column['name'] ? 'pk' : '',
+                $column['autoIncrement'] === true ? 'increment' : '',
+                $column['nullable'] ? '' : 'not null',
+                $unique !== null ? 'unique' : '',
+                $this->defaultSetting($ctx, $view, $column),
+                $column['comment'] !== null || $column['note'] !== null ? 'note: '.self::quoted(self::joined($column['comment'], $column['note'])) : '',
+            ]));
+            $type = ($column['enum']['name'] ?? null) !== null ? self::name($column['enum']['name']) : self::type($column['type']);
+            $lines[] = '  '.self::name($column['name']).' '.$type.($settings !== [] ? ' ['.implode(', ', $settings).']' : '');
+            $this->columnWarnings($ctx, $view, $column);
+        }
+
+        $indexLines = [];
+
+        if (count($primaryKey) > 1) {
+            $indexLines[] = '    ('.implode(', ', array_map(self::name(...), $primaryKey)).') [pk]';
+        }
+
+        foreach ($view->indexes as $index) {
+            if (($index['backs']['kind'] ?? null) === 'primary_key' || isset($onColumn[$index['id']])) {
+                continue;
+            }
+
+            $line = $this->indexLine($ctx, $view, $index);
+
+            if ($line !== null) {
+                $indexLines[] = $line;
+            }
+        }
+
+        foreach ($view->constraints as $c) {
+            $backed = array_filter($view->indexes, fn (array $i): bool => ($i['backs']['kind'] ?? null) === 'unique_constraint' && $i['backs']['constraint'] === $c['id']) !== [];
+
+            if ($c['kind'] !== 'unique' || isset($onColumn[$c['id']]) || $backed) {
+                continue;
+            }
+
+            $keys = [...array_map(self::name(...), $c['columns']), ...($c['expression'] !== null ? [$this->code($ctx, $view, $c['expression'])] : [])];
+            $indexLines[] = '    '.(count($keys) === 1 ? $keys[0] : '('.implode(', ', $keys).')').' [unique'.($c['name'] !== null ? ', name: '.self::quoted($c['name']) : '').']';
+            $ctx->warn('lossy_conversion', 'constraint', $c['id'], $label, 'The unique constraint '.($c['name'] ?? 'unnamed')." on {$label} is written as a unique index; DBML has no unique constraints apart from indexes.");
+        }
+
+        if ($indexLines !== []) {
+            array_push($lines, '', '  indexes {', ...$indexLines);
+            $lines[] = '  }';
+        }
+
+        $checkLines = [];
+
+        foreach ($view->constraints as $c) {
+            if ($c['kind'] !== 'check') {
+                continue;
+            }
+
+            if ($c['expression'] === null) {
+                $ctx->warn('skipped_entity', 'constraint', $c['id'], $label, 'The check constraint '.($c['name'] ?? 'unnamed')." on {$label} has no reported expression; it is left out.");
+
+                continue;
+            }
+
+            $checkLines[] = '    '.$this->code($ctx, $view, $c['expression']).($c['name'] !== null ? ' [name: '.self::quoted($c['name']).']' : '');
+        }
+
+        if ($checkLines !== []) {
+            array_push($lines, '', '  checks {', ...$checkLines);
+            $lines[] = '  }';
+        }
+
+        if ($table['comment'] !== null || $table['note'] !== null) {
+            $lines[] = '  Note: '.self::quoted(self::joined($table['comment'], $table['note']));
+        }
+
+        $lines[] = '}';
+
+        return implode("\n", $lines);
     }
 
-    private function escape(string $text): string
+    /**
+     * An index that only makes its columns unique: nothing a column's unique setting would lose but its name.
+     *
+     * @param  array<string, mixed>  $index
+     */
+    private static function plain(array $index): bool
     {
-        return str_replace(['\\', "'", "\n"], ['\\\\', "\\'", ' '], $text);
+        if ($index['included'] !== [] || ExportContext::members($index['dialectOptions'] ?? null) !== [] || ($index['method'] !== null && strtolower($index['method']) !== 'btree')) {
+            return false;
+        }
+
+        foreach ($index['parts'] as $p) {
+            if ($p['order'] !== null || $p['nulls'] !== null || $p['collation'] !== null || $p['opclass'] !== null) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * SQL text in backticks; a backtick inside it becomes a quote, as DBML has no escape for it.
+     */
+    private function code(ExportContext $ctx, TableView $view, string $sql): string
+    {
+        if (str_contains($sql, '`')) {
+            $ctx->warn('lossy_conversion', 'table', $view->table['id'], $view->label, "SQL text on {$view->label} contains a backtick, which DBML cannot hold; it is written as a quote: {$sql}");
+        }
+
+        return '`'.str_replace('`', "'", $sql).'`';
+    }
+
+    /**
+     * @param  array<string, mixed>  $column
+     */
+    private function defaultSetting(ExportContext $ctx, TableView $view, array $column): string
+    {
+        // An auto-increment column's default (an identity, a sequence's nextval) is the increment itself.
+        if ($column['default'] === null || $column['autoIncrement'] === true) {
+            return '';
+        }
+
+        return 'default: '.$this->code($ctx, $view, $column['default']['value']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $column
+     */
+    private function columnWarnings(ExportContext $ctx, TableView $view, array $column): void
+    {
+        $at = "{$view->label}.{$column['name']}";
+
+        if ($column['generated'] !== null) {
+            $kind = $column['generated']['kind'];
+            $ctx->warn('unsupported_feature', 'column', $view->table['id'], $at, "{$at} is a generated".($kind !== null && $kind !== '' ? " ({$kind})" : '').' column; DBML cannot state its expression: '.($column['generated']['expression'] ?? 'null'));
+        }
+
+        if ($column['collation'] !== null) {
+            $ctx->warn('unsupported_feature', 'column', $view->table['id'], $at, "DBML has no column collation; {$at} uses {$column['collation']}.");
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $index
+     */
+    private function indexLine(ExportContext $ctx, TableView $view, array $index): ?string
+    {
+        $label = $view->label;
+        $name = $index['name'] ?? 'unnamed';
+        $expressionParts = array_filter($index['parts'], fn (array $p): bool => $p['expression'] !== null) !== [];
+
+        if ($index['expression'] && ! $expressionParts) {
+            $ctx->warn('skipped_entity', 'index', $index['id'], $label, "Index {$name} on {$label} is on an expression whose text was not reported; it is left out.");
+
+            return null;
+        }
+
+        $keys = array_map(fn (array $p): string => $p['column'] !== null ? self::name($p['column']) : $this->code($ctx, $view, (string) $p['expression']), $index['parts']);
+        $lost = [];
+
+        if ($index['partial']) {
+            $lost[] = $index['predicate'] === null ? 'that it is partial (its predicate was not reported)' : "the predicate WHERE {$index['predicate']}";
+        }
+
+        if ($index['included'] !== []) {
+            $lost[] = 'the included columns ('.implode(', ', $index['included']).')';
+        }
+
+        foreach ($index['parts'] as $p) {
+            $key = $p['column'] ?? $p['expression'] ?? '';
+            $details = array_values(array_filter([
+                $p['order'] !== null && $p['order'] !== '' ? "order {$p['order']}" : '',
+                $p['nulls'] !== null && $p['nulls'] !== '' ? "nulls {$p['nulls']}" : '',
+                $p['length'] !== null ? "prefix length {$p['length']}" : '',
+                $p['collation'] !== null && $p['collation'] !== '' ? "collation {$p['collation']}" : '',
+                $p['opclass'] !== null && $p['opclass'] !== '' ? "operator class {$p['opclass']}" : '',
+            ]));
+
+            if ($details !== []) {
+                $lost[] = "{$key}'s ".implode(', ', $details);
+            }
+        }
+
+        $method = $index['method'] !== null ? strtolower($index['method']) : null;
+
+        if ($method !== null && $method !== 'btree' && $method !== 'hash') {
+            $lost[] = "the method {$index['method']}";
+        }
+
+        $options = array_keys(ExportContext::members($index['dialectOptions'] ?? null));
+
+        if ($options !== []) {
+            $lost[] = 'the dialect options ('.implode(', ', $options).')';
+        }
+
+        if ($lost !== []) {
+            $ctx->warn('lossy_conversion', 'index', $index['id'], $label, "Index {$name} on {$label} loses ".implode('; ', $lost).': DBML cannot state them.');
+        }
+
+        $settings = array_values(array_filter([$index['unique'] ? 'unique' : '', $method === 'hash' ? 'type: hash' : '', $index['name'] !== null ? 'name: '.self::quoted($index['name']) : '']));
+
+        return '    '.(count($keys) === 1 ? $keys[0] : '('.implode(', ', $keys).')').($settings !== [] ? ' ['.implode(', ', $settings).']' : '');
+    }
+
+    /**
+     * @param  list<TableView>  $views
+     * @return list<string>
+     */
+    private function references(ExportContext $ctx, array $views): array
+    {
+        $out = [];
+        $written = [];
+
+        foreach ($views as $view) {
+            foreach ($view->foreignKeys as ['fk' => $fk, 'target' => $target]) {
+                $from = self::tableRef($ctx, $view->table).'.'.self::columnsRef($fk['columns']);
+                $to = self::tableRef($ctx, $target).'.'.self::columnsRef($fk['foreignColumns']);
+                $pair = [$from, $to];
+                sort($pair, SORT_STRING);
+                $key = implode("\0", $pair);
+                $name = $fk['name'] ?? 'unnamed';
+
+                if (isset($written[$key])) {
+                    $ctx->warn('skipped_entity', 'foreignKey', $fk['id'], $view->label, "Foreign key {$name} on {$view->label} has the same columns as {$written[$key]}; DBML allows one Ref per pair of endpoints, so it is left out.");
+
+                    continue;
+                }
+
+                $written[$key] = $name;
+                $actions = array_values(array_filter([
+                    $fk['onDelete'] !== null && $fk['onDelete'] !== 'NO ACTION' ? 'delete: '.ExportContext::actionWords($fk['onDelete']) : '',
+                    $fk['onUpdate'] !== null && $fk['onUpdate'] !== 'NO ACTION' ? 'update: '.ExportContext::actionWords($fk['onUpdate']) : '',
+                ]));
+                $out[] = 'Ref'.($fk['name'] !== null ? ' '.self::name($fk['name']) : '').": {$from} ".($view->unique($fk['columns']) ? '-' : '>')." {$to}".($actions !== [] ? ' ['.implode(', ', $actions).']' : '');
+
+                if ($fk['deferrable'] === true || $fk['initially'] === 'DEFERRED') {
+                    $ctx->warn('unsupported_feature', 'foreignKey', $fk['id'], $view->label, "DBML cannot state that foreign key {$name} on {$view->label} is deferrable".($fk['initially'] !== null && $fk['initially'] !== '' ? ', initially '.strtolower($fk['initially']) : '').'.');
+                }
+            }
+        }
+
+        return $out;
     }
 }

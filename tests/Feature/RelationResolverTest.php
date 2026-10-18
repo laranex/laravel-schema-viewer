@@ -29,12 +29,16 @@ it('reads belongsTo and hasMany keys from the relation objects', function (): vo
 
     expect($relations['author']->type)->toBe('BelongsTo')
         ->and($relations['author']->related)->toBe(Models\User::class)
-        ->and($relations['author']->from?->jsonSerialize())->toBe(['connection' => 'testing', 'table' => 'posts', 'columns' => ['user_id']])
-        ->and($relations['author']->to?->jsonSerialize())->toBe(['connection' => 'testing', 'table' => 'users', 'columns' => ['id']]);
+        ->and($relations['author']->cardinality)->toBe('many-to-one')
+        ->and($relations['author']->relatedTable)->toBe('users')
+        ->and([$relations['author']->from?->connection, $relations['author']->from?->table, $relations['author']->from?->columns])->toBe(['testing', 'posts', ['user_id']])
+        ->and([$relations['author']->to?->connection, $relations['author']->to?->table, $relations['author']->to?->columns])->toBe(['testing', 'users', ['id']]);
 
     $users = resolveRelations(new Models\User)['relations'];
 
     expect($users['posts']->type)->toBe('HasMany')
+        ->and($users['posts']->cardinality)->toBe('one-to-many')
+        ->and($users['latestPost']->cardinality)->toBe('one-to-one')
         ->and($users['posts']->from?->table)->toBe('posts')
         ->and($users['posts']->from?->columns)->toBe(['user_id'])
         ->and($users['posts']->to?->table)->toBe('users');
@@ -44,7 +48,8 @@ it('reads pivot tables, pivot models and pivot columns', function (): void {
     $roles = resolveRelations(new Models\User)['relations']['roles'];
 
     expect($roles->type)->toBe('BelongsToMany')
-        ->and($roles->pivot?->jsonSerialize())->toBe([
+        ->and($roles->cardinality)->toBe('many-to-many')
+        ->and((array) $roles->pivot)->toBe([
             'table' => 'role_user',
             'foreignPivotKey' => 'user_id',
             'relatedPivotKey' => 'role_id',
@@ -61,7 +66,7 @@ it('reads both sides of polymorphic relations', function (): void {
     $comment = resolveRelations(new Models\Comment)['relations'];
     $tag = resolveRelations(new Models\Tag)['relations'];
 
-    expect($post['comments']->morph?->jsonSerialize())->toBe(['type' => 'commentable_type', 'id' => 'commentable_id', 'class' => Models\Post::class])
+    expect((array) $post['comments']->morph)->toBe(['type' => 'commentable_type', 'id' => 'commentable_id', 'class' => Models\Post::class])
         ->and($post['comments']->from?->table)->toBe('comments')
         ->and($comment['commentable']->type)->toBe('MorphTo')
         ->and($comment['commentable']->morph?->type)->toBe('commentable_type')
@@ -107,7 +112,7 @@ it('points each relation at the method that declares it', function (): void {
 
     $relations = resolveRelations(new Models\Post)['relations'];
 
-    expect($relations['author']->source?->jsonSerialize())->toBe(['file' => 'tests/Fixtures/Models/Post.php', 'line' => 20])
+    expect((array) $relations['author']->source)->toBe(['file' => 'tests/Fixtures/Models/Post.php', 'line' => 20])
         ->and($relations['reviewer']->source)->toBeNull();
 });
 

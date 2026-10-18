@@ -2,6 +2,20 @@
 
 All notable changes to `laravel-schema-viewer` will be documented in this file.
 
+## Unreleased
+
+### Breaking
+- `schema-viewer.json` is now a [laranex-schema 2.0](https://laranex.github.io/schema-viewer-ui/) document in canonical JSON, the contract the Laranex schema viewers for Laravel, Python and Node.js share, written and checked strictly. Snapshots written by 1.x (`"format": 2`) are no longer read: the viewer, `schema-viewer:diff` and `schema-viewer:build --check` say to run `php artisan schema-viewer:build` again. There is no converter.
+- `schema-viewer:export --format=json` writes that document: `connections` with table ids such as `mysql:orders`, `models` with Eloquent facts in `extensions.eloquent`, `relationships` (was `relations`) with `cardinality`, `links` with `state` `relationship` (was `relation`), `inferredAssociations`, and `diagnostics` (was `hints`) with each hint's Laravel kind and ignore rule in `extensions.laravel`. `generatedAt`, `unresolved` and the per-connection `downloads` are gone. `hints.ignore`, `hints.fail_on` and `schema-viewer:check` keep the hint kinds they had.
+- What changed since the previous build moves from the snapshot to `schema-viewer.changes.json` beside it, kept only for the document it was built with. `schema-viewer:diff --format=json` prints version 2 changes: `type` (`foreignKey`, `relationship`), `change`, `subject`, `label`, `message`, `fields`, `connection`, `table`.
+- The viewer is the shared Laranex viewer (laranex-schema-viewer-ui 0.3.0), served from the package's verified copy: same layout, icons and line ends, in the shared palette. Links copied from the old viewer no longer open their view: the hash now names ids, such as `#table=mysql:orders&focus=mysql:orders&depth=1`.
+- Mermaid, DBML and Markdown exports follow the shared exporters, byte for byte what the viewer's Download dialog makes: `UK` marks, nullable foreign keys as `|o`, coverage notes, and notes about what a format leaves out (on standard error). The standalone HTML export is the shared offline page with its own Content-Security-Policy.
+
+### Added
+- The viewer page sends a strict Content-Security-Policy (`script-src 'self'`, no inline script) and serves only the files of the viewer's manifest, under its fingerprint.
+- `schema-viewer:export --orm` adds the Eloquent relationships and inferred associations to Mermaid and Markdown, labelled apart from the foreign keys; `--connection` scopes the JSON export to one connection.
+- The document says what the inspection covers per connection (check constraints are not read, unique constraints only as indexes, index expressions and predicates only as flags), and notes relations whose related model, keys or pivot table the schema does not have.
+
 ## v1.3.1 - 2026-10-14
 
 ### Changed

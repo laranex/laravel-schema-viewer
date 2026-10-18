@@ -6,21 +6,23 @@ namespace Laranex\LaravelSchemaViewer\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionResolverInterface;
-use Laranex\LaravelSchemaViewer\Export\DbmlExporter;
+use InvalidArgumentException;
+use Laranex\LaravelSchemaViewer\Contract\Producer;
+use Laranex\LaravelSchemaViewer\Export\Exporters;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
-use Laranex\LaravelSchemaViewer\Export\MarkdownExporter;
-use Laranex\LaravelSchemaViewer\Export\MermaidExporter;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 final class ExportCommand extends Command
 {
     protected $signature = 'schema-viewer:export
         {--format=json : json, mermaid, dbml, markdown or html}
-        {--connection= : The connection to export (Mermaid, DBML and Markdown); defaults to the default connection}
+        {--connection= : The connection to export: Mermaid, DBML and Markdown default to the default connection, JSON to every connection}
+        {--orm : Mermaid and Markdown: also the Eloquent relationships and inferred associations, labelled apart from the foreign keys}
         {--output= : Write to this file instead of the terminal; for html, a .html file or a folder (default: schema-viewer)}';
 
-    protected $description = 'Export the database schema and Eloquent relationships as JSON, Mermaid, DBML, Markdown or a standalone HTML viewer';
+    protected $description = 'Export the database schema and Eloquent relationships as laranex-schema JSON, Mermaid, DBML, Markdown or a standalone HTML viewer';
 
     public function handle(SchemaViewer $viewer, ConnectionResolverInterface $connections): int
     {
@@ -32,28 +34,44 @@ final class ExportCommand extends Command
             return self::INVALID;
         }
 
-        $document = $viewer->document();
-        $name = (string) ($this->option('connection') ?: $connections->getDefaultConnection());
-        $connection = $document->connection($name);
+        $schema = $viewer->document();
+        $document = (new Producer)->document($schema);
+        $option = $this->option('connection');
+        $name = is_string($option) && $option !== '' ? $option : ($format === 'json' || $format === 'html' ? null : $connections->getDefaultConnection());
 
-        if (! in_array($format, ['json', 'html'], true) && $connection === null) {
+        if ($name !== null && $schema->connection($name) === null) {
             $this->components->error("The schema has no connection [{$name}].");
 
             return self::INVALID;
         }
 
-        $content = match ($format) {
-            'json' => (string) json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n",
-            'html' => (new HtmlExporter)->export($document, $viewer->defaultConnection()),
-            'mermaid' => (new MermaidExporter)->export($connection),
-            'dbml' => (new DbmlExporter)->export($connection, $document->note),
-            'markdown' => (new MarkdownExporter)->export($connection, $document->note),
-        };
+        $warnings = [];
+
+        if ($format === 'html') {
+            $default = $viewer->defaultConnection();
+            $content = (new HtmlExporter)->export($document, null, $name !== null ? Producer::connectionId($name) : ($default !== 'all' ? Producer::connectionId($default) : null));
+        } else {
+            try {
+                ['content' => $content, 'warnings' => $warnings] = Exporters::all()[$format]->export($document, $name !== null ? [Producer::connectionId($name)] : null, (bool) $this->option('orm'));
+            } catch (InvalidArgumentException $e) {
+                $this->components->error($e->getMessage());
+
+                return self::INVALID;
+            }
+        }
 
         $output = $this->option('output');
 
+        foreach ($warnings as $warning) {
+            $this->note($warning['message'], is_string($output) && $output !== '');
+        }
+
         if ($format === 'html') {
             $output = $this->htmlPath(is_string($output) && $output !== '' ? $output : 'schema-viewer');
+
+            if ($output === null) {
+                return self::FAILURE;
+            }
         }
 
         if (is_string($output) && $output !== '') {
@@ -71,6 +89,21 @@ final class ExportCommand extends Command
         $this->output->write($content, false, OutputInterface::OUTPUT_RAW);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * A line on standard error, so it never mixes into an export written to standard output; without a standard error
+     * (Artisan::call), only when the export goes to a file.
+     */
+    private function note(string $message, bool $toFile): void
+    {
+        $output = $this->output->getOutput();
+
+        if ($output instanceof ConsoleOutputInterface) {
+            $output->getErrorOutput()->writeln('<fg=gray>Note:</> '.$message);
+        } elseif ($toFile) {
+            $this->line('<fg=gray>Note:</> '.$message);
+        }
     }
 
     /**

@@ -24,12 +24,12 @@ function testDriver(): string
  */
 function buildSnapshot(): SchemaDocument
 {
-    return app(Snapshot::class)->build();
+    return app(Snapshot::class)->build()['schema'];
 }
 
 /**
- * What the viewer page hands the app: window.__SCHEMA_VIEWER__, with the schema and the downloads when the snapshot is
- * readable.
+ * What the viewer page hands the shared viewer: its inline ViewerConfig, with the laranex-schema document and the
+ * changes when the snapshot is readable, else what is missing.
  *
  * @param  array<string, string>  $headers
  * @return array<string, mixed>
@@ -43,7 +43,7 @@ function viewerConfig(mixed $test, array $headers = []): array
         $html = (string) gzdecode($html);
     }
 
-    preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/s', $html, $match);
+    preg_match('/<script type="application\/json" id="schema-viewer-data">(.+?)<\/script>/s', $html, $match);
 
     return json_decode($match[1] ?? 'null', true, 512, JSON_THROW_ON_ERROR);
 }
@@ -81,6 +81,19 @@ function contractFiles(): array
  */
 function nodeContractCheck(string $json): array
 {
+    $root = nodePackage();
+    file_put_contents($root.'/document.json', $json);
+    exec('node '.escapeshellarg($root.'/contract/check.mjs').' '.escapeshellarg($root.'/document.json').' 2>&1', $output, $code);
+
+    return [$code, implode("\n", $output)];
+}
+
+/**
+ * The shared package's contract/check.mjs and dist/lib modules, from the verified tarball, in a scratch folder removed
+ * when the process ends; skipped without Node.js.
+ */
+function nodePackage(): string
+{
     contractFiles();
     exec('node --version 2>&1', $version, $missing);
 
@@ -88,19 +101,46 @@ function nodeContractCheck(string $json): array
         test()->markTestSkipped('Node.js is not installed; the contract is still checked by the PHP validator.');
     }
 
-    $root = sys_get_temp_dir().'/schema-viewer-check-'.bin2hex(random_bytes(6));
-    $members = UiPackage::members((string) file_get_contents(dirname(__DIR__).'/'.UiPackage::CACHE.'/laranex-schema-viewer-ui-0.3.0.tgz'));
+    $root = sys_get_temp_dir().'/schema-viewer-node-'.bin2hex(random_bytes(6));
+    register_shutdown_function(fn () => (new Filesystem)->deleteDirectory($root));
 
-    foreach ($members as $path => $content) {
-        if ($path === 'contract/check.mjs' || (str_starts_with($path, 'dist/lib/') && str_ends_with($path, '.js'))) {
+    foreach (UiPackage::members((string) file_get_contents(dirname(__DIR__).'/'.UiPackage::CACHE.'/laranex-schema-viewer-ui-0.3.0.tgz')) as $path => $content) {
+        if ($path === 'contract/check.mjs' || $path === 'package.json' || (str_starts_with($path, 'dist/lib/') && str_ends_with($path, '.js'))) {
             @mkdir(dirname($root.'/'.$path), 0755, true);
             file_put_contents($root.'/'.$path, $content);
         }
     }
 
-    file_put_contents($root.'/document.json', $json);
-    exec('node '.escapeshellarg($root.'/contract/check.mjs').' '.escapeshellarg($root.'/document.json').' 2>&1', $output, $code);
-    (new Filesystem)->deleteDirectory($root);
+    return $root;
+}
 
-    return [$code, implode("\n", $output)];
+/**
+ * What the shared exporters (laranex-schema-viewer-ui/export) make of a document under Node.js, for each request
+ * [format, connection ids or null, orm]: its content and warnings.
+ *
+ * @param  list<array{string, list<string>|null, bool}>  $requests
+ * @return list<array{content: string, warnings: list<array<string, mixed>>}>
+ */
+function nodeExports(string $json, array $requests): array
+{
+    $root = nodePackage();
+    file_put_contents($root.'/document.json', $json);
+    file_put_contents($root.'/requests.json', json_encode($requests));
+    file_put_contents($root.'/export.mjs', <<<'JS'
+        import { readFileSync } from 'node:fs';
+        import { EXPORTERS } from './dist/lib/export.js';
+        const doc = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+        const requests = JSON.parse(readFileSync(process.argv[3], 'utf8'));
+        const out = requests.map(([format, connections, orm]) => {
+            const options = { orm };
+            if (connections !== null) options.connections = connections;
+            return EXPORTERS.find((e) => e.id === format).export(doc, options);
+        });
+        process.stdout.write(JSON.stringify(out));
+        JS);
+    exec('node '.escapeshellarg($root.'/export.mjs').' '.escapeshellarg($root.'/document.json').' '.escapeshellarg($root.'/requests.json').' 2>&1', $output, $code);
+
+    expect($code)->toBe(0, implode("\n", $output));
+
+    return json_decode(implode("\n", $output), true, 512, JSON_THROW_ON_ERROR);
 }

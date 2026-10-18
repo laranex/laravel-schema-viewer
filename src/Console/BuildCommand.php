@@ -15,7 +15,7 @@ final class BuildCommand extends Command
     protected $signature = 'schema-viewer:build
         {--check : Build in memory and fail when schema-viewer.json is missing or out of date, without writing it}';
 
-    protected $description = 'Read the database and the Eloquent models and write the schema snapshot the viewer serves';
+    protected $description = 'Read the database and the Eloquent models and write the laranex-schema document the viewer serves';
 
     public function handle(Snapshot $snapshot, SchemaViewer $viewer): int
     {
@@ -24,7 +24,7 @@ final class BuildCommand extends Command
         }
 
         try {
-            $document = $snapshot->build();
+            $document = $snapshot->build()['schema'];
         } catch (Throwable $e) {
             $this->components->error('The schema snapshot could not be built: '.$e->getMessage());
 
