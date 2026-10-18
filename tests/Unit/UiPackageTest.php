@@ -72,8 +72,8 @@ it('fails the check when an asset is modified, missing, unlisted or unverified',
     }, 'records unverified assets'],
     'another version' => [function (string $root) {
         $lock = json_decode((string) file_get_contents($root.'/'.UiPackage::LOCK), true);
-        file_put_contents($root.'/'.UiPackage::LOCK, json_encode([...$lock, 'version' => '0.3.1']));
-    }, 'version is 0.3.0, ui.lock.json pins 0.3.1'],
+        file_put_contents($root.'/'.UiPackage::LOCK, json_encode([...$lock, 'version' => '9.9.9']));
+    }, 'ui.lock.json pins 9.9.9'],
     'restamped edit' => [function (string $root) {
         // Editing a file and its stamp entry together still fails against the viewer manifest.
         file_put_contents($root.'/resources/viewer/app.js', '/* changed */');
@@ -122,7 +122,7 @@ it('refuses a tarball whose integrity differs from the lock, unless explicitly a
 it('installs a local copy of the locked tarball, and stamps a modified build unverified', function () {
     $contract = contractFiles();
     $root = scratchRoot();
-    $cached = dirname(__DIR__, 2).'/'.UiPackage::CACHE.'/laranex-schema-viewer-ui-0.3.0.tgz';
+    $cached = (new UiPackage(dirname(__DIR__, 2)))->cached();
 
     expect((new UiPackage($root))->fetch($cached)['verified'])->toBeTrue()
         ->and((new UiPackage($root))->check())->toBe([])

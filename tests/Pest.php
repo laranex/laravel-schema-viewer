@@ -104,7 +104,7 @@ function nodePackage(): string
     $root = sys_get_temp_dir().'/schema-viewer-node-'.bin2hex(random_bytes(6));
     register_shutdown_function(fn () => (new Filesystem)->deleteDirectory($root));
 
-    foreach (UiPackage::members((string) file_get_contents(dirname(__DIR__).'/'.UiPackage::CACHE.'/laranex-schema-viewer-ui-0.3.0.tgz')) as $path => $content) {
+    foreach (UiPackage::members((string) file_get_contents((new UiPackage(dirname(__DIR__)))->cached())) as $path => $content) {
         if ($path === 'contract/check.mjs' || $path === 'package.json' || (str_starts_with($path, 'dist/lib/') && str_ends_with($path, '.js'))) {
             @mkdir(dirname($root.'/'.$path), 0755, true);
             file_put_contents($root.'/'.$path, $content);

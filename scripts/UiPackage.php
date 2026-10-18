@@ -200,6 +200,14 @@ final class UiPackage
     }
 
     /**
+     * Where composer ui:fetch caches the locked tarball (it may not exist yet).
+     */
+    public function cached(): string
+    {
+        return $this->cachePath($this->lock());
+    }
+
+    /**
      * The npm integrity string of some bytes.
      */
     public static function integrity(string $data): string
