@@ -193,7 +193,11 @@ it('serves exactly the files of the shared viewer\'s manifest, under its fingerp
             ->assertHeader('Cache-Control', 'immutable, max-age=31536000, private')
             ->assertHeader('X-Content-Type-Options', 'nosniff');
 
-        expect(hash('sha256', (string) $response->streamedContent()))->toBe($file['sha256']);
+        // The bytes the response sends; TestResponse::streamedContent() reads file responses only on newer Laravel.
+        ob_start();
+        $response->baseResponse->sendContent();
+
+        expect(hash('sha256', (string) ob_get_clean()))->toBe($file['sha256']);
     }
 
     $this->get(assetUrl('app.js'))->assertHeader('Content-Type', 'text/javascript; charset=utf-8');

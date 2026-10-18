@@ -87,7 +87,7 @@ final class ViewerAssets
         $text = @file_get_contents($this->root.'/manifest.json');
         $manifest = is_string($text) ? json_decode($text, true) : null;
 
-        if (! is_array($manifest) || ($manifest['contract']['major'] ?? null) !== 2 || ! is_array($manifest['files'] ?? null) || ! is_array($manifest['entry'] ?? null)) {
+        if (! is_string($text) || ! is_array($manifest) || ($manifest['contract']['major'] ?? null) !== 2 || ! is_array($manifest['files'] ?? null) || ! is_array($manifest['entry'] ?? null)) {
             throw new RuntimeException("The viewer manifest at [{$this->root}/manifest.json] is missing or not for laranex-schema 2.x; reinstall laranex/laravel-schema-viewer.");
         }
 

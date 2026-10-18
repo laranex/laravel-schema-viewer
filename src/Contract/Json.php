@@ -14,8 +14,6 @@ use stdClass;
  */
 final class Json
 {
-    private const FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR;
-
     /**
      * The canonical form every producer writes: object keys sorted by Unicode code point, recursively; two-space
      * indentation and ": " after keys; slashes and non-ASCII characters unescaped; a trailing newline. It is
@@ -40,7 +38,7 @@ final class Json
      */
     public static function compact(mixed $value): string
     {
-        return json_encode(self::forEncoding($value), self::FLAGS & ~JSON_PRESERVE_ZERO_FRACTION);
+        return json_encode(self::forEncoding($value), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -93,7 +91,8 @@ final class Json
         }
 
         if ($value instanceof stdClass) {
-            $members = array_map(self::fromDecoded(...), get_object_vars($value));
+            // The array cast keeps PHP's own keys: numeric property names become integers, so {"0": …} reads as a list.
+            $members = array_map(self::fromDecoded(...), (array) $value);
 
             return $members === [] || array_is_list($members) ? (object) $members : $members;
         }
@@ -142,7 +141,7 @@ final class Json
             return (string) (int) $value;
         }
 
-        return json_encode($value, self::FLAGS & ~JSON_PRESERVE_ZERO_FRACTION);
+        return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR);
     }
 
     /**
