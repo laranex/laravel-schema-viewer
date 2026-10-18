@@ -6,6 +6,11 @@ parameters:
         - config
         - scripts
     tmpDir: build/phpstan
+    # One analysis process: Larastan boots the Testbench skeleton in every PHPStan worker, and each boot rewrites the
+    # skeleton's bootstrap/cache/services.php and vendor link, which concurrent workers cannot share on Windows
+    # (rename() and mklink fail while the other worker holds the file). The package itself writes nothing at boot.
+    parallel:
+        maximumNumberOfProcesses: 1
     configDirectories:
         - '%currentWorkingDirectory%/config'
     # Typed class constants need PHP 8.3; this package supports PHP 8.1.
