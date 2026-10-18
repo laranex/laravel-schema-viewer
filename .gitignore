@@ -12,3 +12,8 @@ composer.lock
 ui/node_modules
 ui/test-results
 ui/playwright-report
+
+# The schema snapshot and exports of an application: never committed (a workbench build writes them here too).
+/schema-viewer.json
+/schema-viewer.changes.json
+/schema-viewer/
