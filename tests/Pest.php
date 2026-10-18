@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
 use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 use Laranex\LaravelSchemaViewer\Scripts\UiPackage;
@@ -69,4 +70,37 @@ function contractFiles(): array
     }
 
     return $files;
+}
+
+/**
+ * Run the shared contract/check.mjs (strict validation, the shared graph and inference, canonical form) on a document
+ * under Node.js, from the verified tarball; the lines it printed and its exit code. Skipped without Node.js: the
+ * package itself never needs it.
+ *
+ * @return array{int, string}
+ */
+function nodeContractCheck(string $json): array
+{
+    contractFiles();
+    exec('node --version 2>&1', $version, $missing);
+
+    if ($missing !== 0) {
+        test()->markTestSkipped('Node.js is not installed; the contract is still checked by the PHP validator.');
+    }
+
+    $root = sys_get_temp_dir().'/schema-viewer-check-'.bin2hex(random_bytes(6));
+    $members = UiPackage::members((string) file_get_contents(dirname(__DIR__).'/'.UiPackage::CACHE.'/laranex-schema-viewer-ui-0.3.0.tgz'));
+
+    foreach ($members as $path => $content) {
+        if ($path === 'contract/check.mjs' || (str_starts_with($path, 'dist/lib/') && str_ends_with($path, '.js'))) {
+            @mkdir(dirname($root.'/'.$path), 0755, true);
+            file_put_contents($root.'/'.$path, $content);
+        }
+    }
+
+    file_put_contents($root.'/document.json', $json);
+    exec('node '.escapeshellarg($root.'/contract/check.mjs').' '.escapeshellarg($root.'/document.json').' 2>&1', $output, $code);
+    (new Filesystem)->deleteDirectory($root);
+
+    return [$code, implode("\n", $output)];
 }

@@ -18,6 +18,9 @@ final class ConnectionSchema implements JsonSerializable
         public readonly string $name,
         public readonly string $driver,
         public readonly array $tables,
+        public readonly ?string $defaultSchema = null,
+        /** @var list<string>|null The schemas read, or null when Laravel does not say. */
+        public readonly ?array $schemas = null,
     ) {}
 
     /**

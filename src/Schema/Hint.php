@@ -19,6 +19,7 @@ final class Hint implements JsonSerializable
         public readonly string $message,
         public readonly ?string $columns = null,
         public readonly ?string $relation = null,
+        public readonly ?string $model = null,
     ) {}
 
     /**

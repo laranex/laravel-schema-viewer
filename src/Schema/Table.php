@@ -17,7 +17,8 @@ final class Table implements JsonSerializable
      * @param  list<Index>  $indexes
      * @param  list<ForeignKey>  $foreignKeys
      * @param  string|null  $note  From the notes config, beside the database's own comment.
-     * @param  bool  $indexDetails  Whether the indexes' partial, expression and included details could be read; not part of the JSON.
+     * @param  bool  $indexDetails  Whether the indexes' partial, expression and included details could be read.
+     * @param  string|null  $schema  The schema, when it is not the connection's default (then $name is qualified with it).
      */
     public function __construct(
         public readonly string $name,
@@ -29,7 +30,16 @@ final class Table implements JsonSerializable
         public readonly ?string $package = null,
         public readonly bool $indexDetails = true,
         public readonly ?string $note = null,
+        public readonly ?string $schema = null,
     ) {}
+
+    /**
+     * The name without its schema: the name itself for a table in the default schema.
+     */
+    public function baseName(): string
+    {
+        return $this->schema !== null && str_starts_with($this->name, $this->schema.'.') ? substr($this->name, strlen($this->schema) + 1) : $this->name;
+    }
 
     public function column(string $name): ?Column
     {

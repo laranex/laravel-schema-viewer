@@ -20,6 +20,9 @@ final class Column implements JsonSerializable
         public readonly bool $autoIncrement,
         public readonly ?string $comment,
         public readonly ?string $note = null,
+        public readonly ?string $collation = null,
+        /** @var array{kind: 'stored'|'virtual'|null, expression: string|null}|null */
+        public readonly ?array $generated = null,
     ) {}
 
     /**

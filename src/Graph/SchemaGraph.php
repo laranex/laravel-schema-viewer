@@ -362,7 +362,7 @@ final class SchemaGraph
                 $hints[] = new Hint(HintKind::ModelWithoutTable, $model->connection, $model->table, sprintf(
                     '%s uses the %s table, which does not exist on the %s connection.',
                     $model->class, $model->table, $model->connection,
-                ));
+                ), model: $model->class);
             }
         }
 

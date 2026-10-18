@@ -11,7 +11,11 @@ use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -377,7 +381,30 @@ final class RelationResolver
             through: $through,
             constraints: $constraints,
             source: method_exists($model, $name) ? Source::of(new ReflectionMethod($model, $name), $this->app->basePath()) : null,
+            cardinality: $this->cardinality($relation, $type),
+            relatedConnection: $this->models->connectionOf($related),
+            relatedTable: $related->getTable(),
         );
+    }
+
+    /**
+     * How many related rows the declaring model has, from the relation's class: Laravel's own relations by type, a
+     * third-party one by the Laravel relation it extends, else by its name.
+     *
+     * @return 'one-to-one'|'one-to-many'|'many-to-one'|'many-to-many'
+     */
+    private function cardinality(object $relation, string $type): string
+    {
+        return match (true) {
+            $relation instanceof BelongsToMany => 'many-to-many',
+            $relation instanceof BelongsTo => 'many-to-one',
+            $relation instanceof HasOne, $relation instanceof MorphOne, $relation instanceof HasOneThrough => 'one-to-one',
+            $relation instanceof HasOneOrMany, $relation instanceof HasManyThrough => 'one-to-many',
+            str_contains($type, 'ToMany') => 'many-to-many',
+            str_starts_with($type, 'BelongsTo') => 'many-to-one',
+            str_contains($type, 'One') => 'one-to-one',
+            default => 'one-to-many',
+        };
     }
 
     /**
