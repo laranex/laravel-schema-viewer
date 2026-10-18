@@ -28,18 +28,18 @@ final class ScanCommand extends Command
     protected $description = 'Scan the repository and build output for schema snapshots, so a private schema is never committed or published';
 
     /**
-     * @return list<array{string, null, int, string}>
+     * @return list<InputOption>
      */
     protected function getOptions(): array
     {
         return [
-            ['tracked', null, InputOption::VALUE_NONE, 'Every file in the Git index, read from the index (staged bytes, and files tracked before they were ignored)'],
-            ['untracked', null, InputOption::VALUE_NONE, 'Files Git would add: untracked and not ignored'],
-            ['artifacts', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'A build output directory: every file, ignore rules not applied (repeatable)'],
-            ['history', null, InputOption::VALUE_NONE, 'Every version of a .json, .html or .htm file reachable from any ref (fails on a shallow clone)'],
-            ['allowlist', null, InputOption::VALUE_REQUIRED, 'A laranex-schema-allowlist file (default: .laranex-schema-allowlist.json at the scan root, if any)'],
-            ['report', null, InputOption::VALUE_REQUIRED, 'Write the laranex-schema-scan report (JSON) to FILE'],
-            ['json', null, InputOption::VALUE_NONE, 'Print the report instead of the summary'],
+            new InputOption('tracked', null, InputOption::VALUE_NONE, 'Every file in the Git index, read from the index (staged bytes, and files tracked before they were ignored)'),
+            new InputOption('untracked', null, InputOption::VALUE_NONE, 'Files Git would add: untracked and not ignored'),
+            new InputOption('artifacts', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'A build output directory: every file, ignore rules not applied (repeatable)'),
+            new InputOption('history', null, InputOption::VALUE_NONE, 'Every version of a .json, .html or .htm file reachable from any ref (fails on a shallow clone)'),
+            new InputOption('allowlist', null, InputOption::VALUE_REQUIRED, 'A laranex-schema-allowlist file (default: .laranex-schema-allowlist.json at the scan root, if any)'),
+            new InputOption('report', null, InputOption::VALUE_REQUIRED, 'Write the laranex-schema-scan report (JSON) to FILE'),
+            new InputOption('json', null, InputOption::VALUE_NONE, 'Print the report instead of the summary'),
         ];
     }
 
