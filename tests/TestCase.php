@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Tests;
 
 use FilesystemIterator;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
@@ -33,6 +34,8 @@ abstract class TestCase extends Orchestra
 
     protected function tearDown(): void
     {
+        $this->disconnectDatabases();
+
         // Dynamic relations live in a static registry; clear the ones tests add.
         $resolvers = new ReflectionProperty(Model::class, 'relationResolvers');
         $resolvers->setValue(null, []);
@@ -41,6 +44,22 @@ abstract class TestCase extends Orchestra
         $this->removeOwnBasePath();
 
         parent::tearDown();
+    }
+
+    /**
+     * Close the application's database connections before it is dropped. Its container holds itself, so it is freed only
+     * when PHP collects cycles, and each connection would stay open until then: on a real database server a run of
+     * tests would exhaust its connections.
+     */
+    private function disconnectDatabases(): void
+    {
+        $database = $this->app?->bound('db') ? $this->app->make('db') : null;
+
+        if ($database instanceof DatabaseManager) {
+            foreach (array_keys($database->getConnections()) as $name) {
+                $database->purge($name);
+            }
+        }
     }
 
     private string $environment = 'local';
@@ -88,6 +107,7 @@ abstract class TestCase extends Orchestra
     {
         $this->environment = $environment;
         $this->viewerConfig = $config;
+        $this->disconnectDatabases();
         $this->refreshApplication();
         $this->useOwnBasePath();
         $this->defineDatabaseMigrations();
