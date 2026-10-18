@@ -12,6 +12,8 @@ use Throwable;
 
 final class BuildCommand extends Command
 {
+    use KeepsSchemaOutOfGit;
+
     protected $signature = 'schema-viewer:build
         {--check : Build in memory and fail when schema-viewer.json is missing or out of date, without writing it}';
 
@@ -21,6 +23,10 @@ final class BuildCommand extends Command
     {
         if ($this->option('check')) {
             return $this->check($snapshot);
+        }
+
+        if (! $this->keepOutOfGit([$snapshot->path(), $snapshot->changesPath()])) {
+            return self::FAILURE;
         }
 
         try {

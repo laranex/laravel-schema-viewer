@@ -16,6 +16,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 final class ExportCommand extends Command
 {
+    use KeepsSchemaOutOfGit;
+
     protected $signature = 'schema-viewer:export
         {--format=json : json, mermaid, dbml, markdown or html}
         {--connection= : The connection to export: Mermaid, DBML and Markdown default to the default connection, JSON to every connection}
@@ -76,6 +78,14 @@ final class ExportCommand extends Command
             $this->components->error("Refusing to write the export inside [{$public}], which the application serves to the web. Choose a path outside public/ and storage/app/public.");
 
             return self::INVALID;
+        }
+
+        if (is_string($output) && $output !== '') {
+            $file = $format !== 'html' || str_ends_with(strtolower($output), '.html') ? $output : rtrim($output, '\\/').DIRECTORY_SEPARATOR.'index.html';
+
+            if (! $this->keepOutOfGit([$file])) {
+                return self::FAILURE;
+            }
         }
 
         if ($format === 'html' && ($output = $this->htmlFile($output)) === null) {

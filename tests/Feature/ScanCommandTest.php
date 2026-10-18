@@ -15,42 +15,6 @@ use Symfony\Component\Process\Process;
 const SNAPSHOT = '{"format":"laranex-schema","version":"2.0","source":"database","generator":{"name":"synthetic","orm":null},"note":"secret_orders_table","connections":[]}';
 
 /**
- * Run Git in a directory and return its output; the test fails when Git does.
- */
-function git(string $root, string ...$args): string
-{
-    $process = new Process(['git', '-C', $root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', '-c', 'core.autocrlf=false', ...$args]);
-    $process->run();
-
-    expect($process->getExitCode())->toBe(0, $process->getErrorOutput());
-
-    return $process->getOutput();
-}
-
-/**
- * The project root as a fresh Git work tree.
- */
-function repository(): string
-{
-    $root = str_replace('\\', '/', (string) realpath(app()->basePath()));
-    git($root, 'init', '-q');
-
-    return $root;
-}
-
-function put(string $root, string $path, string $content): void
-{
-    @mkdir(dirname($root.'/'.$path), 0755, true);
-    file_put_contents($root.'/'.$path, $content);
-}
-
-function commit(string $root, string $message = 'commit'): void
-{
-    git($root, 'add', '-A');
-    git($root, 'commit', '-q', '--allow-empty', '-m', $message);
-}
-
-/**
  * Run the scan from the project root: the exit code, the report it wrote and what it printed.
  *
  * @param  array<string, mixed>  $options

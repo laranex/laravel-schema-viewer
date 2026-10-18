@@ -11,6 +11,7 @@ use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 use Laranex\LaravelSchemaViewer\Scripts\UiPackage;
 use Laranex\LaravelSchemaViewer\Snapshot;
 use Laranex\LaravelSchemaViewer\Tests\TestCase;
+use Symfony\Component\Process\Process;
 
 uses(TestCase::class)->in(__DIR__);
 
@@ -190,4 +191,40 @@ function scanReportProblems(mixed $report): array
     }
 
     return $errors;
+}
+
+/**
+ * Run Git in a directory and return its output; the test fails when Git does.
+ */
+function git(string $root, string ...$args): string
+{
+    $process = new Process(['git', '-C', $root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', '-c', 'core.autocrlf=false', ...$args]);
+    $process->run();
+
+    expect($process->getExitCode())->toBe(0, $process->getErrorOutput());
+
+    return $process->getOutput();
+}
+
+/**
+ * The project root as a fresh Git work tree.
+ */
+function repository(): string
+{
+    $root = str_replace('\\', '/', (string) realpath(app()->basePath()));
+    git($root, 'init', '-q');
+
+    return $root;
+}
+
+function put(string $root, string $path, string $content): void
+{
+    @mkdir(dirname($root.'/'.$path), 0755, true);
+    file_put_contents($root.'/'.$path, $content);
+}
+
+function commit(string $root, string $message = 'commit'): void
+{
+    git($root, 'add', '-A');
+    git($root, 'commit', '-q', '--allow-empty', '-m', $message);
 }
