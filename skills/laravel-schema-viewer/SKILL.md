@@ -127,7 +127,7 @@ Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whol
 
 ### Open it on a server
 
-The viewer is off outside `local`, and should stay off in production: turning it on there is a security exception, not a recommended deployment, since the schema helps attackers. When a team accepts that risk for a staging or internal server, set `SCHEMA_VIEWER_ENABLED=true`, define the application's own `viewSchema` gate (or `SchemaViewer::auth()`, above) for the few users who need it, and run `php artisan schema-viewer:build` in the deploy script after `migrate`. Without a gate or callback the viewer answers 403 to everyone. Use `path` or `domain` to move it, and `middleware` to add your own (the access check is always added).
+The viewer is off outside `local`, and should stay off in production: turning it on there is a security exception, not a recommended deployment, since the schema helps attackers. When a team accepts that risk for a staging or internal server, set `SCHEMA_VIEWER_ENABLED=true`, define the application's own `viewSchema` gate (or `SchemaViewer::auth()`, above) for the few users who need it, and run `php artisan schema-viewer:build` in the deploy script after `migrate`. Without a gate or callback the viewer answers 403 to everyone. Use `path` or `domain` to move it, and `middleware` to add your own (the access check is always added). Serve it over HTTPS only, and keep proxies, CDNs and full-page caches from storing the page: it carries the whole schema. The package's [security policy](https://github.com/laranex/laravel-schema-viewer/blob/main/.github/SECURITY.md) lists what the package enforces and what is left to the app.
 
 ## Test your app
 

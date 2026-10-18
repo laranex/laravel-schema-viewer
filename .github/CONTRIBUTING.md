@@ -42,6 +42,28 @@ Run all tests:
 composer test
 ```
 
+## Schema snapshots and fixtures
+
+A schema snapshot is sensitive (see [SECURITY.md](SECURITY.md)), so the repository holds synthetic documents only:
+
+- Fixtures must be synthetic: never a real application's `schema-viewer.json`, `schema-viewer.changes.json` or export, and never credentials or `.env` files.
+- A new or changed synthetic laranex-schema document under `tests/Fixtures` or `workbench` needs a regenerated `.laranex-schema-allowlist.json` (exact path and SHA-256), reviewed in the pull request like code; a test fails while it is out of date:
+
+  ```bash
+  composer allowlist
+  ```
+
+- Before committing, scan what Git tracks or would add, and run the tests:
+
+  ```bash
+  composer scan
+  composer test
+  ```
+
+  `composer scan` runs `php vendor/bin/testbench schema-viewer:scan --tracked --untracked`; any non-zero exit fails CI.
+
+Report security issues privately, as [SECURITY.md](SECURITY.md) describes, never in a public issue.
+
 ## The viewer
 
 The viewer is the shared [laranex-schema-viewer-ui](https://www.npmjs.com/package/laranex-schema-viewer-ui) package, pinned by `ui.lock.json` (version, tarball and integrity). Its verified files are committed under `resources/viewer/` and `resources/contract/`, and `ui.stamp.json` records their SHA-256; CI fails when they differ from the locked tarball. After changing `ui.lock.json`, install and check them:

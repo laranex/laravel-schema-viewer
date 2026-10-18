@@ -56,6 +56,15 @@ or a Composer script, `"scan": "@php artisan schema-viewer:scan --tracked --untr
 
 A synthetic fixture you commit on purpose is listed by exact path and SHA-256 in `.laranex-schema-allowlist.json` at the project root. The scan does not decode compressed or encoded content, and does not read SVG, PNG, DBML, Mermaid or Markdown exports: once exported, a file is yours to keep out of the repository.
 
+## Security notice
+
+- The viewer is a development tool: install the package with `--dev` and never expose the viewer in production. Turning it on outside `local` is a security exception that needs your own `viewSchema` gate or `SchemaViewer::auth()`.
+- Schema snapshots and every export (JSON, HTML, DBML, Mermaid, Markdown, SVG, PNG) are sensitive: never commit or publish them.
+- Protect every path the schema takes (the page, its assets, downloads, caches and CDNs) on the server; protecting the page alone is not enough.
+- Run `php artisan schema-viewer:scan --tracked --untracked` in a pre-commit hook and in CI.
+
+See [SECURITY.md](.github/SECURITY.md) for the security model and how to report a vulnerability, and the shared viewer's [security page](https://laranex.github.io/schema-viewer-ui/security.html) for the generic policy.
+
 ## Documentation
 
 The full documentation lives at **[laranex.vercel.app/laravel-schema-viewer](https://laranex.vercel.app/laravel-schema-viewer)**:
