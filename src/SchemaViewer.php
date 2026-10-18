@@ -87,8 +87,8 @@ class SchemaViewer
 
     /**
      * Decide who may open the viewer, in every environment, as Telescope::auth() does. The callback replaces the default
-     * check: everyone in the local environment, elsewhere the users the viewSchema gate allows. Call it in a service
-     * provider's boot().
+     * check (see check()): in the local environment, requests from this machine to this machine; otherwise, the users
+     * the viewSchema gate allows. Call it in a service provider's boot().
      *
      * @param  Closure(Request): bool  $callback
      */
@@ -173,7 +173,8 @@ class SchemaViewer
      * Build the document. Every model is constructed and its relation methods called with every connection pretending
      * (see RelationResolver); the tables are read afterwards. A model that cannot be constructed or inspected is noted
      * as unresolved instead of failing the document. The relation methods run inside $whileReadingRelations when given,
-     * which schema-viewer:build uses to fake events while they run.
+     * which Isolation::document() uses to fake events while they run. The commands call Isolation::document(), which
+     * also fakes jobs, mail, notifications, HTTP calls and the cache; calling this directly fakes none of them.
      *
      * @param  (Closure(Closure(): void): void)|null  $whileReadingRelations
      */

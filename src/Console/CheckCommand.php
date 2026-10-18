@@ -7,6 +7,7 @@ namespace Laranex\LaravelSchemaViewer\Console;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository as Config;
 use InvalidArgumentException;
+use Laranex\LaravelSchemaViewer\Build\Isolation;
 use Laranex\LaravelSchemaViewer\Schema\Hint;
 use Laranex\LaravelSchemaViewer\Schema\HintKind;
 use Laranex\LaravelSchemaViewer\Schema\IgnoreRule;
@@ -22,7 +23,7 @@ final class CheckCommand extends Command
 
     protected $description = 'List the schema hints and fail when a hint of a chosen kind remains';
 
-    public function handle(SchemaViewer $viewer, Config $config): int
+    public function handle(SchemaViewer $viewer, Isolation $isolation, Config $config): int
     {
         $format = strtolower((string) $this->option('format'));
 
@@ -53,7 +54,7 @@ final class CheckCommand extends Command
 
         if ($json) {
             try {
-                $hints = $viewer->document()->hints;
+                $hints = $isolation->document($viewer)->hints;
             } catch (Throwable $e) {
                 return $this->refuse('The schema could not be read: '.$e->getMessage(), self::FAILURE, true);
             }
@@ -61,7 +62,7 @@ final class CheckCommand extends Command
             return $this->json($hints, $failOn);
         }
 
-        $hints = $viewer->document()->hints;
+        $hints = $isolation->document($viewer)->hints;
 
         if ($hints === []) {
             $this->components->info('No hints. The schema and the models agree.');

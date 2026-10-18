@@ -106,7 +106,7 @@ final class Snapshot
      */
     public function render(): array
     {
-        $schema = $this->isolation->run(fn (): SchemaDocument => $this->viewer->document($this->isolation->events(...)));
+        $schema = $this->isolation->document($this->viewer);
         $document = (new Producer)->document($schema);
         $contents = Json::canonical($document);
         $previous = $this->current();

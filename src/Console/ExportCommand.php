@@ -7,6 +7,7 @@ namespace Laranex\LaravelSchemaViewer\Console;
 use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionResolverInterface;
 use InvalidArgumentException;
+use Laranex\LaravelSchemaViewer\Build\Isolation;
 use Laranex\LaravelSchemaViewer\Contract\Producer;
 use Laranex\LaravelSchemaViewer\Export\Exporters;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
@@ -26,7 +27,7 @@ final class ExportCommand extends Command
 
     protected $description = 'Export the database schema and Eloquent relationships as laranex-schema JSON, Mermaid, DBML, Markdown or a standalone HTML viewer';
 
-    public function handle(SchemaViewer $viewer, ConnectionResolverInterface $connections): int
+    public function handle(SchemaViewer $viewer, Isolation $isolation, ConnectionResolverInterface $connections): int
     {
         $format = strtolower((string) $this->option('format'));
 
@@ -36,7 +37,7 @@ final class ExportCommand extends Command
             return self::INVALID;
         }
 
-        $schema = $viewer->document();
+        $schema = $isolation->document($viewer);
         $document = (new Producer)->document($schema);
         $option = $this->option('connection');
         $name = is_string($option) && $option !== '' ? $option : ($format === 'json' || $format === 'html' ? null : $connections->getDefaultConnection());

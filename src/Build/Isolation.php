@@ -19,12 +19,14 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Testing\Fakes\EventFake;
+use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
+use Laranex\LaravelSchemaViewer\SchemaViewer;
 
 /**
- * Keeps the application's code from reaching the outside world while schema-viewer:build reads the models: jobs,
- * queued jobs, mail and notifications are faked, HTTP calls answered by a fake, the default cache kept in memory and,
- * while relation methods run, events faked. Everything is put back afterwards, so a build run from a long-running
- * process (Artisan::call()) leaves the application as it found it.
+ * Keeps the application's code from reaching the outside world while a command (build, build --check, diff, export or
+ * check) reads the models: jobs, queued jobs, mail and notifications are faked, HTTP calls answered by a fake, the
+ * default cache kept in memory and, while relation methods run, events faked. Everything is put back afterwards, so a
+ * command run from a long-running process (Artisan::call()) leaves the application as it found it.
  */
 final class Isolation
 {
@@ -37,6 +39,15 @@ final class Isolation
         private readonly Application $app,
         private readonly Config $config,
     ) {}
+
+    /**
+     * Read the models and the database into a document, isolated: what every command that runs the application's models
+     * calls instead of SchemaViewer::document().
+     */
+    public function document(SchemaViewer $viewer): SchemaDocument
+    {
+        return $this->run(fn (): SchemaDocument => $viewer->document($this->events(...)));
+    }
 
     /**
      * @template T
