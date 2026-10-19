@@ -5,29 +5,38 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer;
 
 use Illuminate\Contracts\Foundation\Application;
+use JsonException;
 use Laranex\LaravelSchemaViewer\Build\Isolation;
+use Laranex\LaravelSchemaViewer\Contract\InvalidDocument;
+use Laranex\LaravelSchemaViewer\Contract\Json;
+use Laranex\LaravelSchemaViewer\Contract\Producer;
+use Laranex\LaravelSchemaViewer\Contract\Validator;
 use Laranex\LaravelSchemaViewer\Diff\SchemaDiff;
-use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
 use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 use RuntimeException;
-use stdClass;
 
 /**
- * The schema snapshot: schema-viewer.json in the project root, which schema-viewer:build writes and the viewer's page
- * only reads. It holds the schema document and each connection's Mermaid, DBML and Markdown downloads as readable
- * JSON, so it can be committed and diffed. Building it runs the application's models; reading it runs nothing.
+ * The schema snapshot: schema-viewer.json in the project root, a laranex-schema 2.0 document in canonical form, which
+ * schema-viewer:build writes and the viewer's page only reads. Beside it, schema-viewer.changes.json keeps what changed
+ * since the build before (the viewer's Changes tab), for the document whose revision it names; the contract keeps such
+ * host settings out of the document. Building runs the application's models; reading runs nothing.
+ *
+ * Only laranex-schema 2.x is read. A snapshot from laravel-schema-viewer 1.x, or any other file, is refused with one
+ * message that says to build it again.
  */
 final class Snapshot
 {
     /**
-     * Raised when the file's shape changes, so files written by another version are never read.
+     * Larger snapshots are refused rather than read into memory.
      */
-    public const FORMAT = 2;
+    public const MAX_BYTES = 64 * 1024 * 1024;
+
+    private const CHANGES_FORMAT = 'laravel-schema-viewer-changes';
 
     /**
-     * The file read last, kept for the requests that follow until it changes on disk.
+     * The snapshot read last, kept for the requests that follow until it changes on disk.
      *
-     * @var array{stamp: string, json: string, files: array<string, array{mermaid: string, dbml: string, markdown: string}>, changes: string}|null
+     * @var array{stamp: string, text: string, document: array<string, mixed>, changes: list<array<string, mixed>>|null}|null
      */
     private ?array $loaded = null;
 
@@ -47,85 +56,78 @@ final class Snapshot
     }
 
     /**
+     * Where the changes since the previous build live, beside the snapshot.
+     */
+    public function changesPath(): string
+    {
+        return $this->app->basePath('schema-viewer.changes.json');
+    }
+
+    /**
      * The path as it is shown: relative to the project root when inside it.
      */
-    public function displayPath(): string
+    public function displayPath(?string $path = null): string
     {
-        $path = str_replace('\\', '/', $this->path());
+        $path = str_replace('\\', '/', $path ?? $this->path());
         $root = rtrim(str_replace('\\', '/', $this->app->basePath()), '/').'/';
 
         return str_starts_with($path, $root) ? substr($path, strlen($root)) : $path;
     }
 
     /**
-     * Read the models and the database and write the snapshot. The application's jobs, mail, notifications, HTTP calls,
-     * cache and events are kept from the outside world while it runs (see Isolation).
+     * Read the models and the database and write the snapshot and its changes. The application's jobs, mail,
+     * notifications, HTTP calls, cache and events are kept from the outside world while it runs (see Isolation).
+     *
+     * @return array{schema: SchemaDocument, document: array<string, mixed>}
      */
-    public function build(): SchemaDocument
+    public function build(): array
     {
         $rendered = $this->render();
 
         $this->write($this->path(), $rendered['contents']);
+        $this->write($this->changesPath(), Json::canonical([
+            'format' => self::CHANGES_FORMAT,
+            'version' => 1,
+            'document' => hash('sha256', $rendered['contents']),
+            'changes' => $rendered['changes'],
+        ]));
         $this->loaded = null;
 
-        return $rendered['document'];
+        return ['schema' => $rendered['schema'], 'document' => $rendered['document']];
     }
 
     /**
-     * Read the models and the database, as build() does, and return the document and the file it would write, without
-     * writing it. The file keeps what changed since the snapshot it replaces: the changes that snapshot listed when the
-     * schema is the same, so building twice changes nothing, or the changes from it to this one. Without a readable
-     * snapshot to compare with, changes is null.
+     * Read the models and the database, as build() does, and return the document, the file it would write and the
+     * changes it would keep, without writing anything. The changes are what changed since the snapshot it replaces: the
+     * changes that snapshot listed when the schema is the same, so building twice changes nothing, or the changes from
+     * it to this one. Without a readable snapshot to compare with, changes is null.
      *
-     * @return array{document: SchemaDocument, contents: string}
+     * @return array{schema: SchemaDocument, document: array<string, mixed>, contents: string, changes: list<array<string, mixed>>|null}
      */
     public function render(): array
     {
-        $document = $this->isolation->run(fn (): SchemaDocument => $this->viewer->document($this->isolation->events(...)));
-
-        // Without when it was built, the file changes only when the schema does, so a committed snapshot diffs cleanly.
-        $written = $document->jsonSerialize();
-        unset($written['generatedAt']);
-
-        // Encoded and decoded once, so it compares with the file as JSON reads it back.
-        $fresh = json_decode((string) json_encode($written, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), true);
-        $previous = $this->decoded($this->current());
-
+        $schema = $this->isolation->document($this->viewer);
+        $document = (new Producer)->document($schema);
+        $contents = Json::canonical($document);
+        $previous = $this->current();
         $changes = null;
 
-        if ($previous !== null && is_array($fresh)) {
-            $diff = $previous['document'] === $fresh ? [] : SchemaDiff::diff($previous['document'], $fresh);
-            // Nothing the changes cover differs (at most the hints did): keep what the last different build listed.
-            $changes = $diff === [] ? $previous['changes'] : $diff;
+        if ($previous !== null) {
+            try {
+                $old = $this->decode($previous);
+                $diff = $previous === $contents ? [] : SchemaDiff::diff($old, Json::decode($contents));
+                // Nothing the changes cover differs (at most the diagnostics did): keep what the last different build listed.
+                $changes = $diff === [] ? $this->changesFor($previous) : $diff;
+            } catch (SnapshotUnavailable) {
+                $changes = null;
+            }
         }
 
-        $contents = json_encode([
-            'format' => self::FORMAT,
-            'document' => $written,
-            'downloads' => HtmlExporter::downloads($document),
-            'changes' => $changes,
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n";
+        /** @var array<string, mixed> $written */
+        $written = Json::decode($contents);
 
-        return ['document' => $document, 'contents' => $contents];
-    }
-
-    /**
-     * A snapshot's contents decoded, or null when it is missing, damaged or written by another version.
-     *
-     * @return array{document: array<mixed>, changes: list<array<string, mixed>>|null}|null
-     */
-    public function decoded(?string $contents): ?array
-    {
-        $data = $contents !== null ? json_decode($contents, true) : null;
-
-        if (! is_array($data) || ($data['format'] ?? null) !== self::FORMAT || ! is_array($data['document'] ?? null)) {
-            return null;
-        }
-
-        /** @var list<array<string, mixed>>|null $changes */
-        $changes = is_array($data['changes'] ?? null) ? array_values(array_filter($data['changes'], 'is_array')) : null;
-
-        return ['document' => $data['document'], 'changes' => $changes];
+        // The document as JSON reads it back, so it compares with any snapshot read from disk.
+        return ['schema' => $schema, 'document' => $written, 'contents' => $contents, 'changes' => $changes];
     }
 
     /**
@@ -141,9 +143,7 @@ final class Snapshot
             return null;
         }
 
-        $contents = (string) @file_get_contents($path);
-
-        return str_replace("\r\n", "\n", str_starts_with($contents, "\u{FEFF}") ? substr($contents, 3) : $contents);
+        return self::normalized((string) @file_get_contents($path, false, null, 0, self::MAX_BYTES + 1));
     }
 
     /**
@@ -158,56 +158,101 @@ final class Snapshot
             return null;
         }
 
-        $old = $this->decoded($existing);
-        $new = $this->decoded($fresh);
-
-        if ($old === null || $new === null) {
-            return ['It was written by another version of laravel-schema-viewer.'];
+        try {
+            $old = $this->decode($existing);
+        } catch (SnapshotUnavailable $e) {
+            return [$e->getMessage()];
         }
 
-        if (json_decode($existing, true) === json_decode($fresh, true)) {
+        $new = $this->decode($fresh);
+
+        if (Json::canonical($old) === $fresh) {
             return ['Only its formatting differs.'];
         }
 
-        $lines = array_map(SchemaDiff::describe(...), SchemaDiff::diff($old['document'], $new['document']));
+        $lines = array_map(SchemaDiff::describe(...), SchemaDiff::diff($old, $new));
 
-        return $lines !== [] ? $lines : ['Its contents differ in details the summary does not cover, such as the hints, the order of items or the downloads.'];
+        return $lines !== [] ? $lines : ['Its contents differ in details the summary does not cover, such as the diagnostics or the order of items.'];
     }
 
     /**
-     * The schema document as JSON, exactly as it was built (empty objects stay {}), for the viewer's page.
+     * The snapshot's document as JSON text, as the viewer's page embeds it.
      *
      * @throws SnapshotUnavailable
      */
     public function json(): string
     {
-        return $this->load()['json'];
+        return rtrim($this->load()['text']);
     }
 
     /**
-     * Each connection's downloads, by connection name: Mermaid, DBML and Markdown.
+     * The snapshot's document, validated as readers do: any 2.x minor, unknown properties ignored.
      *
-     * @return array<string, array{mermaid: string, dbml: string, markdown: string}>
+     * @return array<string, mixed>
      *
      * @throws SnapshotUnavailable
      */
-    public function files(): array
+    public function document(): array
     {
-        return $this->load()['files'];
+        return $this->load()['document'];
     }
 
     /**
-     * What changed since the snapshot before this one, as JSON: a list, or null when there was none to compare with.
+     * What changed since the build before this snapshot, or null when there was none to compare with.
+     *
+     * @return list<array<string, mixed>>|null
      *
      * @throws SnapshotUnavailable
      */
-    public function changes(): string
+    public function changes(): ?array
     {
         return $this->load()['changes'];
     }
 
     /**
-     * @return array{stamp: string, json: string, files: array<string, array{mermaid: string, dbml: string, markdown: string}>, changes: string}
+     * A laranex-schema 2.x document from a snapshot's text, validated as readers do.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws SnapshotUnavailable When it is not JSON, is a laravel-schema-viewer 1.x snapshot, is another format or
+     *                             version, or fails validation.
+     */
+    public function decode(string $contents, ?string $path = null): array
+    {
+        $shown = $this->displayPath($path ?? $this->path());
+
+        if (strlen($contents) > self::MAX_BYTES) {
+            throw SnapshotUnavailable::unreadable($shown, 'it is larger than '.(self::MAX_BYTES / 1024 / 1024).' MiB');
+        }
+
+        try {
+            $data = Json::decode(self::normalized($contents));
+        } catch (JsonException $e) {
+            throw SnapshotUnavailable::unreadable($shown, 'it is not JSON ('.$e->getMessage().')');
+        }
+
+        $members = Json::members($data);
+
+        // laravel-schema-viewer 1.x wrote {"format": 2, "document": {"version": 1, …}, "downloads": …, "changes": …}.
+        if (($members['format'] ?? null) === 2 && Json::isObject($members['document'] ?? null)) {
+            throw SnapshotUnavailable::legacy($shown);
+        }
+
+        $unsupported = Validator::unsupported($data);
+
+        if ($unsupported !== null) {
+            throw SnapshotUnavailable::unreadable($shown, $unsupported);
+        }
+
+        try {
+            return Validator::assert($data);
+        } catch (InvalidDocument $e) {
+            throw SnapshotUnavailable::unreadable($shown, $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array{stamp: string, text: string, document: array<string, mixed>, changes: list<array<string, mixed>>|null}
      *
      * @throws SnapshotUnavailable
      */
@@ -220,44 +265,56 @@ final class Snapshot
             throw SnapshotUnavailable::missing($this->displayPath());
         }
 
-        $stamp = $path.'|'.@filemtime($path).'|'.@filesize($path);
+        $changes = $this->changesPath();
+        clearstatcache(true, $changes);
+        $stamp = implode('|', [$path, @filemtime($path), @filesize($path), @filemtime($changes), @filesize($changes)]);
 
         if ($this->loaded !== null && $this->loaded['stamp'] === $stamp) {
             return $this->loaded;
         }
 
-        // Objects, not arrays, so empty objects stay {} when the document is encoded again.
-        $data = json_decode((string) @file_get_contents($path), false);
-
-        if (! $data instanceof stdClass || ($data->format ?? null) !== self::FORMAT || ! ($data->document ?? null) instanceof stdClass
-            || ! is_array($data->document->connections ?? null) || ! ($data->downloads ?? null) instanceof stdClass) {
-            throw SnapshotUnavailable::unreadable($this->displayPath());
-        }
-
-        $files = [];
-
-        foreach ($data->document->connections as $connection) {
-            $name = $connection instanceof stdClass ? ($connection->name ?? null) : null;
-            $downloads = is_string($name) ? ($data->downloads->{$name} ?? null) : null;
-
-            if (! is_string($name) || ! $downloads instanceof stdClass || ! is_string($downloads->mermaid ?? null)
-                || ! is_string($downloads->dbml ?? null) || ! is_string($downloads->markdown ?? null)) {
-                throw SnapshotUnavailable::unreadable($this->displayPath());
-            }
-
-            $files[$name] = [
-                'mermaid' => $downloads->mermaid,
-                'dbml' => $downloads->dbml,
-                'markdown' => $downloads->markdown,
-            ];
-        }
+        $text = (string) $this->current();
+        $document = $this->decode($text);
 
         return $this->loaded = [
             'stamp' => $stamp,
-            'json' => (string) json_encode($data->document, JSON_UNESCAPED_SLASHES),
-            'files' => $files,
-            'changes' => is_array($data->changes ?? null) ? (string) json_encode($data->changes, JSON_UNESCAPED_SLASHES) : 'null',
+            'text' => $text,
+            'document' => $document,
+            'changes' => $this->changesFor($text),
         ];
+    }
+
+    /**
+     * The changes kept beside a snapshot, when they belong to exactly these contents.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    private function changesFor(string $contents): ?array
+    {
+        $path = $this->changesPath();
+        $text = is_file($path) ? @file_get_contents($path, false, null, 0, self::MAX_BYTES + 1) : false;
+
+        try {
+            $data = is_string($text) && strlen($text) <= self::MAX_BYTES ? Json::decode($text) : null;
+        } catch (JsonException) {
+            return null;
+        }
+
+        $data = Json::members($data);
+
+        if (($data['format'] ?? null) !== self::CHANGES_FORMAT || ($data['version'] ?? null) !== 1 || ($data['document'] ?? null) !== hash('sha256', $contents) || ! is_array($data['changes'] ?? null)) {
+            return null;
+        }
+
+        /** @var list<array<string, mixed>> $changes */
+        $changes = array_values(array_filter($data['changes'], fn (mixed $change): bool => is_array($change) && is_string($change['type'] ?? null) && is_string($change['change'] ?? null)));
+
+        return $changes;
+    }
+
+    private static function normalized(string $contents): string
+    {
+        return str_replace("\r\n", "\n", str_starts_with($contents, "\u{FEFF}") ? substr($contents, 3) : $contents);
     }
 
     /**

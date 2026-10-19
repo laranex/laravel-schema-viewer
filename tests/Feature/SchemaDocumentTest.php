@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Schema;
+use Laranex\LaravelSchemaViewer\Contract\Producer;
 use Laranex\LaravelSchemaViewer\Schema\Hint;
 use Laranex\LaravelSchemaViewer\Schema\HintKind;
 use Laranex\LaravelSchemaViewer\Schema\Link;
@@ -166,7 +167,7 @@ it('tags the tables of installed packages with the package, and still gives them
 
     expect($roles?->package)->toBe('spatie/laravel-permission')
         ->and($roles?->framework)->toBeFalse()
-        ->and($roles?->jsonSerialize()['package'])->toBe('spatie/laravel-permission')
+        ->and(collect((new Producer)->document($document)['connections'][0]['tables'])->firstWhere('name', 'roles')['owner'])->toBe(['kind' => 'package', 'package' => 'spatie/laravel-permission'])
         ->and(collect($document->connections[0]->tables)->firstWhere('name', 'posts')?->package)->toBeNull();
 
     config()->set('schema-viewer.package_tables', false);
@@ -294,17 +295,16 @@ it('points each model at its file, only inside the application', function (): vo
     $inside = collect(schemaDocument()->models)->keyBy('class')[Models\Post::class];
 
     expect($outside->source)->toBeNull()
-        ->and($inside->source?->jsonSerialize())->toBe(['file' => 'tests/Fixtures/Models/Post.php', 'line' => 14]);
+        ->and((array) $inside->source)->toBe(['file' => 'tests/Fixtures/Models/Post.php', 'line' => 14]);
 });
 
-it('serializes the whole document for the viewer', function (): void {
-    $json = json_decode((string) json_encode(schemaDocument()), true);
+it('writes the document only as laranex-schema 2.0, through the producer', function (): void {
+    $document = schemaDocument();
 
-    expect($json)->toHaveKeys(['version', 'generatedAt', 'connections', 'models', 'relations', 'unresolved', 'links', 'derivedLinks', 'hints'])
-        ->and($json['version'])->toBe(1)
-        ->and($json['links'][0])->toHaveKeys(['id', 'from', 'to', 'foreignKey', 'relations', 'state', 'morph'])
-        ->and($json['hints'][0])->toHaveKeys(['kind', 'severity', 'certainty', 'connection', 'table', 'message'])
-        ->and(array_slice(array_keys($json['hints'][0]), 0, 3))->toBe(['kind', 'severity', 'certainty']);
+    // The schema the package reads has no serialization of its own: only Producer knows the document's fields.
+    expect($document)->not->toBeInstanceOf(JsonSerializable::class)
+        ->and((new Producer)->document($document)['version'])->toBe('2.0')
+        ->and(array_slice(array_keys($document->hints[0]->jsonSerialize()), 0, 3))->toBe(['kind', 'severity', 'certainty']);
 });
 
 it('raises no hints on framework tables', function (): void {

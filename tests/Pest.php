@@ -2,10 +2,16 @@
 
 declare(strict_types=1);
 
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
+use Laranex\LaravelSchemaViewer\Contract\Json;
+use Laranex\LaravelSchemaViewer\Contract\Scan;
+use Laranex\LaravelSchemaViewer\Contract\Shape;
 use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
+use Laranex\LaravelSchemaViewer\Scripts\UiPackage;
 use Laranex\LaravelSchemaViewer\Snapshot;
 use Laranex\LaravelSchemaViewer\Tests\TestCase;
+use Symfony\Component\Process\Process;
 
 uses(TestCase::class)->in(__DIR__);
 
@@ -22,12 +28,12 @@ function testDriver(): string
  */
 function buildSnapshot(): SchemaDocument
 {
-    return app(Snapshot::class)->build();
+    return app(Snapshot::class)->build()['schema'];
 }
 
 /**
- * What the viewer page hands the app: window.__SCHEMA_VIEWER__, with the schema and the downloads when the snapshot is
- * readable.
+ * What the viewer page hands the shared viewer: its inline ViewerConfig, with the laranex-schema document and the
+ * changes when the snapshot is readable, else what is missing.
  *
  * @param  array<string, string>  $headers
  * @return array<string, mixed>
@@ -41,7 +47,184 @@ function viewerConfig(mixed $test, array $headers = []): array
         $html = (string) gzdecode($html);
     }
 
-    preg_match('/window\.__SCHEMA_VIEWER__ = (.+?);<\/script>/s', $html, $match);
+    preg_match('/<script type="application\/json" id="schema-viewer-data">(.+?)<\/script>/s', $html, $match);
 
     return json_decode($match[1] ?? 'null', true, 512, JSON_THROW_ON_ERROR);
+}
+
+/**
+ * The shared contract's fixtures and conformance cases (paths below contract/), read from the laranex-schema-viewer-ui
+ * tarball that composer ui:fetch cached and checked against ui.lock.json. Without it the test is skipped, unless
+ * SCHEMA_VIEWER_CONTRACT=required (as in CI), which fails it instead.
+ *
+ * @return array<string, string>
+ */
+function contractFiles(): array
+{
+    $files = (new UiPackage(dirname(__DIR__)))->contract();
+
+    if ($files === null) {
+        $message = 'The shared contract fixtures are not cached: run composer ui:fetch.';
+
+        if (getenv('SCHEMA_VIEWER_CONTRACT') === 'required') {
+            throw new RuntimeException($message);
+        }
+
+        test()->markTestSkipped($message);
+    }
+
+    return $files;
+}
+
+/**
+ * Run the shared contract/check.mjs (strict validation, the shared graph and inference, canonical form) on a document
+ * under Node.js, from the verified tarball; the lines it printed and its exit code. Skipped without Node.js: the
+ * package itself never needs it.
+ *
+ * @return array{int, string}
+ */
+function nodeContractCheck(string $json): array
+{
+    $root = nodePackage();
+    file_put_contents($root.'/document.json', $json);
+    exec('node '.escapeshellarg($root.'/contract/check.mjs').' '.escapeshellarg($root.'/document.json').' 2>&1', $output, $code);
+
+    return [$code, implode("\n", $output)];
+}
+
+/**
+ * The shared package's contract/check.mjs and dist/lib modules, from the verified tarball, in a scratch folder removed
+ * when the process ends; skipped without Node.js.
+ */
+function nodePackage(): string
+{
+    contractFiles();
+    exec('node --version 2>&1', $version, $missing);
+
+    if ($missing !== 0) {
+        test()->markTestSkipped('Node.js is not installed; the contract is still checked by the PHP validator.');
+    }
+
+    $root = sys_get_temp_dir().'/schema-viewer-node-'.bin2hex(random_bytes(6));
+    register_shutdown_function(fn () => (new Filesystem)->deleteDirectory($root));
+
+    foreach (UiPackage::members((string) file_get_contents((new UiPackage(dirname(__DIR__)))->cached())) as $path => $content) {
+        if ($path === 'contract/check.mjs' || $path === 'contract/scan.mjs' || $path === 'package.json' || (str_starts_with($path, 'dist/lib/') && str_ends_with($path, '.js'))) {
+            @mkdir(dirname($root.'/'.$path), 0755, true);
+            file_put_contents($root.'/'.$path, $content);
+        }
+    }
+
+    return $root;
+}
+
+/**
+ * What the shared exporters (laranex-schema-viewer-ui/export) make of a document under Node.js, for each request
+ * [format, connection ids or null, orm]: its content and warnings.
+ *
+ * @param  list<array{string, list<string>|null, bool}>  $requests
+ * @return list<array{content: string, warnings: list<array<string, mixed>>}>
+ */
+function nodeExports(string $json, array $requests): array
+{
+    $root = nodePackage();
+    file_put_contents($root.'/document.json', $json);
+    file_put_contents($root.'/requests.json', json_encode($requests));
+    file_put_contents($root.'/export.mjs', <<<'JS'
+        import { readFileSync } from 'node:fs';
+        import { EXPORTERS } from './dist/lib/export.js';
+        const doc = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+        const requests = JSON.parse(readFileSync(process.argv[3], 'utf8'));
+        const out = requests.map(([format, connections, orm]) => {
+            const options = { orm };
+            if (connections !== null) options.connections = connections;
+            return EXPORTERS.find((e) => e.id === format).export(doc, options);
+        });
+        process.stdout.write(JSON.stringify(out));
+        JS);
+    exec('node '.escapeshellarg($root.'/export.mjs').' '.escapeshellarg($root.'/document.json').' '.escapeshellarg($root.'/requests.json').' 2>&1', $output, $code);
+
+    expect($code)->toBe(0, implode("\n", $output));
+
+    return json_decode(implode("\n", $output), true, 512, JSON_THROW_ON_ERROR);
+}
+
+/**
+ * The problems of a laranex-schema-scan report: its shape against the shared contract/scan-report.schema.json (from
+ * the verified tarball, strictly), and the rules the shared validateScanReport() adds: version 1.0, an exit code that
+ * follows the errors and findings, counts that count them, the shared order, commits exactly on history findings and
+ * the allowlist scope exactly on stale entries.
+ *
+ * @return list<string>
+ */
+function scanReportProblems(mixed $report): array
+{
+    $errors = [];
+    Shape::checkAgainst(Json::decode(contractFiles()['scan-report.schema.json']), $report, $errors, true);
+
+    if ($errors !== [] || ! is_array($report)) {
+        return $errors;
+    }
+
+    if ($report['version'] !== Scan::VERSION) {
+        $errors[] = 'version';
+    }
+
+    if ($report['exitCode'] !== Scan::exitCode($report['findings'], $report['errors'])) {
+        $errors[] = 'exit code';
+    }
+
+    foreach (['confirmed', 'tampered', 'moved', 'uncertain', 'allowed', 'incomplete', 'stale'] as $status) {
+        if ($report['counts'][$status] !== count(array_filter($report['findings'], fn (array $f): bool => $f['status'] === $status))) {
+            $errors[] = "count {$status}";
+        }
+    }
+
+    foreach ($report['findings'] as $i => $finding) {
+        if ($i > 0 && Scan::byList(Scan::findingOrder($report['findings'][$i - 1]), Scan::findingOrder($finding)) > 0) {
+            $errors[] = "order at {$i}";
+        }
+
+        if (($finding['scope'] === 'history') !== ($finding['commit'] !== null) || ($finding['scope'] === 'allowlist') !== ($finding['status'] === 'stale')) {
+            $errors[] = "finding {$i}";
+        }
+    }
+
+    return $errors;
+}
+
+/**
+ * Run Git in a directory and return its output; the test fails when Git does.
+ */
+function git(string $root, string ...$args): string
+{
+    $process = new Process(['git', '-C', $root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', '-c', 'core.autocrlf=false', ...$args]);
+    $process->run();
+
+    expect($process->getExitCode())->toBe(0, $process->getErrorOutput());
+
+    return $process->getOutput();
+}
+
+/**
+ * The project root as a fresh Git work tree.
+ */
+function repository(): string
+{
+    $root = str_replace('\\', '/', (string) realpath(app()->basePath()));
+    git($root, 'init', '-q');
+
+    return $root;
+}
+
+function put(string $root, string $path, string $content): void
+{
+    @mkdir(dirname($root.'/'.$path), 0755, true);
+    file_put_contents($root.'/'.$path, $content);
+}
+
+function commit(string $root, string $message = 'commit'): void
+{
+    git($root, 'add', '-A');
+    git($root, 'commit', '-q', '--allow-empty', '-m', $message);
 }

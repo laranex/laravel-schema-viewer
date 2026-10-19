@@ -7,22 +7,28 @@ namespace Laranex\LaravelSchemaViewer\Console;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository as Config;
 use InvalidArgumentException;
+use Laranex\LaravelSchemaViewer\Build\Isolation;
+use Laranex\LaravelSchemaViewer\Contract\Producer;
 use Laranex\LaravelSchemaViewer\Schema\Hint;
 use Laranex\LaravelSchemaViewer\Schema\HintKind;
 use Laranex\LaravelSchemaViewer\Schema\IgnoreRule;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Laranex\LaravelSchemaViewer\Snapshot;
+use Laranex\LaravelSchemaViewer\SnapshotUnavailable;
 use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
+use UnexpectedValueException;
 
 final class CheckCommand extends Command
 {
     protected $signature = 'schema-viewer:check
         {--fail-on=* : Hint kinds that fail the check; defaults to schema-viewer.hints.fail_on}
-        {--format=text : text or json}';
+        {--format=text : text or json}
+        {--snapshot : Read the hints from the saved schema-viewer.json instead of the models and the database, running no model code}';
 
     protected $description = 'List the schema hints and fail when a hint of a chosen kind remains';
 
-    public function handle(SchemaViewer $viewer, Config $config): int
+    public function handle(SchemaViewer $viewer, Isolation $isolation, Snapshot $snapshot, Config $config): int
     {
         $format = strtolower((string) $this->option('format'));
 
@@ -46,22 +52,32 @@ final class CheckCommand extends Command
         }
 
         try {
-            $viewer->ignoreRules();
+            $rules = $viewer->ignoreRules();
         } catch (InvalidArgumentException $e) {
             return $this->refuse($e->getMessage(), self::INVALID, $json);
         }
 
-        if ($json) {
+        if ($this->option('snapshot')) {
             try {
-                $hints = $viewer->document()->hints;
+                $hints = $this->hints($snapshot->document(), $rules);
+            } catch (SnapshotUnavailable $e) {
+                return $this->refuse($e->getMessage(), self::INVALID, $json);
+            } catch (UnexpectedValueException $e) {
+                return $this->refuse(SnapshotUnavailable::unreadable($snapshot->displayPath(), $e->getMessage())->getMessage(), self::INVALID, $json);
+            }
+        } elseif ($json) {
+            try {
+                $hints = $this->hints((new Producer)->document($isolation->document($viewer)), $rules);
             } catch (Throwable $e) {
                 return $this->refuse('The schema could not be read: '.$e->getMessage(), self::FAILURE, true);
             }
-
-            return $this->json($hints, $failOn);
+        } else {
+            $hints = $this->hints((new Producer)->document($isolation->document($viewer)), $rules);
         }
 
-        $hints = $viewer->document()->hints;
+        if ($json) {
+            return $this->json($hints, $failOn);
+        }
 
         if ($hints === []) {
             $this->components->info('No hints. The schema and the models agree.');
@@ -98,7 +114,33 @@ final class CheckCommand extends Command
     }
 
     /**
-     * The hints as one JSON document for scripts and agents, in the order they were built.
+     * The hints a laranex-schema document carries, in the order of its diagnostics, without those the hints.ignore
+     * rules leave out. Live, the rules already left them out; a snapshot was built with the rules of its build.
+     *
+     * @param  array<string, mixed>  $document
+     * @param  list<IgnoreRule>  $rules
+     * @return list<Hint>
+     *
+     * @throws UnexpectedValueException When a diagnostic does not hold its whole hint.
+     */
+    private function hints(array $document, array $rules): array
+    {
+        $hints = [];
+        $diagnostics = $document['diagnostics'] ?? [];
+
+        foreach (is_array($diagnostics) ? $diagnostics : [] as $diagnostic) {
+            $hint = is_array($diagnostic) ? Hint::fromDiagnostic($diagnostic) : null;
+
+            if ($hint !== null && array_filter($rules, fn (IgnoreRule $rule): bool => $rule->matches($hint)) === []) {
+                $hints[] = $hint;
+            }
+        }
+
+        return $hints;
+    }
+
+    /**
+     * The hints as one JSON document for scripts and agents, in the order of the document's diagnostics.
      *
      * @param  list<Hint>  $hints
      * @param  list<string>  $failOn

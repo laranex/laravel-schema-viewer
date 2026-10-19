@@ -4,15 +4,11 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Schema;
 
-use JsonSerializable;
-
 /**
  * Everything the viewer, the exports and the agent skill read: tables, models, relations, links and hints.
  */
-final class SchemaDocument implements JsonSerializable
+final class SchemaDocument
 {
-    public const VERSION = 1;
-
     /**
      * @param  list<ConnectionSchema>  $connections
      * @param  list<ModelInfo>  $models
@@ -23,7 +19,6 @@ final class SchemaDocument implements JsonSerializable
      * @param  list<Hint>  $hints
      */
     public function __construct(
-        public readonly string $generatedAt,
         public readonly array $connections,
         public readonly array $models,
         public readonly array $relations,
@@ -43,24 +38,5 @@ final class SchemaDocument implements JsonSerializable
         }
 
         return null;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function jsonSerialize(): array
-    {
-        return [
-            'version' => self::VERSION,
-            'generatedAt' => $this->generatedAt,
-            'note' => $this->note,
-            'connections' => $this->connections,
-            'models' => $this->models,
-            'relations' => $this->relations,
-            'unresolved' => $this->unresolved,
-            'links' => $this->links,
-            'derivedLinks' => $this->derivedLinks,
-            'hints' => $this->hints,
-        ];
     }
 }

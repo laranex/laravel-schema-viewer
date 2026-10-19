@@ -1,7 +1,7 @@
 ---
 name: laravel-schema-viewer
 description: >
-  Install, configure and share laranex/laravel-schema-viewer in a Laravel app: building the schema snapshot with schema-viewer:build, who may open the viewer, which connections and models it reads, editor links, accepting hints with hints.ignore, failing CI with schema-viewer:check, and exporting a standalone HTML viewer. To read the schema itself before changing the database, use the laravel-schema-viewer-schema skill.
+  Install, configure and share laranex/laravel-schema-viewer in a Laravel app: building the schema snapshot with schema-viewer:build, who may open the viewer, which connections and models it reads, editor links, accepting hints with hints.ignore, failing CI with schema-viewer:check, scanning the repository for committed snapshots with schema-viewer:scan, and exporting a standalone HTML viewer. To read the schema itself before changing the database, use the laravel-schema-viewer-schema skill.
 license: MIT
 metadata:
   author: Nay Thu Khant
@@ -25,11 +25,11 @@ Requires PHP 8.1+ and Laravel 10.36 to 13. The service provider registers itself
 php artisan schema-viewer:build
 ```
 
-Install it as a dev dependency unless the team wants the viewer on a server.
+Install it as a dev dependency: the viewer is a development tool (running it on a server is a security exception; see Open it on a server).
 
-`schema-viewer:build` reads the database and the models and writes `schema-viewer.json` in the project root, always there (readable JSON: `format`, the schema `document`, each connection's `downloads`). The viewer has no API: its page carries the schema and the downloads from that file, and no model code runs in a web request. Without the file, the page says to run the build. Run it again after migrating or changing a model; on a server, run it in the deploy script after `migrate`. Commit the file only when the repository is private, since it lists every table and column, the models' fillable, hidden, casts and scopes, and source file paths; then every clone and server has the viewer and schema changes show as a diff. Otherwise add `/schema-viewer.json` to `.gitignore` and build it on each machine.
+`schema-viewer:build` reads the database and the models and writes `schema-viewer.json` in the project root, always there: a laranex-schema 2.0 document ([the shared contract](https://laranex.github.io/schema-viewer-ui/)) in canonical JSON, the format the Laranex schema viewers for Laravel, Python and Node.js share, plus `schema-viewer.changes.json` beside it with what changed since the previous build. The viewer is the shared Laranex viewer, shipped inside the package (no Node.js or npm needed); it has no API: its page carries the document from that file, and no model code runs in a web request. Its Download dialog makes the Mermaid, DBML, Markdown, JSON, SVG, PNG and offline HTML files in the browser. A `schema-viewer.json` written by laravel-schema-viewer 1.x is refused with a message to build it again. Without the file, the page says to run the build. Run it again after migrating or changing a model; on a server, run it in the deploy script after `migrate`. Never commit the file, even in a private repository: it lists every table and column, the models' fillable, hidden, casts and scopes, and source file paths. Add `/schema-viewer.json`, `/schema-viewer.changes.json` and `/schema-viewer/` (the default HTML export folder) to `.gitignore`, and build it on each machine, in CI and in the deploy script. Inside a Git work tree, `schema-viewer:build` warns on standard error when a file it writes is not ignored, and exits 1 without writing when Git already tracks it (run `git rm --cached -- schema-viewer.json`, then ignore it); `schema-viewer:export --output` checks its file the same way.
 
-Building constructs every model and calls its relation methods with every connection pretending, model events off, and jobs, mail, notifications, HTTP calls, events and the cache faked; everything is put back afterwards. Code that goes around Laravel's facades and clients still runs for real: a direct Guzzle or SDK call, a raw Redis write, a file write, a log line. `SchemaViewer::building()` is `true` only while the package reads the models (build, export and check), so a constructor, `booted()` or relation method can skip that work. Guard it with `class_exists()`, since a server installed with `composer install --no-dev` has no `SchemaViewer` class, and still return the relation:
+Every command that reads the models (`schema-viewer:build`, `build --check`, `export`, `check`, and `diff` against the current schema) constructs every model and calls its relation methods with every connection pretending, model events off, and jobs, mail, notifications, HTTP calls, events and the cache faked; everything is put back afterwards. The viewer page and `diff` between saved files run no model code. Calling `SchemaViewer::document()` yourself, as in a test, only pretends and turns model events off. Code that goes around Laravel's facades and clients still runs for real: a direct Guzzle or SDK call, a raw Redis write, a file write, a log line. `SchemaViewer::building()` is `true` only while the package reads the models (build, diff, export and check), so a constructor, `booted()` or relation method can skip that work. Guard it with `class_exists()`, since a server installed with `composer install --no-dev` has no `SchemaViewer` class, and still return the relation:
 
 ```php
 use Laranex\LaravelSchemaViewer\SchemaViewer;
@@ -57,10 +57,10 @@ Every setting has a default, so most apps configure nothing. Publish `config/sch
 - `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed.
 - `package_tables`: maps Composer package names to table patterns (default: Laravel's own packages, Passport `oauth_*`, Cashier, Cashier Paddle, Pennant `features`, Pulse `pulse_*`, Sanctum `personal_access_tokens`, Telescope `telescope_*`); while a package is installed its tables are tagged with its name and still get hints. Add third-party packages there, or set `false` to tag nothing.
 - `notes`: your own notes, shown in the viewer next to the database's comments and written into the exports: `project` (one string), `tables` (`['orders' => '…']`), `columns` (`['orders' => ['status' => '…']]`) and `relationships`, by the table and the columns that hold the key (`['orders' => ['user_id' => '…']]`, composite keys comma separated; JSON and viewer only). A table name applies on every connection with that table; `'analytics:events'` picks one connection and wins. Values must be strings; `schema-viewer:build` warns about notes that match nothing.
-- `hints.ignore`: a list of rules; a hint is left out when it matches every field a rule names (`connection` and `table` take wildcards, plus `kind`, `columns`, `relation`, and `certainty`: `certain` or `likely`), e.g. `['kind' => 'morph_without_map']`, `['connection' => 'mysql', 'table' => 'audit_logs']`, `['table' => 'oauth_*']`, `['certainty' => 'likely']`, `['connection' => 'mysql', 'table' => 'comments', 'kind' => 'relation_without_foreign_key', 'columns' => 'user_id']`. Each hint in the JSON export carries its rules in `ignore` (`hint`, `kindOnTable`, `table`, `kind`), and `schema-viewer:check` prints the narrowest one; copy those rather than writing rules by hand. Unknown fields, kinds or certainties are rejected.
+- `hints.ignore`: a list of rules; a hint is left out when it matches every field a rule names (`connection` and `table` take wildcards, plus `kind`, `columns`, `relation`, and `certainty`: `certain` or `likely`), e.g. `['kind' => 'morph_without_map']`, `['connection' => 'mysql', 'table' => 'audit_logs']`, `['table' => 'oauth_*']`, `['certainty' => 'likely']`, `['connection' => 'mysql', 'table' => 'comments', 'kind' => 'relation_without_foreign_key', 'columns' => 'user_id']`. Each hint is a diagnostic in the document with its kind, connection, table, columns and relation in `extensions.laravel` and its narrowest rule in `extensions.laravel.ignore` (and as PHP in `ignorePhp`), and `schema-viewer:check` prints it too; copy those rather than writing rules by hand. Unknown fields, kinds or certainties are rejected.
 - `hints.fail_on`: kinds that fail `schema-viewer:check`.
 
-Outside `local`, the viewer needs a gate:
+Outside `local`, and for any request to a local app from another machine, the viewer needs a gate:
 
 ```php
 Gate::define('viewSchema', fn ($user) => $user->isAdmin());
@@ -75,7 +75,7 @@ use Laranex\LaravelSchemaViewer\SchemaViewer;
 SchemaViewer::auth(fn (Request $request): bool => $request->user()?->isAdmin() ?? false);
 ```
 
-Without a callback, `local` is open to everyone, as with Telescope; elsewhere only users the `viewSchema` gate allows.
+Without a callback, `local` opens only to requests from the same machine: a loopback address (127.0.0.1, ::1) and a `localhost`, `*.localhost` or loopback host, read from the request itself, never from proxy headers. A teammate on the network, a tunnel (ngrok, Expose) or a public name needs the `viewSchema` gate, as every request outside `local` does.
 
 ## Use
 
@@ -86,22 +86,42 @@ php artisan schema-viewer:check
 php artisan schema-viewer:check --fail-on=foreign_key_without_index --fail-on=unresolved_relation
 ```
 
-The command lists every hint and exits non-zero when one of a `hints.fail_on` kind remains (or of the kinds passed with `--fail-on`). `--format=json` prints the same as one JSON document for scripts and agents, with the same exit codes. Under each hint it prints the narrowest `hints.ignore` rule that leaves it out; add that rule to the config when the team accepts the hint, rather than lowering `fail_on`.
+The command lists every hint and exits non-zero when one of a `hints.fail_on` kind remains (or of the kinds passed with `--fail-on`). `--format=json` prints the same as one JSON document for scripts and agents, with the same exit codes. Under each hint it prints the narrowest `hints.ignore` rule that leaves it out; add that rule to the config when the team accepts the hint, rather than lowering `fail_on`. Right after `schema-viewer:build`, `schema-viewer:check --snapshot` checks the hints of the `schema-viewer.json` it wrote without reading the models again: the same output and exit codes, 2 when the file is missing or unreadable. Hints a `hints.ignore` rule left out at build time are not in the file, so build again after removing a rule.
 
-### Keep the snapshot current in CI
+### Build the document in CI
 
-When `schema-viewer.json` is committed, fail CI when someone migrates or changes a model without rebuilding it:
+Build the document in CI instead of committing it, so every job reads the schema the migrations and models make now. Stop at the first failure, and remove any snapshot left from an earlier run first: a failed build keeps the previous file, and `--snapshot` would check that stale file instead of failing. With no file, `schema-viewer:check --snapshot` exits 2.
 
 ```bash
-php artisan migrate --force && php artisan schema-viewer:build --check
+set -euo pipefail
+rm -f schema-viewer.json schema-viewer.changes.json
+php artisan migrate --force
+php artisan schema-viewer:build
+php artisan schema-viewer:check --snapshot
 ```
 
-`--check` builds in memory, never writes, and exits 0 when the file matches, 1 when it is missing or out of date (with a short summary of what differs). The file also keeps what changed since the previous build that changed the schema, which the viewer's Changes tab and `php artisan schema-viewer:diff` show. To put a pull request's schema changes in the job summary:
+Never cache or restore `schema-viewer.json` between CI jobs or runs.
+
+To put a pull request's schema changes in the job summary, build the base branch's document first (with that branch's dependencies) and keep it outside the working tree:
 
 ```bash
-git show origin/main:schema-viewer.json > base.json
-php artisan schema-viewer:diff base.json --against=schema-viewer.json --format=markdown >> "$GITHUB_STEP_SUMMARY"
-``` CI must use the same database engine and connection names as the machine that built the file. A `.gitattributes` line `schema-viewer.json text eol=lf` keeps line endings stable; the check also accepts CRLF checkouts.
+git checkout --quiet origin/main
+php artisan migrate:fresh --force && php artisan schema-viewer:build && mv schema-viewer.json "$RUNNER_TEMP/base.json"
+git checkout --quiet -
+php artisan migrate:fresh --force && php artisan schema-viewer:build
+php artisan schema-viewer:diff "$RUNNER_TEMP/base.json" --against=schema-viewer.json --format=markdown >> "$GITHUB_STEP_SUMMARY"
+```
+
+The summary names tables and columns to everyone who can read the job. `schema-viewer.changes.json` keeps what changed since the previous build on the same machine, which the viewer's Changes tab and `php artisan schema-viewer:diff` show. `php artisan schema-viewer:build --check` builds in memory, never writes, and exits 1 when the `schema-viewer.json` on disk is missing or out of date (with a short summary of what differs): use it to confirm a deployed build is current.
+
+### Keep snapshots out of Git
+
+```bash
+php artisan schema-viewer:scan --tracked --untracked
+php artisan schema-viewer:scan --artifacts public/build --report build/schema-scan.json
+```
+
+Finds laranex-schema documents by content, not by name: in the Git index (the staged bytes, and files tracked before they were ignored) with `--tracked`, in files Git would add with `--untracked`, in a build output directory (every file, ignore rules not applied) with `--artifacts DIR`, and in every past version with `--history` (fails on a shallow clone). Name at least one scope. It prints one line of counts; `--json` prints the `laranex-schema-scan` report and `--report FILE` writes it, with paths and reasons but never file content. Exit codes: 0 clean, 1 a snapshot found, 2 the scan failed or is incomplete, 3 something looks like a snapshot; fail CI on any non-zero exit. A synthetic fixture committed on purpose goes in `.laranex-schema-allowlist.json` at the project root by exact path and SHA-256 (`{"format":"laranex-schema-allowlist","version":"1.0","entries":[{"path":"…","sha256":"…"}]}`); a changed or moved file is reported again. Run `schema-viewer:scan --tracked` in a Git pre-commit hook. Base64-compressed payloads, SVG, PNG, DBML, Mermaid and Markdown exports are not detected: keep them out of the repository yourself.
 
 ### Share the viewer without the app
 
@@ -109,11 +129,11 @@ php artisan schema-viewer:diff base.json --against=schema-viewer.json --format=m
 php artisan schema-viewer:export --format=html --output=build/schema-viewer
 ```
 
-Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer with the schema and the downloads inlined. It opens from disk or any static host without the Laravel app or its database, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. Host it only where the schema may be seen.
+Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer, its fonts and the document in one file, the same page as the viewer's Download → "This page as HTML", with its own Content-Security-Policy. It opens from disk or any static host without the Laravel app, its database or the network, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. `--snapshot` exports the `schema-viewer.json` the last build wrote, without running model code (any `--format` takes it). An export of a private schema is sensitive: once exported, storing and sharing the file is up to you, and the package does not track it. The command refuses to write into `public/` or `storage/app/public`; never commit an export or host it where the schema should not be seen.
 
 ### Open it on a server
 
-Set `SCHEMA_VIEWER_ENABLED=true`, define the `viewSchema` gate or `SchemaViewer::auth()` (above), and run `php artisan schema-viewer:build` in the deploy script after `migrate` (or commit `schema-viewer.json`); without the gate the viewer answers 403 outside `local`. Use `path` or `domain` to move it, and `middleware` to add your own (the access check is always added).
+The viewer is off outside `local`, and should stay off in production: turning it on there is a security exception, not a recommended deployment, since the schema helps attackers. When a team accepts that risk for a staging or internal server, set `SCHEMA_VIEWER_ENABLED=true`, define the application's own `viewSchema` gate (or `SchemaViewer::auth()`, above) for the few users who need it, and run `php artisan schema-viewer:build` in the deploy script after `migrate`. Without a gate or callback the viewer answers 403 to everyone. Use `path` or `domain` to move it, and `middleware` to add your own (the access check is always added). Serve it over HTTPS only, and keep proxies, CDNs and full-page caches from storing the page: it carries the whole schema. The package's [security policy](https://github.com/laranex/laravel-schema-viewer/blob/main/.github/SECURITY.md) lists what the package enforces and what is left to the app.
 
 ## Test your app
 
@@ -129,9 +149,11 @@ expect(collect($document->hints)->pluck('kind'))->not->toContain(\Laranex\Larave
 
 - Enabling the viewer in production without the `viewSchema` gate or `SchemaViewer::auth()`; schema details help attackers.
 - Expecting the viewer to show a table altered by hand or a model just edited: run `php artisan schema-viewer:build` first.
-- Relation methods, constructors and `booted()` that call services, write files or use Redis directly: the build runs them for real; skip that work when `SchemaViewer::building()` is `true`, behind a `class_exists()` check.
+- Relation methods, constructors and `booted()` that call services, write files or use Redis directly: build, export and check run them for real; skip that work when `SchemaViewer::building()` is `true`, behind a `class_exists()` check.
 - Calling `SchemaViewer::building()` without `class_exists(SchemaViewer::class)` when the package is a dev dependency: it throws on servers installed with `--no-dev`.
-- Writing `hints.ignore` rules by hand: copy the rule `schema-viewer:check` prints or the JSON export's `ignore` field.
+- Writing `hints.ignore` rules by hand: copy the rule `schema-viewer:check` prints or a diagnostic's `extensions.laravel.ignore`.
 - Ignoring `relation_without_foreign_key` on a regular `belongsTo`: add the foreign key unless the relation crosses connections.
 - Dropping an index the check calls redundant without checking the queries that use it.
+- Committing `schema-viewer.json`, `schema-viewer.changes.json` or an export, even in a private repository: build them where they are needed instead.
 - Publishing an HTML export where the schema should not be seen.
+- Allowlisting a real application's snapshot to make `schema-viewer:scan` pass: remove it from Git instead (`git rm --cached`), and from the history if it was pushed.

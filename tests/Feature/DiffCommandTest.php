@@ -20,7 +20,7 @@ function diffOutput(array $parameters = []): array
 it('prints the changes the snapshot lists, without reading the database', function (): void {
     [$code, $output] = diffOutput();
     expect($code)->toBe(2)
-        ->and($output)->toContain('No readable schema snapshot at [schema-viewer.json]. Run php artisan schema-viewer:build.');
+        ->and($output)->toContain('No schema snapshot at [schema-viewer.json] yet. Run php artisan schema-viewer:build.');
 
     buildSnapshot();
     [$code, $output] = diffOutput();
@@ -34,10 +34,10 @@ it('prints the changes the snapshot lists, without reading the database', functi
     [$code, $output] = diffOutput();
     expect($code)->toBe(0)
         ->and($output)->toContain('testing.gadgets')
-        ->and($output)->toContain('Table gadgets added: columns 1');
+        ->and($output)->toContain('Table gadgets added: 1 column');
 
     [, $json] = diffOutput(['--format' => 'json']);
-    expect(json_decode($json, true)['changes'][0])->toBe(['type' => 'table', 'change' => 'added', 'connection' => 'testing', 'table' => 'gadgets', 'after' => ['columns' => 1]]);
+    expect(json_decode($json, true))->toEqual(['version' => 2, 'changes' => [['type' => 'table', 'change' => 'added', 'subject' => 'testing:gadgets', 'label' => 'gadgets', 'message' => '1 column', 'connection' => 'testing', 'table' => 'gadgets']]]);
 });
 
 it('compares an older snapshot with the schema now', function (): void {
@@ -57,7 +57,7 @@ it('compares an older snapshot with the schema now', function (): void {
     [$code, $markdown] = diffOutput(['base' => 'base.json', '--format' => 'markdown']);
 
     expect($code)->toBe(0)
-        ->and($markdown)->toStartWith("## Schema changes\n\n1 change.\n\n### testing.posts\n\n- Column posts.subtitle added: type ")
+        ->and($markdown)->toStartWith("## Schema changes\n\n1 change.\n\n### testing.posts\n\n- Column posts.subtitle added: ")
         ->and((string) file_get_contents($this->snapshot))->toBe($before);
 });
 
@@ -87,8 +87,9 @@ it('refuses a base it cannot read', function (string $contents, string $message)
         ->expectsOutputToContain($message)
         ->assertExitCode(2);
 })->with([
-    'another format' => ['{"format": 1, "document": {}}', '[base.json] was written by another version of laravel-schema-viewer'],
-    'not JSON' => ['{"format', '[base.json] was written by another version of laravel-schema-viewer'],
+    'a laravel-schema-viewer 1.x snapshot' => ['{"format": 2, "document": {"version": 1}}', 'The schema snapshot at [base.json] was written by laravel-schema-viewer 1.x, which this version no longer reads.'],
+    'laranex-schema 1.0' => ['{"format": "laranex-schema", "version": "1.0"}', 'Unsupported laranex-schema version "1.0"; this reader supports 2.x'],
+    'not JSON' => ['{"format', 'The schema snapshot at [base.json] cannot be read: it is not JSON'],
 ]);
 
 it('refuses a missing base, --against without a base and an unknown format', function (): void {

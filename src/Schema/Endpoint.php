@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Schema;
 
-use JsonSerializable;
-
 /**
  * Columns of one table on one connection.
  */
-final class Endpoint implements JsonSerializable
+final class Endpoint
 {
     /**
      * @param  list<string>  $columns
@@ -23,17 +21,5 @@ final class Endpoint implements JsonSerializable
     public function key(): string
     {
         return $this->connection.'|'.$this->table.'|'.implode(',', $this->columns);
-    }
-
-    /**
-     * @return array{connection: string, table: string, columns: list<string>}
-     */
-    public function jsonSerialize(): array
-    {
-        return [
-            'connection' => $this->connection,
-            'table' => $this->table,
-            'columns' => $this->columns,
-        ];
     }
 }

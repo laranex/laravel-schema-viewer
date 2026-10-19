@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\Models\Post;
 
@@ -55,6 +56,13 @@ class Noisy extends Model
     public function queuedPosts(): HasMany
     {
         dispatch(new NoisyJob);
+
+        return $this->hasMany(Post::class, 'user_id');
+    }
+
+    public function mailedPosts(): HasMany
+    {
+        Mail::raw('sent by a relation method', fn ($message) => $message->to('ops@example.test'));
 
         return $this->hasMany(Post::class, 'user_id');
     }

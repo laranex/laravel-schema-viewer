@@ -1,5 +1,9 @@
 * text=auto eol=lf
 
+# The shared viewer's files are kept byte for byte as the npm tarball has them; ui.stamp.json records their SHA-256.
+/resources/viewer/**   -text
+/resources/contract/** -text
+
 /.github            export-ignore
 /.gitattributes     export-ignore
 /.gitignore         export-ignore
@@ -15,6 +19,7 @@
 /CLAUDE.md          export-ignore
 /AGENTS.md          export-ignore
 /AGENTS_PACKAGE.md  export-ignore
-/ui                 export-ignore
 /build              export-ignore
+/.laranex-schema-allowlist.json export-ignore
+/scripts            export-ignore
 /skills            export-ignore

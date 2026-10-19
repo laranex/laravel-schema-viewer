@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Schema;
 
-use JsonSerializable;
-
 /**
  * The pivot table of a many-to-many relation.
  */
-final class Pivot implements JsonSerializable
+final class Pivot
 {
     /**
      * @param  list<string>  $columns  Extra columns read with withPivot() and withTimestamps().
@@ -25,21 +23,4 @@ final class Pivot implements JsonSerializable
         public readonly ?string $using,
         public readonly string $accessor,
     ) {}
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function jsonSerialize(): array
-    {
-        return [
-            'table' => $this->table,
-            'foreignPivotKey' => $this->foreignPivotKey,
-            'relatedPivotKey' => $this->relatedPivotKey,
-            'parentKey' => $this->parentKey,
-            'relatedKey' => $this->relatedKey,
-            'columns' => $this->columns,
-            'using' => $this->using,
-            'accessor' => $this->accessor,
-        ];
-    }
 }

@@ -13,7 +13,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
  * Lets in whoever SchemaViewer::check() allows: the SchemaViewer::auth() callback when the application sets one;
- * otherwise everyone in the local environment, and elsewhere only users the viewSchema gate allows, as Telescope does.
+ * otherwise, in the local environment, requests from this machine to this machine, and any other request only for
+ * users the viewSchema gate allows. Every route of the viewer has it, the page and every asset alike.
  */
 final class Authorize
 {
@@ -22,7 +23,8 @@ final class Authorize
     public function handle(Request $request, Closure $next): Response
     {
         if (! self::allows($this->app, $request)) {
-            throw new AccessDeniedHttpException('Define the viewSchema gate, or SchemaViewer::auth(), to open the schema viewer.');
+            // Nothing about the schema in the answer, and nothing a cache may keep.
+            throw new AccessDeniedHttpException('Define the viewSchema gate, or SchemaViewer::auth(), to open the schema viewer.', null, 0, ['Cache-Control' => 'no-store']);
         }
 
         /** @var Response $response */

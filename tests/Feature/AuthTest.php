@@ -7,11 +7,57 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Laranex\LaravelSchemaViewer\Http\Middleware\Authorize;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Laranex\LaravelSchemaViewer\Viewer\ViewerAssets;
 
-it('is open to everyone in the local environment by default', function (): void {
+it('is open in the local environment to requests from this machine to this machine', function (string $address, string $host): void {
     $this->rebootWith('local');
 
-    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7'])->get('/schema-viewer')->assertOk();
+    // The Host header is the URL's host, as a browser sends it.
+    $this->withServerVariables(['REMOTE_ADDR' => $address])->get("http://{$host}/schema-viewer")->assertOk();
+})->with([
+    'localhost' => ['127.0.0.1', 'localhost'],
+    'localhost with a port' => ['127.0.0.1', 'localhost:8000'],
+    'a .localhost name' => ['127.0.0.1', 'shop.localhost'],
+    '127.0.0.1' => ['127.0.0.1', '127.0.0.1:8000'],
+    'another loopback address' => ['127.0.1.1', '127.0.1.1'],
+    'IPv6' => ['::1', '[::1]:8000'],
+    'IPv4 as IPv6' => ['::ffff:127.0.0.1', 'localhost'],
+]);
+
+it('closes the local environment to every other request unless the gate allows it', function (string $address, string $host): void {
+    $this->rebootWith('local');
+
+    $this->withServerVariables(['REMOTE_ADDR' => $address])->get("http://{$host}/schema-viewer")
+        ->assertForbidden()
+        ->assertHeader('Cache-Control', 'no-store, private');
+
+    Gate::define('viewSchema', fn (?User $user): bool => true);
+
+    $this->withServerVariables(['REMOTE_ADDR' => $address])->get("http://{$host}/schema-viewer")->assertOk();
+})->with([
+    'a remote address' => ['203.0.113.7', 'localhost'],
+    'a spoofed loopback Host from a remote address' => ['203.0.113.7', '127.0.0.1'],
+    'a LAN address' => ['192.168.1.20', '192.168.1.10:8000'],
+    'a tunnel on this machine' => ['127.0.0.1', 'shop.ngrok.app'],
+    'a public name on this machine' => ['127.0.0.1', 'schema.example.com'],
+    'a name that only starts with localhost' => ['127.0.0.1', 'localhost.example.com'],
+    'IPv6, remote' => ['2001:db8::1', '[::1]'],
+]);
+
+it('ignores proxy headers when deciding what is local', function (): void {
+    $this->rebootWith('local');
+
+    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7', 'HTTP_X_FORWARDED_FOR' => '127.0.0.1', 'HTTP_X_FORWARDED_HOST' => 'localhost'])
+        ->get('/schema-viewer')
+        ->assertForbidden();
+});
+
+it('denies a viewer enabled in production while the application defines no gate', function (): void {
+    $this->rebootWith('production', ['enabled' => true]);
+    buildSnapshot();
+
+    $this->get('/schema-viewer')->assertForbidden();
+    $this->actingAs((new User)->forceFill(['id' => 1]))->get('/schema-viewer')->assertForbidden();
 });
 
 it('needs the viewSchema gate elsewhere by default', function (): void {
@@ -52,8 +98,8 @@ it('asks the auth callback on every route with the request', function (string $u
 
     expect($seen)->toBe([ltrim((string) parse_url($uri, PHP_URL_PATH), '/')]);
 })->with([
-    'viewer' => '/schema-viewer',
-    'asset' => '/schema-viewer/assets/app.js',
+    'viewer' => fn (): string => '/schema-viewer',
+    'asset' => fn (): string => '/schema-viewer/assets/'.(new ViewerAssets)->version().'/app.js',
 ]);
 
 it('lets an exception in the auth callback through instead of opening the viewer', function (): void {

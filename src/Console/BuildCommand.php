@@ -12,10 +12,12 @@ use Throwable;
 
 final class BuildCommand extends Command
 {
+    use KeepsSchemaOutOfGit;
+
     protected $signature = 'schema-viewer:build
         {--check : Build in memory and fail when schema-viewer.json is missing or out of date, without writing it}';
 
-    protected $description = 'Read the database and the Eloquent models and write the schema snapshot the viewer serves';
+    protected $description = 'Read the database and the Eloquent models and write the laranex-schema document the viewer serves';
 
     public function handle(Snapshot $snapshot, SchemaViewer $viewer): int
     {
@@ -23,8 +25,12 @@ final class BuildCommand extends Command
             return $this->check($snapshot);
         }
 
+        if (! $this->keepOutOfGit([$snapshot->path(), $snapshot->changesPath()])) {
+            return self::FAILURE;
+        }
+
         try {
-            $document = $snapshot->build();
+            $document = $snapshot->build()['schema'];
         } catch (Throwable $e) {
             $this->components->error('The schema snapshot could not be built: '.$e->getMessage());
 
@@ -51,7 +57,7 @@ final class BuildCommand extends Command
     }
 
     /**
-     * Whether the committed snapshot matches the schema now, for CI.
+     * Whether the snapshot on disk matches the schema now, without writing it.
      */
     private function check(Snapshot $snapshot): int
     {
@@ -67,7 +73,7 @@ final class BuildCommand extends Command
         $existing = $snapshot->current();
 
         if ($existing === null) {
-            $this->components->error("No schema snapshot at [{$path}]. Run php artisan schema-viewer:build and commit it.");
+            $this->components->error("No schema snapshot at [{$path}]. Run php artisan schema-viewer:build.");
 
             return self::FAILURE;
         }
@@ -80,7 +86,7 @@ final class BuildCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->components->error("The schema snapshot [{$path}] is out of date. Run php artisan schema-viewer:build and commit it.");
+        $this->components->error("The schema snapshot [{$path}] is out of date. Run php artisan schema-viewer:build.");
 
         foreach (array_slice($summary, 0, 10) as $line) {
             $this->line('  '.$line);

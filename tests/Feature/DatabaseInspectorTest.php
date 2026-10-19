@@ -51,14 +51,13 @@ it('tags framework tables and leaves out excluded ones', function (): void {
         ->and($connection->table('posts')?->framework)->toBeFalse();
 });
 
-it('serializes to the shape the viewer reads', function (): void {
-    $json = json_decode((string) json_encode(inspectTesting()), true);
+it('reads the connection\'s driver and schemas, and keeps tables of the default schema unqualified', function (): void {
+    $connection = inspectTesting();
 
-    expect($json)->toHaveKeys(['name', 'driver', 'tables'])
-        ->and($json['driver'])->toBe(testDriver())
-        ->and($json['tables'][0])->toHaveKeys(['name', 'comment', 'framework', 'columns', 'indexes', 'foreignKeys'])
-        ->and($json['tables'][0]['columns'][0])->toHaveKeys(['name', 'type', 'typeName', 'nullable', 'default', 'autoIncrement', 'comment'])
-        ->and(array_keys($json['tables'][0]['indexes'][0]))->toBe(['name', 'columns', 'unique', 'primary', 'type', 'partial', 'expression', 'included']);
+    expect($connection->driver)->toBe(testDriver())
+        ->and($connection->table('posts')?->schema)->toBeNull()
+        ->and($connection->table('posts')?->baseName())->toBe('posts')
+        ->and($connection->schemas === null || in_array($connection->defaultSchema, $connection->schemas, true))->toBeTrue();
 });
 
 it('reads each index\'s type and details', function (): void {

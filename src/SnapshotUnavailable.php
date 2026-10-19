@@ -16,8 +16,13 @@ final class SnapshotUnavailable extends RuntimeException
         return new self("No schema snapshot at [{$path}] yet. Run php artisan schema-viewer:build.");
     }
 
-    public static function unreadable(string $path): self
+    public static function unreadable(string $path, string $reason): self
     {
-        return new self("The schema snapshot at [{$path}] cannot be read: it is damaged or was written by another version. Run php artisan schema-viewer:build.");
+        return new self("The schema snapshot at [{$path}] cannot be read: {$reason}. Run php artisan schema-viewer:build to write it again.");
+    }
+
+    public static function legacy(string $path): self
+    {
+        return new self("The schema snapshot at [{$path}] was written by laravel-schema-viewer 1.x, which this version no longer reads. Run php artisan schema-viewer:build to write it again as a laranex-schema 2.0 document.");
     }
 }

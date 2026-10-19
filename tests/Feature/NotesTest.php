@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Artisan;
+use Laranex\LaravelSchemaViewer\Contract\Producer;
 use Laranex\LaravelSchemaViewer\Schema\Table;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Laranex\LaravelSchemaViewer\Tests\Fixtures\Models;
 
 function notedTable(string $name): ?Table
 {
@@ -27,10 +29,14 @@ it('gives tables and columns the notes the config names', function (): void {
         ->and($document->connection('testing')?->table('tags')?->note)->toBeNull()
         ->and($posts?->column('status')?->note)->toBe('draft or published.')
         ->and($posts?->column('title')?->note)->toBe('Prefixed wins.')
-        ->and($posts?->column('id')?->note)->toBeNull()
-        ->and($document->jsonSerialize()['note'])->toBe('The blog behind the tests.')
-        ->and($posts?->jsonSerialize()['note'])->toBe('One row per article.')
-        ->and($posts?->column('status')?->jsonSerialize()['note'])->toBe('draft or published.');
+        ->and($posts?->column('id')?->note)->toBeNull();
+
+    $written = (new Producer)->document($document);
+    $table = collect($written['connections'][0]['tables'])->firstWhere('id', 'testing:posts');
+
+    expect($written['note'])->toBe('The blog behind the tests.')
+        ->and($table['note'])->toBe('One row per article.')
+        ->and(collect($table['columns'])->firstWhere('name', 'status')['note'])->toBe('draft or published.');
 });
 
 it('gives relationships the notes the config names, by the table and columns that hold the key', function (): void {
@@ -48,8 +54,19 @@ it('gives relationships the notes the config names, by the table and columns tha
     expect($from('posts', 'user_id'))->toBe('The author.')
         ->and($from('posts', 'category_id'))->toBe('No foreign key on purpose.')
         ->and($from('comments', 'user_id'))->toBe('Prefixed wins.')
-        ->and($from('taggables', 'tag_id'))->toBeNull()
-        ->and($links->first(fn ($link): bool => $link->from->table === 'posts' && $link->from->columns === ['user_id'])?->jsonSerialize()['note'])->toBe('The author.');
+        ->and($from('taggables', 'tag_id'))->toBeNull();
+
+    // In the document, a relationship carries the note of a line it draws, and a foreign key no relationship covers
+    // keeps its own; the shared graph gives each line the note of its first relationship.
+    $written = (new Producer)->document(app(SchemaViewer::class)->document());
+    $line = fn (string $table, string $column): ?array => collect($written['links'])->first(fn (array $l): bool => $l['from'] === ['table' => 'testing:'.$table, 'columns' => [$column]]);
+    $comments = collect($written['connections'][0]['tables'])->firstWhere('id', 'testing:comments');
+
+    expect($line('posts', 'user_id')['note'])->toBe('The author.')
+        ->and($line('posts', 'category_id')['note'])->toBe('No foreign key on purpose.')
+        ->and(collect($written['relationships'])->firstWhere('id', Models\Post::class.'::author')['note'])->toBe('The author.')
+        ->and($line('comments', 'user_id')['relationships'])->toBe([])
+        ->and($comments['foreignKeys'][0]['extensions'])->toBe(['laravel' => ['note' => 'Prefixed wins.']]);
 });
 
 it('keeps the database comment and adds the note next to it in the exports', function (): void {
@@ -65,7 +82,7 @@ it('keeps the database comment and adds the note next to it in the exports', fun
     $dbml = Artisan::output();
     $comment = testDriver() !== 'sqlite' && testDriver() !== 'sqlsrv';
 
-    expect($markdown)->toContain('# Database schema: testing ('.testDriver().")\n\nThe blog behind the tests.\n\n")
+    expect($markdown)->toContain('# Database schema: testing ('.(testDriver() === 'pgsql' ? 'postgresql' : testDriver()).")\n\nThe blog behind the tests.\n\n")
         ->and($markdown)->toContain("## posts\n\nNote: One row per article.\n")
         ->and($markdown)->toMatch('/\| `status` \| .* \| draft or published\. \|\n/')
         ->and($markdown)->toContain($comment ? '| Shown in lists and feeds · Shown in bold. |' : '| Shown in bold. |')
@@ -79,11 +96,10 @@ it('carries the notes in the snapshot and on the viewer page', function (): void
     buildSnapshot();
 
     $config = viewerConfig($this);
-    $posts = collect($config['schema']['connections'][0]['tables'])->firstWhere('name', 'posts');
+    $posts = collect($config['document']['connections'][0]['tables'])->firstWhere('name', 'posts');
 
-    expect($config['schema']['note'])->toBe('Read me first.')
-        ->and($posts['note'])->toBe('Articles.')
-        ->and($config['downloads']['testing']['markdown'])->toContain('Read me first.');
+    expect($config['document']['note'])->toBe('Read me first.')
+        ->and($posts['note'])->toBe('Articles.');
 });
 
 it('warns about notes that match nothing, and still builds', function (): void {

@@ -54,7 +54,8 @@
             "Laranex\\LaravelSchemaViewer\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/",
             "Workbench\\Database\\Factories\\": "workbench/database/factories/",
-            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
+            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/",
+            "Laranex\\LaravelSchemaViewer\\Scripts\\": "scripts/"
         }
     },
     "scripts": {
@@ -96,6 +97,18 @@
         ],
         "clear": [
             "@php vendor/bin/testbench package:purge-skeleton --ansi"
+        ],
+        "ui:fetch": [
+            "@php scripts/ui.php fetch"
+        ],
+        "ui:check": [
+            "@php scripts/ui.php check"
+        ],
+        "allowlist": [
+            "@php scripts/allowlist.php"
+        ],
+        "scan": [
+            "@php vendor/bin/testbench schema-viewer:scan --tracked --untracked"
         ]
     },
     "extra": {

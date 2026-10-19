@@ -2,15 +2,22 @@
 
 declare(strict_types=1);
 
+use Laranex\LaravelSchemaViewer\Contract\Producer;
 use Laranex\LaravelSchemaViewer\Export\MarkdownExporter;
 use Laranex\LaravelSchemaViewer\Export\MermaidExporter;
 use Laranex\LaravelSchemaViewer\Schema\Column;
 use Laranex\LaravelSchemaViewer\Schema\ConnectionSchema;
 use Laranex\LaravelSchemaViewer\Schema\ForeignKey;
 use Laranex\LaravelSchemaViewer\Schema\Index;
+use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
 use Laranex\LaravelSchemaViewer\Schema\Table;
 
-function hostileConnection(): ConnectionSchema
+/**
+ * A laranex-schema document of a database whose names and comments try to break out of the exports.
+ *
+ * @return array<string, mixed>
+ */
+function hostileDocument(): array
 {
     $parent = new Table('parents', null, false, [new Column('id', 'integer', 'integer', false, null, true, null)], [new Index('primary', ['id'], true, true)], []);
     $child = new Table(
@@ -26,11 +33,11 @@ function hostileConnection(): ConnectionSchema
         foreignKeys: [new ForeignKey('fk`<i>', ["parent\"id\nx"], 'parents', ['id'], 'cascade', 'no action')],
     );
 
-    return new ConnectionSchema('main<x>', 'sqlite', [$parent, $child]);
+    return (new Producer)->document(new SchemaDocument([new ConnectionSchema('main<x>', 'sqlite', [$parent, $child])], [], [], [], [], [], []));
 }
 
 it('escapes database text in the Markdown export', function (): void {
-    $markdown = (new MarkdownExporter)->export(hostileConnection());
+    $markdown = (new MarkdownExporter)->export(hostileDocument())['content'];
 
     // Code spans show their text literally; outside them, no HTML may remain.
     $prose = (string) preg_replace('/(?<!\\\\)`[^`]*`/', '', $markdown);
@@ -52,7 +59,7 @@ it('escapes database text in the Markdown export', function (): void {
 });
 
 it('keeps Mermaid labels on one line and inside their quotes', function (): void {
-    $mermaid = (new MermaidExporter)->export(hostileConnection());
+    $mermaid = (new MermaidExporter)->export(hostileDocument())['content'];
 
     expect($mermaid)->toContain('parents ||--o{ kids_img_src_x_onerror_alert_1__ : "parent\'id x"')
         ->and(substr_count($mermaid, '"'))->toBe(2);

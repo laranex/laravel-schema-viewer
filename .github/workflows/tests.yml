@@ -73,6 +73,15 @@ jobs:
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress --no-scripts
           composer run prepare
 
+      - name: Shared viewer assets
+        # The committed assets must be exactly the locked npm tarball's. ui:fetch also caches the verified tarball,
+        # which the contract tests read their fixtures from.
+        shell: bash
+        run: |
+          composer ui:fetch
+          git diff --exit-code -- resources ui.stamp.json
+          composer ui:check
+
       - name: PHPStan
         run: composer analyse
 
@@ -89,69 +98,105 @@ jobs:
 
       - name: Test Suite
         if: runner.os != 'Windows'
+        env:
+          SCHEMA_VIEWER_CONTRACT: required
         run: composer test:unit
 
       - name: Test Suite (Windows)
         if: runner.os == 'Windows'
+        env:
+          SCHEMA_VIEWER_CONTRACT: required
         run: vendor/bin/pest
 
-  browser:
-    # The viewer itself, in Chromium and WebKit on a desktop and a phone, against the committed dist/.
+  assets:
+    # Release gate: the git archive Composer installs carries the verified viewer assets, matching ui.lock.json, the
+    # registry tarball and ui.stamp.json, and none of the development files. The repository and that archive hold no
+    # schema snapshot: php artisan schema-viewer:scan fails the job on any non-zero exit (1 confirmed, 2 incomplete or
+    # failed, 3 uncertain), and the archive must hold no document at all, allowed or not.
     runs-on: ubuntu-latest
 
-    name: Browser
-
-    defaults:
-      run:
-        working-directory: ui
+    name: Viewer assets
 
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
-          node-version-file: ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
+          php-version: 8.4
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, sqlite, pdo_sqlite
+          tools: composer:v2
+          coverage: none
+
+      - name: Check the assets against the lock, the registry and the git archive
+        run: php scripts/ui.php check --registry --archive
 
       - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: The committed build matches the source
         run: |
-          npm run build
-          git diff --exit-code -- ../dist
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress --no-scripts
+          composer run prepare
 
-      - name: Playwright version
-        id: playwright
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Scan the repository for schema snapshots
+        run: |
+          mkdir -p build/scan
+          php vendor/bin/testbench schema-viewer:scan --tracked --untracked --report build/scan/tree.json
 
-      - name: Cache the browsers
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Scan the git archive Composer installs
+        run: |
+          mkdir -p build/scan build/archive
+          git archive --format=tar HEAD | tar -x -C build/archive
+          php vendor/bin/testbench schema-viewer:scan --artifacts build/archive --report build/scan/archive.json
+          jq -e '.counts.allowed == 0' build/scan/archive.json
 
-      - name: Install the browsers
-        run: npx playwright install --with-deps chromium webkit
-
-      - name: Browser tests
-        run: npx playwright test
-
-      - name: Upload the report
+      - name: Upload the scan reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-report
-          path: |
-            ui/playwright-report
-            ui/test-results
+          name: schema-scan-reports
+          path: build/scan
+          if-no-files-found: ignore
           retention-days: 7
+
+  viewer:
+    # The shared viewer as the package serves it: the workbench app, a real build, and headless Chrome under the page's
+    # own Content-Security-Policy (scripts/browser-smoke.mjs, no Node.js dependencies).
+    runs-on: ubuntu-latest
+
+    name: Viewer in a browser
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: 8.4
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, sqlite, pdo_sqlite
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: |
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress --no-scripts
+          composer run prepare
+
+      - name: Build the workbench and its schema snapshot
+        run: |
+          composer build
+          php vendor/bin/testbench schema-viewer:build
+
+      - name: Open the viewer in Chrome
+        run: |
+          php vendor/bin/testbench serve --port=8000 > serve.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:8000/schema-viewer && break; sleep 1; done
+          VIEWER_URL=http://127.0.0.1:8000/schema-viewer CHROME_BIN=google-chrome node scripts/browser-smoke.mjs
 
   databases:
     # The inspector reads each database's own catalog, so the suite also runs on every database Laravel supports.

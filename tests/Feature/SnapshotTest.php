@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Laranex\LaravelSchemaViewer\Contract\Json;
+use Laranex\LaravelSchemaViewer\Contract\Validator;
 use Laranex\LaravelSchemaViewer\Snapshot;
 use Laranex\LaravelSchemaViewer\Tests\Fixtures\SideEffects\Noisy;
 
@@ -18,7 +20,17 @@ use Laranex\LaravelSchemaViewer\Tests\Fixtures\SideEffects\Noisy;
  */
 function servedTables(mixed $test): array
 {
-    return collect(viewerConfig($test)['schema']['connections'][0]['tables'])->pluck('name')->all();
+    return collect(viewerConfig($test)['document']['connections'][0]['tables'])->pluck('name')->all();
+}
+
+/**
+ * The changes kept beside the snapshot.
+ *
+ * @return list<array<string, mixed>>|null
+ */
+function keptChanges(): ?array
+{
+    return json_decode((string) file_get_contents(base_path('schema-viewer.changes.json')), true)['changes'];
 }
 
 it('writes the snapshot to schema-viewer.json in the project root', function (): void {
@@ -29,20 +41,20 @@ it('writes the snapshot to schema-viewer.json in the project root', function ():
         ->and(base_path('schema-viewer.json'))->toBeFile();
 });
 
-it('builds the snapshot as readable JSON with the document and every download', function (): void {
+it('builds the snapshot as a strictly valid laranex-schema 2.0 document in canonical form', function (): void {
     $this->artisan('schema-viewer:build')
         ->expectsOutputToContain('Schema snapshot written to')
         ->assertSuccessful();
 
     $contents = (string) file_get_contents($this->snapshot);
-    $data = json_decode($contents, true);
+    $document = Json::decode($contents);
 
-    expect($contents)->toStartWith("{\n    \"format\": 2,\n    \"document\": {\n        \"version\": 1,")
-        ->and($contents)->toEndWith("}\n")
-        ->and(array_keys($data))->toBe(['format', 'document', 'downloads', 'changes'])
-        ->and($data['changes'])->toBeNull()
-        ->and(array_keys($data['downloads']['testing']))->toBe(['mermaid', 'dbml', 'markdown'])
-        ->and($data['downloads']['testing']['mermaid'])->toStartWith('erDiagram');
+    expect($contents)->toStartWith("{\n  \"comparisons\": [],\n  \"connections\": [")
+        ->and($contents)->toBe(Json::canonical($document))
+        ->and(Validator::validate($document, strict: true))->toBe([])
+        ->and($document)->toMatchArray(['format' => 'laranex-schema', 'version' => '2.0', 'source' => 'combined'])
+        ->and($document)->not->toHaveKeys(['downloads', 'changes'])
+        ->and(keptChanges())->toBeNull();
 });
 
 it('writes the same file for the same schema, without when it was built', function (): void {
@@ -85,55 +97,57 @@ it('runs no model code in any web request', function (): void {
     $config = viewerConfig($this);
     viewerConfig($this, ['Accept-Encoding' => 'gzip']);
 
-    expect($config['schema']['models'][0]['class'])->toBe(Noisy::class)
+    expect($config['document']['models'][0]['className'])->toBe(Noisy::class)
         ->and(Noisy::$calls)->toBe([]);
 });
 
 it('carries the exact document, empty objects included', function (): void {
-    $document = buildSnapshot()->jsonSerialize();
-    unset($document['generatedAt']);
-
-    $html = (string) $this->get('/schema-viewer')->getContent();
-    $expected = strtr((string) json_encode($document, JSON_UNESCAPED_SLASHES), ['<' => '\\u003c', '>' => '\\u003e', '&' => '\\u0026']);
-
-    expect($html)->toContain('"schema":'.$expected.',"downloads":');
-});
-
-it('carries each connection\'s Mermaid, DBML and Markdown downloads', function (): void {
     buildSnapshot();
 
-    $downloads = viewerConfig($this)['downloads'];
+    $html = (string) $this->get('/schema-viewer')->getContent();
+    $expected = strtr(rtrim((string) file_get_contents($this->snapshot)), ['<' => '\\u003c', '>' => '\\u003e', '&' => '\\u0026']);
 
-    expect(array_keys($downloads))->toBe(['testing'])
-        ->and(array_keys($downloads['testing']))->toBe(['mermaid', 'dbml', 'markdown'])
-        ->and($downloads['testing']['mermaid'])->toStartWith('erDiagram');
+    expect($html)->toContain('{"document":'.$expected.',"changes":null,')
+        ->and(Json::canonical(Json::decode(json_encode(viewerConfig($this)['document']) ?: '')))->toBe((string) file_get_contents($this->snapshot));
 });
 
 it('tells how to build the snapshot when there is none', function (): void {
     expect(viewerConfig($this))->toBe([
-        'defaultConnection' => 'all',
-        'editor' => null,
         'missing' => 'No schema snapshot at [schema-viewer.json] yet. Run php artisan schema-viewer:build.',
+        'editor' => null,
+        'defaultConnection' => null,
     ]);
 
     buildSnapshot();
 
-    expect(viewerConfig($this))->toHaveKeys(['schema', 'downloads'])
-        ->and(viewerConfig($this)['missing'])->toBeNull();
+    expect(viewerConfig($this))->toHaveKeys(['document', 'changes'])
+        ->and(viewerConfig($this))->not->toHaveKey('missing');
 });
 
-it('tells how to build the snapshot again when it is damaged or from another version', function (string $contents): void {
+it('tells how to build the snapshot again when it is damaged, from laravel-schema-viewer 1.x or another version', function (string $contents, string $reason): void {
     file_put_contents($this->snapshot, $contents);
 
     $config = viewerConfig($this);
 
-    expect($config['missing'])->toBe('The schema snapshot at [schema-viewer.json] cannot be read: it is damaged or was written by another version. Run php artisan schema-viewer:build.')
-        ->and($config)->not->toHaveKey('schema');
+    expect($config['missing'])->toStartWith('The schema snapshot at [schema-viewer.json] ')
+        ->and($config['missing'])->toContain($reason)
+        ->and($config['missing'])->toEndWith('Run php artisan schema-viewer:build to write it again'.(str_contains($reason, '1.x') ? ' as a laranex-schema 2.0 document.' : '.'))
+        ->and($config)->not->toHaveKey('document');
 })->with([
-    'not JSON' => '{"format": 2, "docu',
-    'another format' => '{"format": 1, "document": {"connections": []}, "downloads": {}}',
-    'a connection without downloads' => '{"format": 2, "document": {"connections": [{"name": "testing"}]}, "downloads": {}}',
+    'not JSON' => ['{"format": 2, "docu', 'cannot be read: it is not JSON'],
+    'a laravel-schema-viewer 1.x snapshot' => ['{"format": 2, "document": {"version": 1, "connections": []}, "downloads": {}, "changes": null}', 'was written by laravel-schema-viewer 1.x, which this version no longer reads'],
+    'laranex-schema 1.0' => ['{"format": "laranex-schema", "version": "1.0"}', 'cannot be read: Unsupported laranex-schema version "1.0"; this reader supports 2.x'],
+    'another format' => ['{"format": "something-else"}', 'cannot be read: Not a laranex-schema document'],
+    'an invalid 2.0 document' => ['{"format": "laranex-schema", "version": "2.0"}', 'cannot be read: Invalid laranex-schema document: $: missing source'],
 ]);
+
+it('reads a newer 2.x minor leniently, ignoring what it does not know', function (): void {
+    buildSnapshot();
+    $document = Json::decode((string) file_get_contents($this->snapshot));
+    file_put_contents($this->snapshot, Json::canonical(['version' => '2.7', 'future' => ['field' => true]] + $document));
+
+    expect(viewerConfig($this)['document']['version'])->toBe('2.7');
+});
 
 it('keeps the application\'s jobs, events, cache and HTTP calls from the outside world while building', function (): void {
     config()->set('schema-viewer.models', [dirname(__DIR__).'/Fixtures/SideEffects']);
@@ -183,8 +197,8 @@ it('checks that the snapshot is up to date without writing it', function (): voi
     Schema::create('gadgets', fn (Blueprint $table) => $table->id());
 
     $this->artisan('schema-viewer:build', ['--check' => true])
-        ->expectsOutputToContain('The schema snapshot [schema-viewer.json] is out of date. Run php artisan schema-viewer:build and commit it.')
-        ->expectsOutputToContain('Table gadgets added: columns 1')
+        ->expectsOutputToContain('The schema snapshot [schema-viewer.json] is out of date. Run php artisan schema-viewer:build.')
+        ->expectsOutputToContain('Table gadgets added: 1 column')
         ->assertFailed();
 
     clearstatcache();
@@ -194,7 +208,7 @@ it('checks that the snapshot is up to date without writing it', function (): voi
 
 it('fails the check when there is no snapshot', function (): void {
     $this->artisan('schema-viewer:build', ['--check' => true])
-        ->expectsOutputToContain('No schema snapshot at [schema-viewer.json]. Run php artisan schema-viewer:build and commit it.')
+        ->expectsOutputToContain('No schema snapshot at [schema-viewer.json]. Run php artisan schema-viewer:build.')
         ->assertFailed();
 
     expect($this->snapshot)->not->toBeFile();
@@ -209,13 +223,13 @@ it('reads a snapshot checked out with CRLF line endings or a BOM as up to date',
 
 it('says what kind of difference the check found', function (string $edit, string $line): void {
     buildSnapshot();
-    $data = json_decode((string) file_get_contents($this->snapshot), true);
+    $data = Json::decode((string) file_get_contents($this->snapshot));
 
     $contents = match ($edit) {
-        'format' => (string) json_encode(['format' => 1] + $data),
+        'legacy' => (string) json_encode(['format' => 2, 'document' => ['version' => 1, 'connections' => []], 'downloads' => [], 'changes' => null]),
         'formatting' => (string) json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-        'hint' => (string) json_encode(['document' => ['hints' => array_slice($data['document']['hints'], 1)] + $data['document']] + $data, JSON_PRETTY_PRINT),
-        'model' => (string) json_encode(['document' => ['models' => array_slice($data['document']['models'], 1)] + $data['document']] + $data, JSON_PRETTY_PRINT),
+        'diagnostic' => Json::canonical(['diagnostics' => array_slice($data['diagnostics'], 1)] + $data),
+        'model' => Json::canonical(['models' => [['primaryKey' => ['uuid']] + $data['models'][0], ...array_slice($data['models'], 1)]] + $data),
     };
     file_put_contents($this->snapshot, $contents);
 
@@ -223,32 +237,47 @@ it('says what kind of difference the check found', function (string $edit, strin
         ->expectsOutputToContain($line)
         ->assertFailed();
 })->with([
-    'another format' => ['format', 'It was written by another version of laravel-schema-viewer.'],
+    'a laravel-schema-viewer 1.x snapshot' => ['legacy', 'was written by laravel-schema-viewer 1.x'],
     'formatting only' => ['formatting', 'Only its formatting differs.'],
-    'only the hints' => ['hint', 'such as the hints'],
-    'a model' => ['model', 'Model Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\'],
+    'only the diagnostics' => ['diagnostic', 'such as the diagnostics'],
+    'a model' => ['model', 'Model Laranex\\LaravelSchemaViewer\\Tests\\Fixtures\\Models\\Category changed: primaryKey ["uuid"] → ["id"]'],
 ]);
 
-it('keeps the listed changes when a build finds only the hints different', function (): void {
+it('keeps the listed changes when a build finds only the diagnostics different', function (): void {
     buildSnapshot();
     Schema::create('gadgets', fn (Blueprint $table) => $table->id());
     buildSnapshot();
     $before = json_decode((string) file_get_contents($this->snapshot), true);
+    $changes = keptChanges();
 
     // A rule or setting change can add or remove hints while the schema stays the same.
     config()->set('schema-viewer.hints.ignore', [['table' => '*']]);
     buildSnapshot();
     $after = json_decode((string) file_get_contents($this->snapshot), true);
+    $hints = fn (array $document): array => array_filter($document['diagnostics'], fn (array $d): bool => isset($d['extensions']['laravel']['hint']) && $d['subject']['type'] !== 'document' && $d['subject']['type'] !== 'relationship');
 
-    expect($before['document']['hints'])->not->toBe([])
-        ->and($after['document']['hints'])->toBe([])
-        ->and($before['changes'])->not->toBe([])
-        ->and($after['changes'])->toBe($before['changes']);
+    expect($hints($before))->not->toBe([])
+        ->and($hints($after))->toBe([])
+        ->and($changes)->not->toBe([])
+        ->and(keptChanges())->toBe($changes);
+});
+
+it('gives the page no changes that belong to another snapshot', function (): void {
+    buildSnapshot();
+    Schema::create('gadgets', fn (Blueprint $table) => $table->id());
+    buildSnapshot();
+
+    expect(viewerConfig($this)['changes'])->not->toBeNull();
+
+    // The snapshot built elsewhere, without its changes file.
+    file_put_contents($this->snapshot, str_replace('"note": null', '"note": "Built elsewhere."', (string) file_get_contents($this->snapshot)));
+
+    expect(viewerConfig($this)['changes'])->toBeNull();
 });
 
 it('lists what changed since the snapshot it replaces, and keeps that list while the schema stays the same', function (): void {
     buildSnapshot();
-    $changes = fn (): mixed => json_decode((string) file_get_contents($this->snapshot), true)['changes'];
+    $changes = fn (): mixed => keptChanges();
 
     expect($changes())->toBeNull();
 
@@ -260,8 +289,8 @@ it('lists what changed since the snapshot it replaces, and keeps that list while
     buildSnapshot();
     $first = $changes();
 
-    expect(collect($first)->map(fn (array $change): string => $change['type'].' '.$change['change'].' '.($change['table'] ?? '').' '.($change['name'] ?? ''))->all())
-        ->toContain('table added gadgets ', 'column added posts subtitle');
+    expect(collect($first)->map(fn (array $change): string => $change['type'].' '.$change['change'].' '.$change['label'].' '.($change['subject'] ?? ''))->all())
+        ->toContain('table added gadgets testing:gadgets', 'column added posts.subtitle testing:posts');
 
     $contents = (string) file_get_contents($this->snapshot);
     buildSnapshot();

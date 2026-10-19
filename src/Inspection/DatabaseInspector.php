@@ -51,7 +51,8 @@ final class DatabaseInspector
                 continue;
             }
 
-            $qualified = $this->qualify($table, isset($row['schema']) ? (string) $row['schema'] : null, is_string($defaultSchema) ? $defaultSchema : null);
+            $schema = isset($row['schema']) ? (string) $row['schema'] : null;
+            $qualified = $this->qualify($table, $schema, is_string($defaultSchema) ? $defaultSchema : null);
 
             if (Str::is($exclude, $qualified)) {
                 continue;
@@ -69,12 +70,19 @@ final class DatabaseInspector
                 package: $this->package($qualified, $packages),
                 indexDetails: $details !== null,
                 note: $notes['tables'][$name.':'.$qualified] ?? $notes['tables'][$qualified] ?? null,
+                schema: $qualified !== $table ? $schema : null,
             );
         }
 
         usort($tables, fn (Table $a, Table $b): int => strcmp($a->name, $b->name));
 
-        return new ConnectionSchema($name, $connection->getDriverName(), $tables);
+        return new ConnectionSchema(
+            $name,
+            $connection->getDriverName(),
+            $tables,
+            is_string($defaultSchema) && $defaultSchema !== '' ? $defaultSchema : null,
+            is_array($schemas) ? array_values(array_map('strval', $schemas)) : null,
+        );
     }
 
     /**
@@ -132,7 +140,28 @@ final class DatabaseInspector
             autoIncrement: (bool) ($row['auto_increment'] ?? false),
             comment: isset($row['comment']) && $row['comment'] !== '' ? (string) $row['comment'] : null,
             note: $notes[(string) $row['name']] ?? null,
+            collation: isset($row['collation']) && is_string($row['collation']) && $row['collation'] !== '' ? $row['collation'] : null,
+            generated: $this->generated($row['generation'] ?? null),
         ), $rows));
+    }
+
+    /**
+     * A generated column's kind and expression, as Laravel 11 and later report them.
+     *
+     * @return array{kind: 'stored'|'virtual'|null, expression: string|null}|null
+     */
+    private function generated(mixed $generation): ?array
+    {
+        if (! is_array($generation)) {
+            return null;
+        }
+
+        $type = is_string($generation['type'] ?? null) ? strtolower($generation['type']) : null;
+
+        return [
+            'kind' => in_array($type, ['stored', 'virtual'], true) ? $type : null,
+            'expression' => is_string($generation['expression'] ?? null) && $generation['expression'] !== '' ? $generation['expression'] : null,
+        ];
     }
 
     /**

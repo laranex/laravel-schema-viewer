@@ -4,65 +4,67 @@ declare(strict_types=1);
 
 namespace Laranex\LaravelSchemaViewer\Export;
 
-use Laranex\LaravelSchemaViewer\Schema\SchemaDocument;
-use RuntimeException;
+use Laranex\LaravelSchemaViewer\Contract\Json;
+use Laranex\LaravelSchemaViewer\Viewer\ViewerAssets;
 
 /**
- * The whole viewer as one standalone HTML file: the app, its styles and fonts, the schema and every connection's
- * downloads, inlined. It opens straight from disk or from any static host, without the Laravel app or its API.
- *
- * The app and the schema are gzipped and base64 encoded, a tenth of their size for a large schema; a small module
- * inflates them with the browser's DecompressionStream and starts the app. The viewer's own HTML download builds the
- * same file (ui/src/standalone.ts), with the same loader.
+ * The whole viewer as one self-contained HTML file, the same page as the shared viewer's Download → "This page as HTML"
+ * (a port of laranex-schema-viewer-ui's viewer/offline.ts): the single-file viewer script (offline.js, with the layout
+ * engine inlined), its stylesheet with the WOFF2 fonts embedded, the brand mark as its favicon, and the document as
+ * data. It opens from file:// with no network access and carries its own Content-Security-Policy: the one script is
+ * allowed by its SHA-256 hash, everything else comes from data: URLs. No editor links (they would carry local paths).
  */
 final class HtmlExporter
 {
-    /**
-     * Inflates the config and the app, then starts the app. Kept identical to LOADER in ui/src/standalone.ts.
-     */
-    public const LOADER = "const unpack = async (id) => new Response(new Blob([Uint8Array.from(atob(document.getElementById(id).textContent.trim()), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('gzip'))).text();\n"
-        ."try {\n"
-        ."    window.__SCHEMA_VIEWER__ = JSON.parse(await unpack('schema-viewer-config'));\n"
-        ."    await import(URL.createObjectURL(new Blob([await unpack('schema-viewer-app')], { type: 'text/javascript' })));\n"
-        ."} catch (e) {\n"
-        ."    document.getElementById('root').textContent = 'This page needs a current browser (Chrome, Edge, Firefox or Safari 16.4 or later): ' + e.message;\n"
-        .'}';
-
-    public function __construct(private readonly string $dist = __DIR__.'/../../dist') {}
+    public function __construct(private readonly ViewerAssets $assets = new ViewerAssets) {}
 
     /**
-     * @param  string  $defaultConnection  What the viewer opens on: 'all' or one connection's name.
+     * @param  array<string, mixed>  $document  A laranex-schema 2.x document.
+     * @param  list<array<string, mixed>>|null  $changes  What changed since the previous build.
+     * @param  string|null  $defaultConnection  The connection id to open on; null for all of them.
      */
-    public function export(SchemaDocument $document, string $defaultConnection = 'all'): string
+    public function export(array $document, ?array $changes = null, ?string $defaultConnection = null, string $title = 'Schema Viewer'): string
     {
-        $config = json_encode(
-            ['schema' => $document, 'downloads' => self::downloads($document), 'defaultConnection' => $defaultConnection],
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
-        );
-
-        $config = base64_encode((string) gzencode($config, 9));
-        $js = base64_encode((string) gzencode($this->read('app.js'), 9));
-        $loader = self::LOADER;
-        // Nothing inlined may close its own tag early; base64 never can.
-        $css = str_ireplace('</style', '<\/style', $this->styles());
+        // Nothing inside may end its element early: "</script", "<!--" and "<script" become "\x3C…" (the same string in
+        // JavaScript), "</style" becomes "<\/style" (the same in CSS), and "<" in the JSON becomes "<".
+        $script = (string) preg_replace('/<(\/?script|!--)/i', '\\x3C$1', $this->assets->contents($this->assets->entry('offline')));
+        $style = (string) preg_replace('/<\/style/i', '<\\/style', $this->style());
+        $data = str_replace('<', '\\u003c', Json::compact([
+            'document' => Exporters::normalized($document),
+            'changes' => $changes,
+            'defaultConnection' => $defaultConnection,
+        ]));
+        $policy = implode('; ', [
+            "default-src 'none'",
+            "script-src 'sha256-".base64_encode(hash('sha256', $script, true))."'",
+            "style-src 'unsafe-inline'",
+            'img-src data: blob:',
+            'font-src data:',
+            "connect-src 'none'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'none'",
+        ]);
+        $attribute = fn (string $value): string => str_replace(['&', '"', '<'], ['&amp;', '&quot;', '&lt;'], $value);
+        $favicon = 'data:image/svg+xml,'.self::encodeUriComponent(trim($this->assets->contents('favicon.svg')));
 
         return <<<HTML
             <!doctype html>
             <html lang="en">
             <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <meta name="robots" content="noindex, nofollow">
-                <title>Schema Viewer</title>
-                <style>{$css}</style>
-                <script type="module">
-            {$loader}
-                </script>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <meta name="color-scheme" content="light dark">
+            <meta http-equiv="Content-Security-Policy" content="{$policy}">
+            <meta name="robots" content="noindex, nofollow">
+            <title>{$attribute($title)}</title>
+            <link rel="icon" href="{$attribute($favicon)}" type="image/svg+xml">
+            <style id="lsv-offline-style">{$style}</style>
             </head>
             <body>
-                <div id="root"></div>
-                <script type="application/octet-stream" id="schema-viewer-config">{$config}</script>
-                <script type="application/octet-stream" id="schema-viewer-app">{$js}</script>
+            <div id="schema-viewer"></div>
+            <script type="application/json" id="schema-viewer-data">{$data}</script>
+            <script type="module" id="lsv-offline-app">{$script}</script>
             </body>
             </html>
 
@@ -70,48 +72,25 @@ final class HtmlExporter
     }
 
     /**
-     * Every connection's Mermaid, DBML and Markdown files, by connection name.
-     *
-     * @return array<string, array{mermaid: string, dbml: string, markdown: string}>
+     * The viewer's stylesheet with its WOFF2 fonts as data URLs; the WOFF fallbacks are dropped, since every browser
+     * that runs the viewer reads WOFF2.
      */
-    public static function downloads(SchemaDocument $document): array
+    private function style(): string
     {
-        $downloads = [];
-
-        foreach ($document->connections as $connection) {
-            $downloads[$connection->name] = [
-                'mermaid' => (new MermaidExporter)->export($connection),
-                'dbml' => (new DbmlExporter)->export($connection, $document->note),
-                'markdown' => (new MarkdownExporter)->export($connection, $document->note),
-            ];
-        }
-
-        return $downloads;
-    }
-
-    /**
-     * The stylesheet with its WOFF2 fonts embedded; the WOFF fallbacks are dropped, since every browser that runs the
-     * viewer reads WOFF2.
-     */
-    private function styles(): string
-    {
-        $css = (string) preg_replace('/,\s*url\(\.\/assets\/[\w.-]+\.woff\)\s*format\("woff"\)/', '', $this->read('app.css'));
+        $css = (string) preg_replace('/,\s*url\(["\']?[^"\')]+\.woff["\']?\)\s*format\(["\']woff["\']\)/', '', $this->assets->contents($this->assets->entry('style')));
 
         return (string) preg_replace_callback(
-            '/url\(\.\/assets\/([\w.-]+\.woff2)\)/',
-            fn (array $match): string => 'url(data:font/woff2;base64,'.base64_encode($this->read('assets/'.$match[1])).')',
+            '/url\(["\']?([^"\')]+\.woff2)["\']?\)/',
+            fn (array $match): string => 'url(data:font/woff2;base64,'.base64_encode($this->assets->contents((string) preg_replace('#^\./#', '', $match[1]))).')',
             $css,
         );
     }
 
-    private function read(string $file): string
+    /**
+     * JavaScript's encodeURIComponent: everything but A-Z a-z 0-9 - _ . ! ~ * ' ( ) percent-encoded as UTF-8.
+     */
+    private static function encodeUriComponent(string $value): string
     {
-        $contents = @file_get_contents($this->dist.'/'.$file);
-
-        if ($contents === false) {
-            throw new RuntimeException("The viewer asset [{$file}] is missing from [{$this->dist}].");
-        }
-
-        return $contents;
+        return strtr(rawurlencode($value), ['%21' => '!', '%2A' => '*', '%27' => "'", '%28' => '(', '%29' => ')']);
     }
 }

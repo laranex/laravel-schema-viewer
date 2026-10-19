@@ -8,52 +8,50 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Laranex\LaravelSchemaViewer\Contract\Json;
+use Laranex\LaravelSchemaViewer\Contract\Producer;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
 use Laranex\LaravelSchemaViewer\Snapshot;
 use Laranex\LaravelSchemaViewer\SnapshotUnavailable;
+use Laranex\LaravelSchemaViewer\Viewer\ViewerAssets;
 
 /**
- * The viewer page: the built app plus the schema and every connection's downloads from the snapshot, as a static
- * export carries them, or, without a readable snapshot, what to run to build it. No model code runs here.
+ * The viewer page: the shared viewer (laranex-schema-viewer-ui's standalone bundle) with the snapshot's laranex-schema
+ * document and the host settings (changes since the previous build, editor links, the connection to open on) as an
+ * inline JSON data block, or, without a readable snapshot, what to run to build it. The page runs no inline script, so
+ * it works under its own strict Content-Security-Policy. No model code runs here.
  */
 final class ViewerController
 {
     /**
-     * Characters escaped in the page's JSON so it cannot end the script element or open a comment in it. They only ever
+     * The policy the shared bundle runs under: its own scripts, styles and fonts only (React Flow positions with inline
+     * styles), nothing framed, posted or embedded.
+     */
+    public const POLICY = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+
+    /**
+     * Characters escaped in the page's JSON so it cannot end the data block or open a comment in it. They only ever
      * appear inside JSON strings, where the escapes mean the same.
      */
     private const SCRIPT_SAFE = ['<' => '\\u003c', '>' => '\\u003e', '&' => '\\u0026', "\u{2028}" => '\\u2028', "\u{2029}" => '\\u2029'];
 
-    public function __invoke(Request $request, UrlGenerator $url, SchemaViewer $viewer, Snapshot $snapshot, Application $app): Response
+    public function __invoke(Request $request, UrlGenerator $url, SchemaViewer $viewer, Snapshot $snapshot, ViewerAssets $assets, Application $app): Response
     {
-        try {
-            // The document as it was built, so empty objects stay {}.
-            $schema = $snapshot->json();
-            $downloads = json_encode((object) $snapshot->files(), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-            $changes = $snapshot->changes();
-            $missing = null;
-        } catch (SnapshotUnavailable $e) {
-            $schema = $downloads = $changes = null;
-            $missing = $e->getMessage();
-        }
-
-        $version = substr(hash('sha256', (string) @filemtime(__DIR__.'/../../../dist/app.js')), 0, 12);
-        $asset = fn (string $file): string => $url->route('schema-viewer.asset', ['file' => $file]).'?v='.$version;
-
-        $config = json_encode([
-            'defaultConnection' => $viewer->defaultConnection(),
+        $default = $viewer->defaultConnection();
+        $settings = [
             'editor' => $viewer->editorHref(),
-            'missing' => $missing,
-        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            'defaultConnection' => $default !== 'all' ? Producer::connectionId($default) : null,
+        ];
 
-        if ($schema !== null) {
-            $config = substr($config, 0, -1).',"schema":'.$schema.',"downloads":'.$downloads.',"changes":'.$changes.'}';
+        try {
+            $document = $snapshot->json();
+            $config = '{"document":'.$document.',"changes":'.Json::compact($snapshot->changes()).','.substr(Json::compact($settings), 1);
+        } catch (SnapshotUnavailable $e) {
+            $config = Json::compact(['missing' => $e->getMessage(), ...$settings]);
         }
 
         $config = strtr($config, self::SCRIPT_SAFE);
-
-        $css = htmlspecialchars($asset('app.css'), ENT_QUOTES);
-        $js = htmlspecialchars($asset('app.js'), ENT_QUOTES);
+        $asset = fn (string $file): string => htmlspecialchars($url->route('schema-viewer.asset', ['version' => $assets->version(), 'file' => $file]), ENT_QUOTES);
         $nonce = $this->nonce($app);
         $nonce = $nonce !== null ? ' nonce="'.htmlspecialchars($nonce, ENT_QUOTES).'"' : '';
 
@@ -62,20 +60,30 @@ final class ViewerController
             <html lang="en">
             <head>
                 <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <meta name="color-scheme" content="light dark">
                 <meta name="robots" content="noindex, nofollow">
                 <title>Schema Viewer</title>
-                <link rel="stylesheet" href="{$css}"{$nonce}>
-                <script{$nonce}>window.__SCHEMA_VIEWER__ = {$config};</script>
-                <script type="module" src="{$js}"{$nonce}></script>
+                <link rel="icon" href="{$asset('favicon.svg')}" type="image/svg+xml">
+                <link rel="icon" href="{$asset('favicon.ico')}" sizes="16x16 32x32">
+                <link rel="stylesheet" href="{$asset($assets->entry('style'))}"{$nonce}>
+                <script type="module" src="{$asset($assets->entry('script'))}"{$nonce}></script>
             </head>
             <body>
-                <div id="root"></div>
+                <div id="schema-viewer"></div>
+                <script type="application/json" id="schema-viewer-data">{$config}</script>
             </body>
             </html>
             HTML;
 
-        $headers = ['Content-Type' => 'text/html; charset=utf-8', 'Cache-Control' => 'no-store', 'Vary' => 'Accept-Encoding'];
+        $headers = [
+            'Content-Type' => 'text/html; charset=utf-8',
+            'Cache-Control' => 'no-store',
+            'Content-Security-Policy' => self::POLICY,
+            'X-Content-Type-Options' => 'nosniff',
+            'Referrer-Policy' => 'same-origin',
+            'Vary' => 'Accept-Encoding',
+        ];
 
         // A large schema makes a large page; it compresses well.
         if (str_contains(strtolower((string) $request->header('Accept-Encoding')), 'gzip') && ($compressed = gzencode($html, 6)) !== false) {
@@ -86,8 +94,8 @@ final class ViewerController
     }
 
     /**
-     * The CSP nonce the application gave Vite with Vite::useCspNonce(), so a strict Content-Security-Policy lets the
-     * page's scripts run. Vite ships with laravel/framework only, so it is looked up, never required.
+     * The CSP nonce the application gave Vite with Vite::useCspNonce(), for an application whose own policy allows
+     * scripts by nonce. Vite ships with laravel/framework only, so it is looked up, never required.
      */
     private function nonce(Application $app): ?string
     {
