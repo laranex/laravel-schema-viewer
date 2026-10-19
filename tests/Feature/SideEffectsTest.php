@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use GuzzleHttp\Client;
+use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
@@ -20,7 +21,8 @@ use Laranex\LaravelSchemaViewer\Tests\Fixtures\SideEffects\Noisy;
 /*
  * Reading models runs the application's code. SchemaViewer::document() keeps every query from reaching a database and
  * Eloquent model events from firing; the commands that read the models (build, diff, export and check) also fake the
- * rest. The commands that only read saved snapshots run no model code at all.
+ * rest. The commands that only read saved snapshots (diff, and export and check with --snapshot) run no model code at
+ * all.
  */
 
 beforeEach(function (): void {
@@ -178,3 +180,28 @@ it('runs no model code when a command only reads saved snapshots', function (): 
         ->and(Artisan::output())->toContain('No schema changes.')
         ->and(Noisy::$calls)->toBe([]);
 });
+
+it('runs no model code and isolates nothing when export and check read the snapshot', function (string $command, array $parameters): void {
+    Artisan::call('schema-viewer:build');
+    $faked = 0;
+    app()->rebinding(BusDispatcher::class, function () use (&$faked): void {
+        $faked++;
+    });
+
+    Artisan::call($command, array_diff_key($parameters, ['--snapshot' => true]));
+    $live = $faked;
+    $faked = 0;
+    Noisy::$calls = [];
+
+    Artisan::call($command, $parameters);
+
+    expect($live)->toBeGreaterThan(0)
+        ->and($faked)->toBe(0)
+        ->and(Noisy::$calls)->toBe([])
+        ->and(Artisan::output())->toContain('users');
+})->with([
+    'export' => ['schema-viewer:export', ['--snapshot' => true]],
+    'export as Mermaid' => ['schema-viewer:export', ['--format' => 'mermaid', '--orm' => true, '--snapshot' => true]],
+    'check' => ['schema-viewer:check', ['--fail-on' => ['duplicate_index'], '--snapshot' => true]],
+    'check as JSON' => ['schema-viewer:check', ['--format' => 'json', '--snapshot' => true]],
+]);

@@ -103,6 +103,10 @@ it('keeps Eloquent facts and hint ignore rules in extensions', function () {
         ->and($hint)->toMatchArray(['category' => 'lint', 'severity' => 'warning', 'certainty' => 'certain', 'subject' => ['type' => 'column', 'id' => 'testing:posts', 'columns' => ['category_id'], 'label' => 'posts.category_id']])
         ->and($hint['extensions']['laravel'])->toBe([
             'hint' => 'relation_without_foreign_key',
+            'connection' => 'testing',
+            'table' => 'posts',
+            'columns' => 'category_id',
+            'relation' => null,
             'ignore' => ['connection' => 'testing', 'table' => 'posts', 'kind' => 'relation_without_foreign_key', 'columns' => 'category_id'],
             'ignorePhp' => "['connection' => 'testing', 'table' => 'posts', 'kind' => 'relation_without_foreign_key', 'columns' => 'category_id'],",
         ])

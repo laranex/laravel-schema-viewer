@@ -12,6 +12,8 @@ use Laranex\LaravelSchemaViewer\Contract\Producer;
 use Laranex\LaravelSchemaViewer\Export\Exporters;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
+use Laranex\LaravelSchemaViewer\Snapshot;
+use Laranex\LaravelSchemaViewer\SnapshotUnavailable;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -23,11 +25,12 @@ final class ExportCommand extends Command
         {--format=json : json, mermaid, dbml, markdown or html}
         {--connection= : The connection to export: Mermaid, DBML and Markdown default to the default connection, JSON to every connection}
         {--orm : Mermaid and Markdown: also the Eloquent relationships and inferred associations, labelled apart from the foreign keys}
-        {--output= : Write to this file instead of the terminal; for html, a .html file or a folder (default: schema-viewer)}';
+        {--output= : Write to this file instead of the terminal; for html, a .html file or a folder (default: schema-viewer)}
+        {--snapshot : Export the saved schema-viewer.json instead of reading the models and the database, running no model code}';
 
     protected $description = 'Export the database schema and Eloquent relationships as laranex-schema JSON, Mermaid, DBML, Markdown or a standalone HTML viewer';
 
-    public function handle(SchemaViewer $viewer, Isolation $isolation, ConnectionResolverInterface $connections): int
+    public function handle(SchemaViewer $viewer, Isolation $isolation, Snapshot $snapshot, ConnectionResolverInterface $connections): int
     {
         $format = strtolower((string) $this->option('format'));
 
@@ -37,12 +40,23 @@ final class ExportCommand extends Command
             return self::INVALID;
         }
 
-        $schema = $isolation->document($viewer);
-        $document = (new Producer)->document($schema);
+        if ($this->option('snapshot')) {
+            try {
+                $document = $snapshot->document();
+            } catch (SnapshotUnavailable $e) {
+                $this->components->error($e->getMessage());
+
+                return self::INVALID;
+            }
+        } else {
+            $document = (new Producer)->document($isolation->document($viewer));
+        }
+
         $option = $this->option('connection');
         $name = is_string($option) && $option !== '' ? $option : ($format === 'json' || $format === 'html' ? null : $connections->getDefaultConnection());
+        $ids = array_column(is_array($document['connections'] ?? null) ? $document['connections'] : [], 'id');
 
-        if ($name !== null && $schema->connection($name) === null) {
+        if ($name !== null && ! in_array(Producer::connectionId($name), $ids, true)) {
             $this->components->error("The schema has no connection [{$name}].");
 
             return self::INVALID;

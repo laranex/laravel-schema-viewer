@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Laranex\LaravelSchemaViewer\Schema;
 
 use JsonSerializable;
+use UnexpectedValueException;
 
 /**
  * One hint about one table, narrowed down by the columns it is about (comma separated) or the relation method
@@ -21,6 +22,34 @@ final class Hint implements JsonSerializable
         public readonly ?string $relation = null,
         public readonly ?string $model = null,
     ) {}
+
+    /**
+     * The hint a laranex-schema diagnostic carries in extensions.laravel (see Producer), or null for a diagnostic that
+     * is not one of the package's hints. The model is not kept: it only chose the diagnostic's subject.
+     *
+     * @param  array<mixed>  $diagnostic
+     *
+     * @throws UnexpectedValueException When extensions.laravel names a hint but does not hold all of it.
+     */
+    public static function fromDiagnostic(array $diagnostic): ?self
+    {
+        $extensions = $diagnostic['extensions'] ?? null;
+        $laravel = is_array($extensions) ? ($extensions['laravel'] ?? null) : null;
+
+        if (! is_array($laravel) || ! array_key_exists('hint', $laravel)) {
+            return null;
+        }
+
+        $kind = is_string($laravel['hint']) ? HintKind::tryFrom($laravel['hint']) : null;
+        $message = $diagnostic['message'] ?? null;
+        $optional = fn (string $key): bool => array_key_exists($key, $laravel) && ($laravel[$key] === null || is_string($laravel[$key]));
+
+        if ($kind === null || ! is_string($message) || ! is_string($laravel['connection'] ?? null) || ! is_string($laravel['table'] ?? null) || ! $optional('columns') || ! $optional('relation')) {
+            throw new UnexpectedValueException('a diagnostic\'s extensions.laravel does not hold a whole hint (hint, connection, table, columns and relation)');
+        }
+
+        return new self($kind, $laravel['connection'], $laravel['table'], $message, $laravel['columns'], $laravel['relation']);
+    }
 
     /**
      * The hints.ignore rules that leave out this hint, from the narrowest to the widest.

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Laranex\LaravelSchemaViewer\Contract\Json;
+use Laranex\LaravelSchemaViewer\Contract\Producer;
 use Laranex\LaravelSchemaViewer\Contract\Validator;
 use Laranex\LaravelSchemaViewer\Export\HtmlExporter;
 use Laranex\LaravelSchemaViewer\SchemaViewer;
@@ -285,7 +286,11 @@ it('prints the check as JSON for scripts and agents', function (): void {
         ->and(array_sum($json['summary']['byKind']))->toBe(count($hints))
         ->and($json['summary']['byKind']['model_without_table'])->toBe(1)
         ->and(array_keys($json['hints'][0]))->toBe(['kind', 'severity', 'certainty', 'connection', 'table', 'columns', 'relation', 'message', 'fails', 'ignore', 'ignorePhp'])
-        ->and(array_column($json['hints'], 'message'))->toBe(array_map(fn ($hint): string => $hint->message, $hints));
+        ->and(array_column($json['hints'], 'message'))->toBe(array_values(array_map(
+            fn (array $diagnostic): string => $diagnostic['message'],
+            array_filter((new Producer)->document(app(SchemaViewer::class)->document())['diagnostics'], fn (array $diagnostic): bool => isset($diagnostic['extensions']['laravel'])),
+        )))
+        ->and(array_column($json['hints'], 'message'))->toEqualCanonicalizing(array_map(fn ($hint): string => $hint->message, $hints));
 
     Artisan::call('schema-viewer:check');
     $text = Artisan::output();

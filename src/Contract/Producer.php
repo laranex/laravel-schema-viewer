@@ -27,8 +27,9 @@ use Laranex\LaravelSchemaViewer\Schema\Table;
  * tables (schema-qualified outside the default schema), <table id>:index:<name> and <table id>:fk:<name> for indexes
  * and foreign keys, the class for models and Class::method for relationships. Links, derived links and inferred
  * associations follow the shared rules (Graph, Inference). Eloquent's own facts are in extensions.eloquent, a hint's
- * Laravel kind and ignore rule in extensions.laravel. The package computes no comparisons and no migration tracks, so
- * both are always empty. The result is strictly validated.
+ * Laravel kind, connection, table, columns, relation and ignore rule in extensions.laravel, so the hint reads back from
+ * the document (Hint::fromDiagnostic). The package computes no comparisons and no migration tracks, so both are always
+ * empty. The result is strictly validated.
  */
 final class Producer
 {
@@ -697,7 +698,15 @@ final class Producer
 
         $rules = $hint->ignoreRules();
         $this->diagnose($kind, $category, $hint->kind->severity(), $hint->kind->certainty(), $subject, $hint->message, [
-            'laravel' => ['hint' => $hint->kind->value, 'ignore' => $rules['hint'], 'ignorePhp' => IgnoreRule::php($rules['hint']).','],
+            'laravel' => [
+                'hint' => $hint->kind->value,
+                'connection' => $hint->connection,
+                'table' => $hint->table,
+                'columns' => $hint->columns,
+                'relation' => $hint->relation,
+                'ignore' => $rules['hint'],
+                'ignorePhp' => IgnoreRule::php($rules['hint']).',',
+            ],
         ]);
     }
 
