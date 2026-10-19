@@ -90,11 +90,17 @@ The command lists every hint and exits non-zero when one of a `hints.fail_on` ki
 
 ### Build the document in CI
 
-Build the document in CI instead of committing it, so every job reads the schema the migrations and models make now:
+Build the document in CI instead of committing it, so every job reads the schema the migrations and models make now. Stop at the first failure, and remove any snapshot left from an earlier run first: a failed build keeps the previous file, and `--snapshot` would check that stale file instead of failing. With no file, `schema-viewer:check --snapshot` exits 2.
 
 ```bash
-php artisan migrate --force && php artisan schema-viewer:build && php artisan schema-viewer:check --snapshot
+set -euo pipefail
+rm -f schema-viewer.json schema-viewer.changes.json
+php artisan migrate --force
+php artisan schema-viewer:build
+php artisan schema-viewer:check --snapshot
 ```
+
+Never cache or restore `schema-viewer.json` between CI jobs or runs.
 
 To put a pull request's schema changes in the job summary, build the base branch's document first (with that branch's dependencies) and keep it outside the working tree:
 
