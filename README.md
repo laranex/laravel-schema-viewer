@@ -56,6 +56,30 @@ or a Composer script, `"scan": "@php artisan schema-viewer:scan --tracked --untr
 
 A synthetic fixture you commit on purpose is listed by exact path and SHA-256 in `.laranex-schema-allowlist.json` at the project root. The scan does not decode compressed or encoded content, and does not read SVG, PNG, DBML, Mermaid or Markdown exports: once exported, a file is yours to keep out of the repository.
 
+## Ask an agent about your schema (MCP)
+
+This package has no MCP server of its own. `schema-viewer.json` is a standard [laranex-schema](https://github.com/laranex/schema-viewer-ui/blob/main/docs/contract.md) 2.0 document, so the read-only MCP server of [Python Schema Viewer](https://laranex.github.io/python-schema-viewer/mcp) serves it as it is. Build the document first, then point your MCP client at it (this needs [uv](https://docs.astral.sh/uv/), not a Python project):
+
+```bash
+php artisan schema-viewer:build
+uvx --from 'laranex-schema-viewer[mcp]' laranex-schema-viewer mcp --snapshot schema-viewer.json
+```
+
+For example, in a project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "schema-viewer": {
+      "command": "uvx",
+      "args": ["--from", "laranex-schema-viewer[mcp]", "laranex-schema-viewer", "mcp", "--snapshot", "schema-viewer.json"]
+    }
+  }
+}
+```
+
+It runs over stdio only and offers six read-only tools (overview, search, tables, models, relationships and stored comparisons). The server reads only that file: it runs no application code and opens no database or network connection (`uvx` downloads the package the first time). Rebuild the document when the schema changes; the server reads the file as it was last built.
+
 ## Security notice
 
 - The viewer is a development tool: install the package with `--dev` and never expose the viewer in production. Turning it on outside `local` is a security exception that needs your own `viewSchema` gate or `SchemaViewer::auth()`.
