@@ -57,7 +57,7 @@ Every setting has a default, so most apps configure nothing. Publish `config/sch
 - `exclude_tables` (never shown) and `framework_tables` (shown, tagged, no hints); wildcards allowed.
 - `package_tables`: maps Composer package names to table patterns (default: Laravel's own packages, Passport `oauth_*`, Cashier, Cashier Paddle, Pennant `features`, Pulse `pulse_*`, Sanctum `personal_access_tokens`, Telescope `telescope_*`); while a package is installed its tables are tagged with its name and still get hints. Add third-party packages there, or set `false` to tag nothing.
 - `notes`: your own notes, shown in the viewer next to the database's comments and written into the exports: `project` (one string), `tables` (`['orders' => '…']`), `columns` (`['orders' => ['status' => '…']]`) and `relationships`, by the table and the columns that hold the key (`['orders' => ['user_id' => '…']]`, composite keys comma separated; JSON and viewer only). A table name applies on every connection with that table; `'analytics:events'` picks one connection and wins. Values must be strings; `schema-viewer:build` warns about notes that match nothing.
-- `hints.ignore`: a list of rules; a hint is left out when it matches every field a rule names (`connection` and `table` take wildcards, plus `kind`, `columns`, `relation`, and `certainty`: `certain` or `likely`), e.g. `['kind' => 'morph_without_map']`, `['connection' => 'mysql', 'table' => 'audit_logs']`, `['table' => 'oauth_*']`, `['certainty' => 'likely']`, `['connection' => 'mysql', 'table' => 'comments', 'kind' => 'relation_without_foreign_key', 'columns' => 'user_id']`. Each hint is a diagnostic in the document with its narrowest rule in `extensions.laravel.ignore` (and as PHP in `ignorePhp`), and `schema-viewer:check` prints it too; copy those rather than writing rules by hand. Unknown fields, kinds or certainties are rejected.
+- `hints.ignore`: a list of rules; a hint is left out when it matches every field a rule names (`connection` and `table` take wildcards, plus `kind`, `columns`, `relation`, and `certainty`: `certain` or `likely`), e.g. `['kind' => 'morph_without_map']`, `['connection' => 'mysql', 'table' => 'audit_logs']`, `['table' => 'oauth_*']`, `['certainty' => 'likely']`, `['connection' => 'mysql', 'table' => 'comments', 'kind' => 'relation_without_foreign_key', 'columns' => 'user_id']`. Each hint is a diagnostic in the document with its kind, connection, table, columns and relation in `extensions.laravel` and its narrowest rule in `extensions.laravel.ignore` (and as PHP in `ignorePhp`), and `schema-viewer:check` prints it too; copy those rather than writing rules by hand. Unknown fields, kinds or certainties are rejected.
 - `hints.fail_on`: kinds that fail `schema-viewer:check`.
 
 Outside `local`, and for any request to a local app from another machine, the viewer needs a gate:
@@ -86,14 +86,14 @@ php artisan schema-viewer:check
 php artisan schema-viewer:check --fail-on=foreign_key_without_index --fail-on=unresolved_relation
 ```
 
-The command lists every hint and exits non-zero when one of a `hints.fail_on` kind remains (or of the kinds passed with `--fail-on`). `--format=json` prints the same as one JSON document for scripts and agents, with the same exit codes. Under each hint it prints the narrowest `hints.ignore` rule that leaves it out; add that rule to the config when the team accepts the hint, rather than lowering `fail_on`.
+The command lists every hint and exits non-zero when one of a `hints.fail_on` kind remains (or of the kinds passed with `--fail-on`). `--format=json` prints the same as one JSON document for scripts and agents, with the same exit codes. Under each hint it prints the narrowest `hints.ignore` rule that leaves it out; add that rule to the config when the team accepts the hint, rather than lowering `fail_on`. Right after `schema-viewer:build`, `schema-viewer:check --snapshot` checks the hints of the `schema-viewer.json` it wrote without reading the models again: the same output and exit codes, 2 when the file is missing or unreadable. Hints a `hints.ignore` rule left out at build time are not in the file, so build again after removing a rule.
 
 ### Build the document in CI
 
 Build the document in CI instead of committing it, so every job reads the schema the migrations and models make now:
 
 ```bash
-php artisan migrate --force && php artisan schema-viewer:build && php artisan schema-viewer:check
+php artisan migrate --force && php artisan schema-viewer:build && php artisan schema-viewer:check --snapshot
 ```
 
 To put a pull request's schema changes in the job summary, build the base branch's document first (with that branch's dependencies) and keep it outside the working tree:
@@ -123,7 +123,7 @@ Finds laranex-schema documents by content, not by name: in the Git index (the st
 php artisan schema-viewer:export --format=html --output=build/schema-viewer
 ```
 
-Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer, its fonts and the document in one file, the same page as the viewer's Download → "This page as HTML", with its own Content-Security-Policy. It opens from disk or any static host without the Laravel app, its database or the network, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. An export of a private schema is sensitive: once exported, storing and sharing the file is up to you, and the package does not track it. The command refuses to write into `public/` or `storage/app/public`; never commit an export or host it where the schema should not be seen.
+Writes `build/schema-viewer/index.html` (or the `.html` file you name): the whole viewer, its fonts and the document in one file, the same page as the viewer's Download → "This page as HTML", with its own Content-Security-Policy. It opens from disk or any static host without the Laravel app, its database or the network, so it suits a pull request artifact, CI pages or a teammate without a database. It shows the schema as it was when exported; export again after migrations. `--snapshot` exports the `schema-viewer.json` the last build wrote, without running model code (any `--format` takes it). An export of a private schema is sensitive: once exported, storing and sharing the file is up to you, and the package does not track it. The command refuses to write into `public/` or `storage/app/public`; never commit an export or host it where the schema should not be seen.
 
 ### Open it on a server
 

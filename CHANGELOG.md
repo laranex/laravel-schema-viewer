@@ -23,8 +23,13 @@ All notable changes to `laravel-schema-viewer` will be documented in this file.
 ### Added
 - `php artisan schema-viewer:scan` finds schema snapshots by content, with the options, report and exit codes of the shared scanner (laranex-schema-viewer-ui's `contract/scan.mjs`): `--tracked` (the Git index, staged bytes included, and files tracked before they were ignored), `--untracked` (files Git would add), `--artifacts DIR` (build output, ignore rules not applied) and `--history` (every past version; a shallow clone fails). Name at least one scope. It prints one line of counts; `--json` and `--report FILE` give the `laranex-schema-scan` report, with paths but never file content. Exit codes: 0 clean, 1 snapshot found, 2 scan failed or incomplete (usage errors included), 3 uncertain. Synthetic fixtures committed on purpose are listed by path and SHA-256 in `.laranex-schema-allowlist.json`. Base64 or compressed payloads and SVG, PNG, DBML, Mermaid or Markdown exports are not detected.
 - The viewer page sends a strict Content-Security-Policy (`script-src 'self'`, no inline script) and serves only the files of the viewer's manifest, under its fingerprint.
+- `schema-viewer:export --snapshot` and `schema-viewer:check --snapshot` read the saved `schema-viewer.json` instead of the models and the database, and run no model code: the same output, byte for byte, and the same exit codes as the live commands for the schema the snapshot holds, with every `--format`, `--connection`, `--orm`, `--output` and `--fail-on`. A missing, damaged or 1.x snapshot exits 2 with the message to build it again (`check --format=json` reports it as its `error`). Hints that `hints.ignore` left out when the snapshot was built are not in it: rules added later still apply, removed ones need a new build.
 - `schema-viewer:export --orm` adds the Eloquent relationships and inferred associations to Mermaid and Markdown, labelled apart from the foreign keys; `--connection` scopes the JSON export to one connection.
 - The document says what the inspection covers per connection (check constraints are not read, unique constraints only as indexes, index expressions and predicates only as flags), and notes relations whose related model, keys or pivot table the schema does not have.
+
+### Changed
+- `schema-viewer:check` lists the hints, in text and JSON (the `summary` counts included), in the document's diagnostic order rather than the order they were found, so the live check and `--snapshot` print the same.
+- Each hint's diagnostic carries its `connection`, `table`, `columns` and `relation` in `extensions.laravel`, beside the `hint` kind and the `ignore` rule, so the hint reads back from the document.
 
 ## v1.3.1 - 2026-10-14
 

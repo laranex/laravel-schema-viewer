@@ -21,7 +21,7 @@ The app needs the package (`composer require laranex/laravel-schema-viewer --dev
 
 ### Read the snapshot
 
-When `schema-viewer.json` exists in the project root, read it first: it is what the viewer shows, written by `php artisan schema-viewer:build`, the same laranex-schema 2.0 document as `schema-viewer:export --format=json` below. It is as fresh as the last time someone ran the build; if a migration or model changed since, run `php artisan schema-viewer:build` or use the export commands. A file written by laravel-schema-viewer 1.x (it starts with `"format": 2`) is out of date: build it again.
+When `schema-viewer.json` exists in the project root, read it first: it is what the viewer shows, written by `php artisan schema-viewer:build`, the same laranex-schema 2.0 document as `schema-viewer:export --format=json` below. It is as fresh as the last time someone ran the build; if a migration or model changed since, run `php artisan schema-viewer:build` or use the export commands. Add `--snapshot` to `schema-viewer:export` or `schema-viewer:check` to read this file instead of the models and the database: the same output for the schema it holds, with no model code run. A file written by laravel-schema-viewer 1.x (it starts with `"format": 2`) is out of date: build it again.
 
 ### Read the database
 
@@ -57,7 +57,7 @@ php artisan schema-viewer:check
 php artisan schema-viewer:check --format=json
 ```
 
-Read `--format=json` rather than the text: one JSON document with `passed`, `failOn`, a `summary` (counts by severity, certainty and kind) and every hint with its `kind`, `severity`, `certainty`, `connection`, `table`, `columns`, `relation`, `message`, `fails` and the `ignorePhp` rule. The exit code stays 0 (passed), 1 (a failing hint) or 2 (invalid options or config, with an `error` field).
+Read `--format=json` rather than the text: one JSON document with `passed`, `failOn`, a `summary` (counts by severity, certainty and kind) and every hint with its `kind`, `severity`, `certainty`, `connection`, `table`, `columns`, `relation`, `message`, `fails` and the `ignorePhp` rule. Hints come in the document's diagnostic order. The exit code stays 0 (passed), 1 (a failing hint) or 2 (invalid options or config, or with `--snapshot` a missing or unreadable `schema-viewer.json`, with an `error` field). `--snapshot` reads the hints of the last build: hints `hints.ignore` left out then are not in it, so rebuild after removing an ignore rule.
 
 Hint kinds:
 
